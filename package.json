@@ -1,0 +1,34 @@
+{
+  "name": "foxholewarbot",
+  "version": "0.0.1",
+  "description": "A Discord bot for looking at war data.",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "nodemon src/index.ts",
+    "start": "ts-node src/index.ts"
+  },
+  "keywords": [
+    "foxhole",
+    "war",
+    "api"
+  ],
+  "author": "Saniee",
+  "license": "ISC",
+  "dependencies": {
+    "canvas": "^2.8.0",
+    "discord.js": "^13.1.0",
+    "fs": "^0.0.1-security",
+    "node": "^16.9.1",
+    "pngjs": "^6.0.0",
+    "request": "^2.88.2",
+    "ts-node": "^10.2.1",
+    "typescript": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^16.9.1",
+    "@types/request": "^2.48.7",
+    "dotenv": "^10.0.0",
+    "nodemon": "^2.0.12",
+    "ts-node-dev": "^1.1.8"
+  }
+}
