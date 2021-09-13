@@ -23,7 +23,7 @@ for (const file of commandFiles) {
 client.on('ready', async () => {
   client.user!.setStatus('idle');
   client.user!.setActivity('Watching Shard 2', { type: 'WATCHING' });
-  console.log('ready');
+  console.log('Bot is online!');
 });
 
 client.on('messageCreate', async (msg) => {
