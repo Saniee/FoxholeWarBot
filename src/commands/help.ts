@@ -6,10 +6,7 @@ module.exports = {
   async execute(msg: Message, args: string[]) {
     const help = new MessageEmbed()
       .setColor('AQUA')
-      .setAuthor(
-        'Creator: Saniee#0007',
-        'https://cdn.discordapp.com/avatars/227071576779128832/2032084c8a9045aad9b8881c6ea473d4.png'
-      )
+      .setDescription('Made by Saniee#0007')
       .setTitle('Commands:')
       .addFields(
         {
