@@ -19,13 +19,16 @@
     "discord.js": "^13.1.0",
     "fs": "^0.0.1-security",
     "node": "^16.9.1",
+    "node-fetch": "^3.0.0",
     "pngjs": "^6.0.0",
+    "remove": "^0.1.5",
     "request": "^2.88.2",
     "ts-node": "^10.2.1",
     "typescript": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^16.9.1",
+    "@types/node-fetch": "^3.0.3",
     "@types/request": "^2.48.7",
     "dotenv": "^10.0.0",
     "nodemon": "^2.0.12",

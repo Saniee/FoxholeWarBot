@@ -9,6 +9,10 @@ module.exports = {
       'https://war-service-live-2.foxholeservices.com/api/worldconquest/maps';
 
     request(mapsURL, async function (error, response, body) {
+      console.log(
+        `Api request for: maps, Response Code: ${response.statusCode}`
+      );
+
       const data = JSON.parse(body);
 
       const maps = new MessageEmbed()

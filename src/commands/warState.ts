@@ -9,6 +9,10 @@ module.exports = {
       'https://war-service-live-2.foxholeservices.com/api/worldconquest/war';
 
     request(warStateURL, async function (error, response, body) {
+      console.log(
+        `Api request for: WarState, Response Code: ${response.statusCode}`
+      );
+
       const data = JSON.parse(body);
       let startTime = new Date(data.conquestStartTime);
       const warState = new MessageEmbed()
