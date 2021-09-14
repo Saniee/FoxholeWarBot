@@ -48,14 +48,12 @@ client.on('messageCreate', async (msg) => {
         process.env.PREFIX!.length
       )}\` is not a command!`,
     });
-  }
-
-  // console.log(commandName);
-
-  try {
-    await command.execute(msg, args);
-  } catch (err) {
-    console.log(err);
+  } else {
+    try {
+      await command.execute(msg, args);
+    } catch (err) {
+      console.log(err);
+    }
   }
 });
 
