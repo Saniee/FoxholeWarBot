@@ -1,8 +1,15 @@
-import Discord, { Intents, Collection } from 'discord.js';
+import Discord, {
+  Intents,
+  Collection,
+  TextChannel,
+  GuildMember,
+  MessageEmbed,
+} from 'discord.js';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
-
+import mongoose from 'mongoose';
+import serverConfig from './mongodb/serverConfig';
 dotenv.config();
 
 const client = new Discord.Client({
@@ -20,9 +27,23 @@ for (const file of commandFiles) {
   client.commands.set(command.name, command);
 }
 
+async function mongoConnect() {
+  mongoose
+    .connect(process.env.MONGODB_STRING!)
+    .catch((err) => {
+      console.log('Error Connecting to MongoDB');
+      process.exit(1);
+    })
+    .then(async () => {
+      console.log('Connected to MongoDB');
+    });
+}
+
 client.on('ready', async () => {
+  await mongoConnect();
+
   client.user!.setStatus('idle');
-  client.user!.setActivity('Shard 2', { type: 'WATCHING' });
+  client.user!.setActivity('Foxhole Wars', { type: 'WATCHING' });
   console.log('Bot is online!');
 });
 
@@ -55,6 +76,58 @@ client.on('messageCreate', async (msg) => {
       console.log(err);
     }
   }
+});
+
+client.on('guildCreate', async (guild) => {
+  const newServerConfig = new serverConfig({
+    guildID: guild.id,
+    shard: 'https://war-service-live.foxholeservices.com',
+    shardName: 'Shard_1',
+  });
+
+  newServerConfig.save().catch((err: any) => console.log(err));
+
+  let found = false;
+
+  guild.channels.cache.forEach((channel) => {
+    if (!found) {
+      if (channel.type == 'GUILD_TEXT') {
+        if (
+          channel
+            .permissionsFor(client.user as unknown as GuildMember)
+            .has('VIEW_CHANNEL') === true
+        ) {
+          if (
+            channel
+              .permissionsFor(client.user as unknown as GuildMember)
+              .has('SEND_MESSAGES') == true
+          ) {
+            const inviteEmbed = new MessageEmbed()
+              .setTitle(
+                'FoxholeWarBot the discord utility for Foxhole the Game.'
+              )
+              .setDescription(
+                'Thanks for inviting me! \n\n To see the commands type in `War!help`! \n To change your prefered Shard/Server type in `War!setShard {shard1 | shard2}`, The default is Shard 1/Live 1. \n\n Commands are `case sensitive`!'
+              )
+              .setColor('DARK_AQUA');
+
+            (channel as TextChannel).send({ embeds: [inviteEmbed] });
+
+            found = true;
+          }
+        }
+      }
+    }
+  });
+
+  console.log(`Joined server ${guild.name}, created default table!`);
+});
+
+client.on('guildDelete', async (guild) => {
+  serverConfig
+    .deleteOne({ guildID: guild.id })
+    .catch((err: any) => console.log(err));
+  console.log(`Left server ${guild.name}, dropped db table!`);
 });
 
 client.login(process.env.TOKEN);

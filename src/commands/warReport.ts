@@ -2,37 +2,50 @@ import { Message, MessageEmbed } from 'discord.js';
 import fs from 'fs';
 import path from 'path';
 import request from 'request';
+import serverConfig from '../mongodb/serverConfig';
 
 module.exports = {
   name: 'warReport',
   description: 'Displays War Report for the Map/Hex',
   async execute(msg: Message, args: string[]) {
     if (args[0]) {
-      fs.readFile(
-        path.resolve(__dirname, `../cache/warReport/${args[0]}.json`),
-        'utf-8',
-        async (err, fileData) => {
-          if (fileData) {
-            const cache = JSON.parse(fileData);
-            await apiRequest(cache);
-          } else if (!fileData) {
-            const cache = {
-              version: '0',
-            };
-            await apiRequest(cache);
-          } else {
-            console.log(err);
-            msg.reply('An error has occured!');
-          }
+      serverConfig.findOne({ guildID: msg.guildId }, (err: any, data: any) => {
+        if (data) {
+          fs.readFile(
+            path.resolve(
+              __dirname,
+              `../cache/warReport/${args[0]}${data.shardName}.json`
+            ),
+            'utf-8',
+            async (err, fileData) => {
+              if (fileData) {
+                const cache = JSON.parse(fileData);
+                await apiRequest(cache, data);
+              } else if (!fileData) {
+                const cache = {
+                  version: '0',
+                };
+                await apiRequest(cache, data);
+              } else {
+                console.log(err);
+                msg.reply('An error has occured!');
+              }
+            }
+          );
+        } else if (!data) {
+          msg.reply({
+            content:
+              'Shard setting missing, please run the command `War!setShard {shard1 | shard2}` to fix this issue!',
+          });
         }
-      );
+      });
     } else {
       msg.reply({ content: 'Please specify the Map/Hex for the War Report!' });
     }
 
-    async function apiRequest(cache: any) {
+    async function apiRequest(cache: any, mongoDB: any) {
       const warReportURL = {
-        url: `https://war-service-live-2.foxholeservices.com/api/worldconquest/warReport/${args[0]}`,
+        url: `${mongoDB.shard}/api/worldconquest/warReport/${args[0]}`,
         headers: { 'If-None-Match': `"${cache.version}"` },
       };
 
@@ -48,16 +61,24 @@ module.exports = {
 
             const data = JSON.parse(body);
 
-            fs.writeFile(
-              path.resolve(__dirname, `../cache/warReport/${args[0]}.json`),
-              JSON.stringify(data, null, 2),
-              'utf-8',
-              (err) => {
-                if (err) {
-                  console.log(err);
-                } else {
-                  console.log(`File: Updated!`);
-                }
+            serverConfig.findOne(
+              { guildID: msg.guildId },
+              (err: any, mongoDB: any) => {
+                fs.writeFile(
+                  path.resolve(
+                    __dirname,
+                    `../cache/warReport/${args[0]}${mongoDB.shardName}.json`
+                  ),
+                  JSON.stringify(data, null, 2),
+                  'utf-8',
+                  (err) => {
+                    if (err) {
+                      console.log(err);
+                    } else {
+                      console.log(`File: Updated!`);
+                    }
+                  }
+                );
               }
             );
 

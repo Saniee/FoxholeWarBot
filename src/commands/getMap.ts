@@ -3,31 +3,43 @@ import { Message, MessageAttachment, MessageEmbed } from 'discord.js';
 import request from 'request';
 import path from 'path';
 import fs from 'fs';
+import serverConfig from '../mongodb/serverConfig';
 
 module.exports = {
   name: 'getMap',
   descriptio: 'Generates a Hex Image of the map with icons.',
   async execute(msg: Message, args: string[]) {
-    // console.log(dynamicMapDataUrl);
     if (args[0]) {
-      fs.readFile(
-        path.resolve(__dirname, `../cache/getMap/${args[0]}.json`),
-        'utf-8',
-        async (err, fileData) => {
-          if (fileData) {
-            const cache = JSON.parse(fileData);
-            await apiRequest(cache);
-          } else if (!fileData) {
-            const cache = {
-              version: '0',
-            };
-            await apiRequest(cache);
-          } else {
-            console.log(err);
-            msg.reply('An error has occured!');
-          }
+      serverConfig.findOne({ guildID: msg.guildId }, (err: any, data: any) => {
+        if (data) {
+          fs.readFile(
+            path.resolve(
+              __dirname,
+              `../cache/getMap/${args[0]}${data.shardName}.json`
+            ),
+            'utf-8',
+            async (err, fileData) => {
+              if (fileData) {
+                const cache = JSON.parse(fileData);
+                await apiRequest(cache, data);
+              } else if (!fileData) {
+                const cache = {
+                  version: '0',
+                };
+                await apiRequest(cache, data);
+              } else {
+                console.log(err);
+                msg.reply('An error has occured!');
+              }
+            }
+          );
+        } else if (!data) {
+          msg.reply({
+            content:
+              'Shard setting missing, please run the command `War!setShard {shard1 | shard2}` to fix this issue!',
+          });
         }
-      );
+      });
     } else {
       msg.reply({
         content:
@@ -35,9 +47,9 @@ module.exports = {
       });
     }
 
-    async function apiRequest(cache: any) {
+    async function apiRequest(cache: any, mongoDB: any) {
       const dynamicMapDataUrl = {
-        url: `https://war-service-live-2.foxholeservices.com/api/worldconquest/maps/${args[0]}/dynamic/public`,
+        url: `${mongoDB.shard}/api/worldconquest/maps/${args[0]}/dynamic/public`,
         headers: { 'If-None-Match': `"${cache.version}"` },
       };
 
@@ -53,16 +65,24 @@ module.exports = {
 
           const data = JSON.parse(body);
 
-          fs.writeFile(
-            path.resolve(__dirname, `../cache/getMap/${args[0]}.json`),
-            JSON.stringify(data, null, 2),
-            'utf-8',
-            (err) => {
-              if (err) {
-                console.log(err);
-              } else {
-                console.log('File: Updated!');
-              }
+          serverConfig.findOne(
+            { guildID: msg.guildId },
+            (err: any, mongoDB: any) => {
+              fs.writeFile(
+                path.resolve(
+                  __dirname,
+                  `../cache/getMap/${args[0]}${mongoDB.shardName}.json`
+                ),
+                JSON.stringify(data, null, 2),
+                'utf-8',
+                (err) => {
+                  if (err) {
+                    console.log(err);
+                  } else {
+                    console.log('File: Updated!');
+                  }
+                }
+              );
             }
           );
 
@@ -195,7 +215,6 @@ module.exports = {
               );
             }
           }
-
           await send(canvas, new Date(cache.lastUpdated));
         }
       });

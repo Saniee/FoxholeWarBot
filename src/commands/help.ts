@@ -28,6 +28,10 @@ module.exports = {
         {
           name: 'warState',
           value: 'Displays the war state.',
+        },
+        {
+          name: 'setShard',
+          value: 'Sets Server shard to get data from.',
         }
       );
 
