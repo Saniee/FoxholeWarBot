@@ -5,3 +5,7 @@ So far the bot can display indivudual Maps/Hexes with the icons, and it can list
 
 Contributions are welcome, unless they are reasonable and wont affect the bot.
 Issues are going to be dealt with depending on the weight of the issue.
+
+# Own hosting
+
+If you want to host the bot, create a `.env` file, outside of `src/` with the variables `TOKEN, MONGODB_STRING, PREFIX`. Then open the command line inside the folder and run `npm start`. Of course please credit me or leave the help command watermark. Otherwise I will take action if I find out. 
