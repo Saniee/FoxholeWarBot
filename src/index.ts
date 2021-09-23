@@ -109,6 +109,16 @@ client.on('guildCreate', async (guild) => {
               .setDescription(
                 'Thanks for inviting me! \n\n To see the commands type in `War!help`! \n To change your prefered Shard/Server type in `War!setShard {shard1 | shard2}`, The default is Shard 1/Live 1. \n\n Commands are `case sensitive`!'
               )
+              .addFields(
+                {
+                  name: 'Source:',
+                  value: 'https://github.com/Saniee/FoxholeWarBot',
+                },
+                {
+                  name: 'Discord Support Server:',
+                  value: 'https://discord.gg/9wzppSgXdQ',
+                }
+              )
               .setColor('DARK_AQUA');
 
             (channel as TextChannel).send({ embeds: [inviteEmbed] });
