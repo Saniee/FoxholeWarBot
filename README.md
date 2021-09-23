@@ -2,6 +2,9 @@
 <a href="https://top.gg/bot/886994381259833374">
   <img src="https://top.gg/api/widget/upvotes/886994381259833374.svg">
 </a>
+<a href="https://top.gg/bot/886994381259833374">
+  <img src="https://top.gg/api/widget/owner/886994381259833374.svg">
+</a>
 
 # About
 
