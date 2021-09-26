@@ -10,6 +10,7 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import serverConfig from './mongodb/serverConfig';
+require('console-stamp')(console);
 dotenv.config();
 
 const client = new Discord.Client({
