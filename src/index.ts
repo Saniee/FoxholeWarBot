@@ -46,6 +46,7 @@ client.on('ready', async () => {
   client.user!.setStatus('idle');
   client.user!.setActivity('Foxhole Wars', { type: 'WATCHING' });
   console.log('Bot is online!');
+  console.log(`In ${client.guilds.cache.size} servers!`);
 });
 
 client.on('messageCreate', async (msg) => {
@@ -135,6 +136,8 @@ client.on('guildCreate', async (guild) => {
                 });
             }
 
+            console.log(`In ${client.guilds.cache.size} servers!`);
+
             found = true;
           }
         }
@@ -150,6 +153,7 @@ client.on('guildDelete', async (guild) => {
     .deleteOne({ guildID: guild.id })
     .catch((err: any) => console.log(err));
   console.log(`Left server ${guild.name}, dropped db table!`);
+  console.log(`In ${client.guilds.cache.size} servers!`);
 });
 
 client.login(process.env.TOKEN);
