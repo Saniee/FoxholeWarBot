@@ -49,100 +49,125 @@ module.exports = {
         headers: { 'If-None-Match': `"${cache.version}"` },
       };
 
-      request(warReportURL, async function (error, response, body) {
-        switch (response.statusCode) {
-          case 404:
-            msg.reply({ content: 'War Report for that map wasnt found!' });
-            break;
-          case 200:
-            console.log(
-              `Api request for: WarReport, Response Code: ${response.statusCode}, File: Not Up-to Date!`
-            );
+      try {
+        request(warReportURL, async function (error, response, body) {
+          switch (response.statusCode) {
+            case 404:
+              msg.reply({ content: 'War Report for that map wasnt found!' });
+              break;
+            case 200:
+              console.log(
+                `Api request for: WarReport, Response Code: ${response.statusCode}, File: Not Up-to Date!`
+              );
 
-            const data = JSON.parse(body);
+              const data = JSON.parse(body);
 
-            serverConfig.findOne(
-              { guildID: msg.guildId },
-              (err: any, mongoDB: any) => {
-                fs.writeFile(
-                  path.resolve(
-                    __dirname,
-                    `../cache/warReport/${args[0]}${mongoDB.shardName}.json`
-                  ),
-                  JSON.stringify(data, null, 2),
-                  'utf-8',
-                  (err) => {
-                    if (err) {
-                      console.log(err);
-                    } else {
-                      console.log(`File: Updated!`);
+              serverConfig.findOne(
+                { guildID: msg.guildId },
+                (err: any, mongoDB: any) => {
+                  fs.writeFile(
+                    path.resolve(
+                      __dirname,
+                      `../cache/warReport/${args[0]}${mongoDB.shardName}.json`
+                    ),
+                    JSON.stringify(data, null, 2),
+                    'utf-8',
+                    (err) => {
+                      if (err) {
+                        console.log(err);
+                      } else {
+                        console.log(`File: Updated!`);
+                      }
                     }
+                  );
+                }
+              );
+
+              const warReport = new MessageEmbed()
+                .setFields(
+                  {
+                    name: 'Total Enlistments',
+                    value: `${data.totalEnlistments}`,
+                  },
+                  {
+                    name: 'Colonial Casualties',
+                    value: `${data.colonialCasualties}`,
+                  },
+                  {
+                    name: 'Warden Casualties',
+                    value: `${data.wardenCasualties}`,
+                  },
+                  {
+                    name: 'Day Of War',
+                    value: `${data.dayOfWar}`,
                   }
-                );
+                )
+                .setFooter('Requested at')
+                .setTimestamp(new Date());
+              try {
+                await msg.reply({ embeds: [warReport] });
+              } catch (err) {
+                console.log(err);
+                msg.author
+                  .send(
+                    'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                  )
+                  .catch((err) => {
+                    console.log(err);
+                  });
               }
-            );
+              break;
+            case 304:
+              console.log(
+                `Api Request for: WarReport, Response Code: ${response.statusCode}, File: Up-to Date!`
+              );
 
-            const warReport = new MessageEmbed()
-              .setFields(
-                {
-                  name: 'Total Enlistments',
-                  value: `${data.totalEnlistments}`,
-                },
-                {
-                  name: 'Colonial Casualties',
-                  value: `${data.colonialCasualties}`,
-                },
-                {
-                  name: 'Warden Casualties',
-                  value: `${data.wardenCasualties}`,
-                },
-                {
-                  name: 'Day Of War',
-                  value: `${data.dayOfWar}`,
-                }
-              )
-              .setFooter('Requested at')
-              .setTimestamp(new Date());
-            try {
-              await msg.reply({ embeds: [warReport] });
-            } catch (err) {
-              console.log(err);
-            }
-            break;
-          case 304:
-            console.log(
-              `Api Request for: WarReport, Response Code: ${response.statusCode}, File: Up-to Date!`
-            );
-
-            const warReportCached = new MessageEmbed()
-              .setFields(
-                {
-                  name: 'Total Enlistments',
-                  value: `${cache.totalEnlistments}`,
-                },
-                {
-                  name: 'Colonial Casualties',
-                  value: `${cache.colonialCasualties}`,
-                },
-                {
-                  name: 'Warden Casualties',
-                  value: `${cache.wardenCasualties}`,
-                },
-                {
-                  name: 'Day Of War',
-                  value: `${cache.dayOfWar}`,
-                }
-              )
-              .setFooter('Requested at')
-              .setTimestamp(new Date());
-            try {
-              await msg.reply({ embeds: [warReportCached] });
-            } catch (err) {
-              console.log(err);
-            }
-            break;
-        }
-      });
+              const warReportCached = new MessageEmbed()
+                .setFields(
+                  {
+                    name: 'Total Enlistments',
+                    value: `${cache.totalEnlistments}`,
+                  },
+                  {
+                    name: 'Colonial Casualties',
+                    value: `${cache.colonialCasualties}`,
+                  },
+                  {
+                    name: 'Warden Casualties',
+                    value: `${cache.wardenCasualties}`,
+                  },
+                  {
+                    name: 'Day Of War',
+                    value: `${cache.dayOfWar}`,
+                  }
+                )
+                .setFooter('Requested at')
+                .setTimestamp(new Date());
+              try {
+                await msg.reply({ embeds: [warReportCached] });
+              } catch (err) {
+                console.log(err);
+                msg.author
+                  .send(
+                    'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                  )
+                  .catch((err) => {
+                    console.log(err);
+                  });
+              }
+              break;
+          }
+        });
+      } catch (err) {
+        console.log(err);
+        msg.author
+          .send(
+            'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+          )
+          .catch((err) => {
+            console.log(err);
+          });
+      }
     }
   },
 };

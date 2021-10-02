@@ -122,7 +122,18 @@ client.on('guildCreate', async (guild) => {
               )
               .setColor('DARK_AQUA');
 
-            (channel as TextChannel).send({ embeds: [inviteEmbed] });
+            try {
+              (channel as TextChannel).send({ embeds: [inviteEmbed] });
+            } catch (err) {
+              console.log(err);
+              (guild.ownerId as unknown as GuildMember)
+                .send(
+                  'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                )
+                .catch((err) => {
+                  console.log(err);
+                });
+            }
 
             found = true;
           }

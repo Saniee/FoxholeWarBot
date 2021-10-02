@@ -31,13 +31,31 @@ module.exports = {
               await msg.reply({ embeds: [maps] });
             } catch (err) {
               console.log(err);
+              msg.author
+                .send(
+                  'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                )
+                .catch((err) => {
+                  console.log(err);
+                });
             }
           });
         } else if (!mongoDB) {
-          msg.reply({
-            content:
-              'Shard setting missing, please run the command `War!setShard {shard1 | shard2}` to fix this issue!',
-          });
+          try {
+            msg.reply({
+              content:
+                'Shard setting missing, please run the command `War!setShard {shard1 | shard2}` to fix this issue!',
+            });
+          } catch (err) {
+            console.log(err);
+            msg.author
+              .send(
+                'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+              )
+              .catch((err) => {
+                console.log(err);
+              });
+          }
         }
       }
     );
