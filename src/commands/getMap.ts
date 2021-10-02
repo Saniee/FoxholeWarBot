@@ -256,6 +256,13 @@ module.exports = {
         await msg.reply({ embeds: [myEmbed], files: [attachment] });
       } catch (err) {
         console.log(err);
+        msg.author
+          .send(
+            'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+          )
+          .catch((err) => {
+            console.log(err);
+          });
       }
     }
   },
