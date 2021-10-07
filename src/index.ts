@@ -4,6 +4,7 @@ import Discord, {
   TextChannel,
   GuildMember,
   MessageEmbed,
+  TextBasedChannels,
 } from 'discord.js';
 import path from 'path';
 import fs from 'fs';
@@ -50,6 +51,7 @@ client.on('ready', async () => {
 });
 
 client.on('messageCreate', async (msg) => {
+  let channelID = msg.channel.id;
   if (!msg.content.startsWith(process.env.PREFIX!) || msg.author.bot) {
     return;
   }
@@ -66,11 +68,24 @@ client.on('messageCreate', async (msg) => {
     );
 
   if (!command) {
-    msg.reply({
-      content: `\`${msg.content.slice(
-        process.env.PREFIX!.length
-      )}\` is not a command!`,
-    });
+    msg
+      .reply({
+        content: `\`${msg.content.slice(
+          process.env.PREFIX!.length
+        )}\` is not a command!`,
+      })
+      .catch((err) => {
+        console.log(err);
+        (channelID as unknown as TextBasedChannels)
+          .send({
+            content: `\`${msg.content.slice(
+              process.env.PREFIX!.length
+            )}\` is not a command!`,
+          })
+          .catch((err) => {
+            console.log(err);
+          });
+      });
   } else {
     try {
       await command.execute(msg, args);
