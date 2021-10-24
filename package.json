@@ -15,6 +15,7 @@
   "author": "Saniee",
   "license": "ISC",
   "dependencies": {
+    "axios": "^0.23.0",
     "canvas": "^2.8.0",
     "console-stamp": "^3.0.3",
     "discord.js": "^13.1.0",
