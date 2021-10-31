@@ -1,5 +1,6 @@
+import axios from 'axios';
 import { Message, MessageEmbed } from 'discord.js';
-import fs from 'fs';
+import fs, { stat } from 'fs';
 import path from 'path';
 import request from 'request';
 import serverConfig from '../mongodb/serverConfig';
@@ -44,22 +45,28 @@ module.exports = {
     }
 
     async function apiRequest(cache: any, mongoDB: any) {
-      const warReportURL = {
-        url: `${mongoDB.shard}/api/worldconquest/warReport/${args[0]}`,
-        headers: { 'If-None-Match': `"${cache.version}"` },
-      };
+      const warReportURL = `${mongoDB.shard}/api/worldconquest/warReport/${args[0]}`;
 
-      request(warReportURL, async function (error, response, body) {
-        switch (response.statusCode) {
+      try {
+        const response = axios.get(warReportURL, {
+          validateStatus: function (status) {
+            return status < 500;
+          },
+          headers: { 'If-None-Match': `"${cache.version}"` },
+        });
+
+        const statusCode = (await response).status;
+
+        switch (statusCode) {
           case 404:
             msg.reply({ content: 'War Report for that map wasnt found!' });
             break;
           case 200:
             console.log(
-              `Api request for: WarReport, Response Code: ${response.statusCode}, File: Not Up-to Date!`
+              `Api request for: WarReport, Response Code: ${statusCode}, File: Not Up-to Date!`
             );
 
-            const data = JSON.parse(body);
+            const data: any = (await response).data;
 
             serverConfig.findOne(
               { guildID: msg.guildId },
@@ -107,11 +114,18 @@ module.exports = {
               await msg.reply({ embeds: [warReport] });
             } catch (err) {
               console.log(err);
+              msg.author
+                .send(
+                  'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                )
+                .catch((err) => {
+                  console.log(err);
+                });
             }
             break;
           case 304:
             console.log(
-              `Api Request for: WarReport, Response Code: ${response.statusCode}, File: Up-to Date!`
+              `Api Request for: WarReport, Response Code: ${statusCode}, File: Up-to Date!`
             );
 
             const warReportCached = new MessageEmbed()
@@ -139,10 +153,26 @@ module.exports = {
               await msg.reply({ embeds: [warReportCached] });
             } catch (err) {
               console.log(err);
+              msg.author
+                .send(
+                  'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                )
+                .catch((err) => {
+                  console.log(err);
+                });
             }
             break;
         }
-      });
+      } catch (err) {
+        console.log(err);
+        msg.author
+          .send(
+            'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+          )
+          .catch((err) => {
+            console.log(err);
+          });
+      }
     }
   },
 };

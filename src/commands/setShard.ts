@@ -17,9 +17,21 @@ module.exports = {
               await msg.react('👍').catch((err) => {
                 console.log(err);
                 console.log('No permission to react! Notifying!');
-                msg.reply(
-                  'Please add the permission to react! Shard Changed! 👍'
-                );
+                msg
+                  .reply(
+                    'Please add the permission to react! Shard Changed! 👍'
+                  )
+                  .catch((err) => {
+                    console.log(err);
+                    console.log('No permission to message! Notifying!');
+                    msg.author
+                      .send(
+                        'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                      )
+                      .catch((err) => {
+                        console.log(err);
+                      });
+                  });
               });
             } else if (args[0] == 'shard2') {
               data.shard = 'https://war-service-live-2.foxholeservices.com';
@@ -28,9 +40,21 @@ module.exports = {
               await msg.react('👍').catch((err) => {
                 console.log(err);
                 console.log('No permission to react! Notifying!');
-                msg.reply(
-                  'Please add the permission to react! Shard Changed! 👍'
-                );
+                msg
+                  .reply(
+                    'Please add the permission to react! Shard Changed! 👍'
+                  )
+                  .catch((err) => {
+                    console.log(err);
+                    console.log('No permission to message! Notifying!');
+                    msg.author
+                      .send(
+                        'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                      )
+                      .catch((err) => {
+                        console.log(err);
+                      });
+                  });
               });
             }
           } else if (!data) {
@@ -48,9 +72,21 @@ module.exports = {
               await msg.react('👍').catch((err) => {
                 console.log(err);
                 console.log('No permission to react! Notifying!');
-                msg.reply(
-                  'Please add the permission to react! Shard Changed! 👍'
-                );
+                msg
+                  .reply(
+                    'Please add the permission to react! Shard Changed! 👍'
+                  )
+                  .catch((err) => {
+                    console.log(err);
+                    console.log('No permission to message! Notifying!');
+                    msg.author
+                      .send(
+                        'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                      )
+                      .catch((err) => {
+                        console.log(err);
+                      });
+                  });
               });
             } else if (args[0] == 'shard2') {
               const newServerConfig = new serverConfig({
@@ -66,18 +102,52 @@ module.exports = {
               await msg.react('👍').catch((err) => {
                 console.log(err);
                 console.log('No permission to react! Notifying!');
-                msg.reply(
-                  'Please add the permission to react! Shard Changed! 👍'
-                );
+                msg
+                  .reply(
+                    'Please add the permission to react! Shard Changed! 👍'
+                  )
+                  .catch((err) => {
+                    console.log(err);
+                    console.log('No permission to message! Notifying!');
+                    msg.author
+                      .send(
+                        'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                      )
+                      .catch((err) => {
+                        console.log(err);
+                      });
+                  });
               });
             } else {
-              msg.reply({ content: 'Not a valid option!' });
+              msg.reply({ content: 'Not a valid option!' }).catch((err) => {
+                console.log(err);
+                console.log('No permission to message! Notifying!');
+                msg.author
+                  .send(
+                    'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                  )
+                  .catch((err) => {
+                    console.log(err);
+                  });
+              });
             }
           }
         }
       );
     } else {
-      msg.reply({ content: 'Please specify shard! { shard1 | shard2 }' });
+      msg
+        .reply({ content: 'Please specify shard! { shard1 | shard2 }' })
+        .catch((err) => {
+          console.log(err);
+          console.log('No permission to message! Notifying!');
+          msg.author
+            .send(
+              'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+            )
+            .catch((err) => {
+              console.log(err);
+            });
+        });
     }
   },
 };

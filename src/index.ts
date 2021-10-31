@@ -4,6 +4,7 @@ import Discord, {
   TextChannel,
   GuildMember,
   MessageEmbed,
+  TextBasedChannels,
 } from 'discord.js';
 import path from 'path';
 import fs from 'fs';
@@ -46,9 +47,11 @@ client.on('ready', async () => {
   client.user!.setStatus('idle');
   client.user!.setActivity('Foxhole Wars', { type: 'WATCHING' });
   console.log('Bot is online!');
+  console.log(`In ${client.guilds.cache.size} servers!`);
 });
 
 client.on('messageCreate', async (msg) => {
+  let channelID = msg.channel.id;
   if (!msg.content.startsWith(process.env.PREFIX!) || msg.author.bot) {
     return;
   }
@@ -65,11 +68,24 @@ client.on('messageCreate', async (msg) => {
     );
 
   if (!command) {
-    msg.reply({
-      content: `\`${msg.content.slice(
-        process.env.PREFIX!.length
-      )}\` is not a command!`,
-    });
+    msg
+      .reply({
+        content: `\`${msg.content.slice(
+          process.env.PREFIX!.length
+        )}\` is not a command!`,
+      })
+      .catch((err) => {
+        console.log(err);
+        (channelID as unknown as TextBasedChannels)
+          .send({
+            content: `\`${msg.content.slice(
+              process.env.PREFIX!.length
+            )}\` is not a command!`,
+          })
+          .catch((err) => {
+            console.log(err);
+          });
+      });
   } else {
     try {
       await command.execute(msg, args);
@@ -122,7 +138,20 @@ client.on('guildCreate', async (guild) => {
               )
               .setColor('DARK_AQUA');
 
-            (channel as TextChannel).send({ embeds: [inviteEmbed] });
+            try {
+              (channel as TextChannel).send({ embeds: [inviteEmbed] });
+            } catch (err) {
+              console.log(err);
+              (guild.ownerId as unknown as GuildMember)
+                .send(
+                  'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                )
+                .catch((err) => {
+                  console.log(err);
+                });
+            }
+
+            console.log(`In ${client.guilds.cache.size} servers!`);
 
             found = true;
           }
@@ -139,6 +168,7 @@ client.on('guildDelete', async (guild) => {
     .deleteOne({ guildID: guild.id })
     .catch((err: any) => console.log(err));
   console.log(`Left server ${guild.name}, dropped db table!`);
+  console.log(`In ${client.guilds.cache.size} servers!`);
 });
 
 client.login(process.env.TOKEN);
