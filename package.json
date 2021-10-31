@@ -1,6 +1,6 @@
 {
   "name": "foxholewarbot",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A Discord bot for looking at war data.",
   "main": "src/index.ts",
   "scripts": {

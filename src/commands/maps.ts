@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { Message, MessageEmbed } from 'discord.js';
 import request from 'request';
 import serverConfig from '../mongodb/serverConfig';
@@ -12,34 +13,41 @@ module.exports = {
         if (mongoDB) {
           const mapsURL = `${mongoDB.shard}/api/worldconquest/maps`;
 
-          request(mapsURL, async function (error, response, body) {
-            console.log(
-              `Api request for: maps, Response Code: ${response.statusCode}`
-            );
-
-            const data = JSON.parse(body);
-
-            const maps = new MessageEmbed()
-              .setColor('AQUA')
-              .setFooter('Requested at')
-              .setTimestamp(new Date());
-            for (var i = 0; i < data.length; i++) {
-              maps.addField(`Map ${i}`, data[i]);
+          const response = axios.get(
+            `${mongoDB.shard}/api/worldconquest/maps`,
+            {
+              validateStatus: function (status) {
+                return status < 500;
+              },
             }
+          );
 
-            try {
-              await msg.reply({ embeds: [maps] });
-            } catch (err) {
-              console.log(err);
-              msg.author
-                .send(
-                  'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
-                )
-                .catch((err) => {
-                  console.log(err);
-                });
-            }
-          });
+          console.log(
+            `Api request for: maps, Response Code: ${(await response).status}`
+          );
+
+          const data: any = (await response).data;
+
+          const maps = new MessageEmbed()
+            .setColor('AQUA')
+            .setFooter('Requested at')
+            .setTimestamp(new Date());
+          for (var i = 0; i < data.length; i++) {
+            maps.addField(`Map ${i}`, data[i]);
+          }
+
+          try {
+            await msg.reply({ embeds: [maps] });
+          } catch (err) {
+            console.log(err);
+            msg.author
+              .send(
+                'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+              )
+              .catch((err) => {
+                console.log(err);
+              });
+          }
         } else if (!mongoDB) {
           try {
             msg.reply({
