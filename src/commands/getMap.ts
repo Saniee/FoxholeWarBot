@@ -105,6 +105,8 @@ module.exports = {
         const dataStatic: any = (await getStatic).data;
         const statusCodeStatic: any = (await getStatic).status;
 
+        console.log(statusCodeDynamic + ' | ' + statusCodeStatic);
+
         if (statusCodeDynamic == 404 || statusCodeStatic == 404) {
           msg.reply({
             content: 'There was nothing found for the Map/Hex Specified!',
@@ -301,6 +303,204 @@ module.exports = {
           }
 
           await send(canvas, new Date(dynamicCache.lastUpdated));
+        } else if (statusCodeDynamic != 200 && statusCodeStatic == 200) {
+          console.log(
+            `Api request for: getMap, Response Codes: ${statusCodeDynamic}|${statusCodeStatic}, File: Not Up-to Date!`
+          );
+
+          serverConfig.findOne(
+            { guildID: msg.guildId },
+            (err: any, mongoDB: any) => {
+              fs.writeFile(
+                path.resolve(
+                  __dirname,
+                  `../cache/getMap/${args[0]}${mongoDB.shardName}Static.json`
+                ),
+                JSON.stringify(dataStatic, null, 2),
+                'utf-8',
+                (err) => {
+                  if (err) {
+                    console.log(err);
+                  } else {
+                    console.log('Static Data: Updated!');
+                  }
+                }
+              );
+            }
+          );
+
+          const dataDynamic = dynamicCache;
+
+          const ctx = canvas.getContext('2d');
+          const map = await loadImage(
+            path.resolve(
+              __dirname,
+              `../assets/Images/MapsPNG/Map${args[0]}.png`
+            )
+          );
+          ctx.drawImage(map, 0, 0, canvas.width, canvas.height);
+
+          for (var i = 0; i < dataDynamic.mapItems.length; i++) {
+            if (dataDynamic.mapItems[i].teamId == 'WARDENS') {
+              const iconWardens = await loadImage(
+                path.resolve(
+                  __dirname,
+                  `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}${dataDynamic.mapItems[i].teamId}.png`
+                )
+              );
+              // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconWardens.src}`);
+              ctx.drawImage(
+                iconWardens,
+                dataDynamic.mapItems[i].x * 1000 * 1.005,
+                dataDynamic.mapItems[i].y * 1000 * 0.85,
+                24,
+                24
+              );
+            } else if (dataDynamic.mapItems[i].teamId == 'COLONIALS') {
+              const iconColonials = await loadImage(
+                path.resolve(
+                  __dirname,
+                  `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}${dataDynamic.mapItems[i].teamId}.png`
+                )
+              );
+              // console.log(
+              //   dataDynamic.mapItems[i].iconType + '-' + `${iconColonials.src}`
+              // );
+              ctx.drawImage(
+                iconColonials,
+                dataDynamic.mapItems[i].x * 1000 * 1.005,
+                dataDynamic.mapItems[i].y * 1000 * 0.85,
+                24,
+                24
+              );
+            } else {
+              const iconNoTeam = await loadImage(
+                path.resolve(
+                  __dirname,
+                  `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`
+                )
+              );
+              // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconNoTeam.src}`);
+              ctx.drawImage(
+                iconNoTeam,
+                dataDynamic.mapItems[i].x * 1000 * 1.005,
+                dataDynamic.mapItems[i].y * 1000 * 0.85,
+                24,
+                24
+              );
+            }
+          }
+
+          for (var i = 0; i < dataStatic.mapTextItems.length; i++) {
+            ctx.font = '20px serif';
+            ctx.fillStyle = '#000000';
+            ctx.fillText(
+              `${dataStatic.mapTextItems[i].text}`,
+              dataStatic.mapTextItems[i].x * 1000 * 0.8,
+              dataStatic.mapTextItems[i].y * 1000 * 0.935
+            );
+          }
+
+          await send(canvas, new Date(dataDynamic.lastUpdated));
+        } else if (statusCodeDynamic == 200 && statusCodeStatic != 200) {
+          console.log(
+            `Api request for: getMap, Response Codes: ${statusCodeDynamic}|${statusCodeStatic}, File: Not Up-to Date!`
+          );
+
+          serverConfig.findOne(
+            { guildID: msg.guildId },
+            (err: any, mongoDB: any) => {
+              fs.writeFile(
+                path.resolve(
+                  __dirname,
+                  `../cache/getMap/${args[0]}${mongoDB.shardName}Dynamic.json`
+                ),
+                JSON.stringify(dataDynamic, null, 2),
+                'utf-8',
+                (err) => {
+                  if (err) {
+                    console.log(err);
+                  } else {
+                    console.log('Dynamic Data: Updated!');
+                  }
+                }
+              );
+            }
+          );
+
+          const dataStatic = staticCache;
+
+          const ctx = canvas.getContext('2d');
+          const map = await loadImage(
+            path.resolve(
+              __dirname,
+              `../assets/Images/MapsPNG/Map${args[0]}.png`
+            )
+          );
+          ctx.drawImage(map, 0, 0, canvas.width, canvas.height);
+
+          for (var i = 0; i < dataDynamic.mapItems.length; i++) {
+            if (dataDynamic.mapItems[i].teamId == 'WARDENS') {
+              const iconWardens = await loadImage(
+                path.resolve(
+                  __dirname,
+                  `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}${dataDynamic.mapItems[i].teamId}.png`
+                )
+              );
+              // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconWardens.src}`);
+              ctx.drawImage(
+                iconWardens,
+                dataDynamic.mapItems[i].x * 1000 * 1.005,
+                dataDynamic.mapItems[i].y * 1000 * 0.85,
+                24,
+                24
+              );
+            } else if (dataDynamic.mapItems[i].teamId == 'COLONIALS') {
+              const iconColonials = await loadImage(
+                path.resolve(
+                  __dirname,
+                  `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}${dataDynamic.mapItems[i].teamId}.png`
+                )
+              );
+              // console.log(
+              //   dataDynamic.mapItems[i].iconType + '-' + `${iconColonials.src}`
+              // );
+              ctx.drawImage(
+                iconColonials,
+                dataDynamic.mapItems[i].x * 1000 * 1.005,
+                dataDynamic.mapItems[i].y * 1000 * 0.85,
+                24,
+                24
+              );
+            } else {
+              const iconNoTeam = await loadImage(
+                path.resolve(
+                  __dirname,
+                  `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`
+                )
+              );
+              // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconNoTeam.src}`);
+              ctx.drawImage(
+                iconNoTeam,
+                dataDynamic.mapItems[i].x * 1000 * 1.005,
+                dataDynamic.mapItems[i].y * 1000 * 0.85,
+                24,
+                24
+              );
+            }
+          }
+
+          for (var i = 0; i < dataStatic.mapTextItems.length; i++) {
+            ctx.font = '20px serif';
+            ctx.fillStyle = '#000000';
+            ctx.fillText(
+              `${dataStatic.mapTextItems[i].text}`,
+              dataStatic.mapTextItems[i].x * 1000 * 0.8,
+              dataStatic.mapTextItems[i].y * 1000 * 0.935
+            );
+          }
+
+          await send(canvas, new Date(dataDynamic.lastUpdated));
         }
       } catch (err) {
         console.log(err);
