@@ -106,7 +106,7 @@ client.on('guildCreate', async (guild) => {
 
   let found = false;
 
-  guild.channels.cache.forEach((channel) => {
+  guild.channels.cache.forEach((channel: any) => {
     if (!found) {
       if (channel.type == 'GUILD_TEXT') {
         if (
