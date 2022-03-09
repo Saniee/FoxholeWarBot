@@ -27,14 +27,18 @@ module.exports = {
           );
 
           const data: any = (await response).data;
+          let mapHexes = ""
 
+          for (var i = 0; i < data.length; i++) {
+            mapHexes = mapHexes + ` ${data[i]}\n`
+          }
+        
           const maps = new MessageEmbed()
             .setColor('AQUA')
             .setFooter('Requested at')
-            .setTimestamp(new Date());
-          for (var i = 0; i < data.length; i++) {
-            maps.addField(`Map ${i}`, data[i]);
-          }
+            .setTimestamp(new Date())
+            .setTitle("All Hexes:")
+            .setDescription(`${mapHexes}`)
 
           try {
             await msg.reply({ embeds: [maps] });
