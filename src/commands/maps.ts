@@ -17,40 +17,56 @@ module.exports = {
             `${mongoDB.shard}/api/worldconquest/maps`,
             {
               validateStatus: function (status) {
-                return status < 500;
+                return status < 600;
               },
             }
           );
 
-          console.log(
-            `Api request for: maps, Response Code: ${(await response).status}`
-          );
+          const statusCode = (await response).status;
 
-          const data: any = (await response).data;
-          let mapHexes = ""
-
-          for (var i = 0; i < data.length; i++) {
-            mapHexes = mapHexes + ` ${data[i]}\n`
-          }
-        
-          const maps = new MessageEmbed()
-            .setColor('AQUA')
-            .setFooter('Requested at')
-            .setTimestamp(new Date())
-            .setTitle("All Hexes:")
-            .setDescription(`${mapHexes}`)
-
-          try {
-            await msg.reply({ embeds: [maps] });
-          } catch (err) {
-            console.log(err);
-            msg.author
-              .send(
-                'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
-              )
-              .catch((err) => {
-                console.log(err);
+          switch (statusCode) {
+            case 503:
+              msg.reply({
+                content:
+                  'Server not Online/Temporarily Unavailable. Please Change to Shard1/Shard2',
               });
+              break;
+            case 404:
+              msg.reply({ content: 'Maps Not found!' });
+              break;
+            case 200:
+              console.log(
+                `Api request for: maps, Response Code: ${
+                  (await response).status
+                }`
+              );
+
+              const data: any = (await response).data;
+              let mapHexes = '';
+
+              for (var i = 0; i < data.length; i++) {
+                mapHexes = mapHexes + ` ${data[i]}\n`;
+              }
+
+              const maps = new MessageEmbed()
+                .setColor('AQUA')
+                .setFooter('Requested at')
+                .setTimestamp(new Date())
+                .setTitle('All Hexes:')
+                .setDescription(`${mapHexes}`);
+
+              try {
+                await msg.reply({ embeds: [maps] });
+              } catch (err) {
+                console.log(err);
+                msg.author
+                  .send(
+                    'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
+                  )
+                  .catch((err) => {
+                    console.log(err);
+                  });
+              }
           }
         } else if (!mongoDB) {
           try {

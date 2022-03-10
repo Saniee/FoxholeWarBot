@@ -137,7 +137,6 @@ client.on('guildCreate', async (guild) => {
                 }
               )
               .setColor('DARK_AQUA');
-
             try {
               (channel as TextChannel).send({ embeds: [inviteEmbed] });
             } catch (err) {

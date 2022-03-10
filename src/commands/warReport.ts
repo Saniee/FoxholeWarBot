@@ -50,7 +50,7 @@ module.exports = {
       try {
         const response = axios.get(warReportURL, {
           validateStatus: function (status) {
-            return status < 500;
+            return status < 600;
           },
           headers: { 'If-None-Match': `"${cache.version}"` },
         });
@@ -58,8 +58,11 @@ module.exports = {
         const statusCode = (await response).status;
 
         switch (statusCode) {
+          case 503:
+            msg.reply({ content: 'Server not Online/Temporarily Unavailable. Please Change to Shard1/Shard2' });
+            break;
           case 404:
-            msg.reply({ content: 'War Report for that map wasnt found!' });
+            msg.reply({ content: 'No War Report for that Hex found!' });
             break;
           case 200:
             console.log(

@@ -17,37 +17,51 @@ module.exports = {
 
             const response = axios.get(warStateURL, {
               validateStatus: function (status) {
-                return status < 500;
+                return status < 600;
               },
             });
 
-            console.log(
-              `Api request for: WarState, Response Code: ${
-                (await response).status
-              }`
-            );
+            const statusCode = (await response).status;
 
-            const data: any = (await response).data;
-            let startTime = new Date(data.conquestStartTime);
-            const warState = new MessageEmbed()
-              .setColor('RED')
-              .setFields(
-                { name: 'Shard/Server', value: `${mongoDB.shardName}` },
-                { name: 'War Number', value: `${data.warNumber}` },
-                { name: 'Winner', value: `${data.winner}` },
-                { name: 'Conquest Start Time', value: `${startTime}` },
-                {
-                  name: 'Required Victory Towns',
-                  value: `${data.requiredVictoryTowns}`,
+            switch (statusCode) {
+              case 503:
+                msg.reply({
+                  content:
+                    'Server not Online/Temporarily Unavailable. Please Change to Shard1/Shard2',
+                });
+                break;
+              case 404:
+                msg.reply({ content: 'No War State for that HEX found!' });
+                break;
+              case 200:
+                console.log(
+                  `Api request for: WarState, Response Code: ${
+                    (await response).status
+                  }`
+                );
+
+                const data: any = (await response).data;
+                let startTime = new Date(data.conquestStartTime);
+                const warState = new MessageEmbed()
+                  .setColor('RED')
+                  .setFields(
+                    { name: 'Shard/Server', value: `${mongoDB.shardName}` },
+                    { name: 'War Number', value: `${data.warNumber}` },
+                    { name: 'Winner', value: `${data.winner}` },
+                    { name: 'Conquest Start Time', value: `${startTime}` },
+                    {
+                      name: 'Required Victory Towns',
+                      value: `${data.requiredVictoryTowns}`,
+                    }
+                  )
+                  .setFooter('Requested at')
+                  .setTimestamp(new Date());
+
+                try {
+                  await msg.reply({ embeds: [warState] });
+                } catch (err) {
+                  console.log(err);
                 }
-              )
-              .setFooter('Requested at')
-              .setTimestamp(new Date());
-
-            try {
-              await msg.reply({ embeds: [warState] });
-            } catch (err) {
-              console.log(err);
             }
           } else if (!mongoDB) {
             msg.reply({

@@ -87,14 +87,14 @@ module.exports = {
 
         const getDymanic = axios.get(dynamicMapDataUrl, {
           validateStatus: function (status) {
-            return status < 500;
+            return status < 600;
           },
           headers: { 'If-None-Match': `"${dynamicCache.version}"` },
         });
 
         const getStatic = axios.get(staticMapDataUrl, {
           validateStatus: function (status) {
-            return status < 500;
+            return status < 600;
           },
           headers: { 'If-None-Match': `"${staticCache.version}"` },
         });
@@ -106,8 +106,13 @@ module.exports = {
         const statusCodeStatic: any = (await getStatic).status;
 
         console.log(statusCodeDynamic + ' | ' + statusCodeStatic);
-
-        if (statusCodeDynamic == 404 || statusCodeStatic == 404) {
+        
+        if (statusCodeStatic == 503 || statusCodeDynamic == 503) {
+          msg.reply({
+            content:
+              'Server not Online/Temporarily Unavailable. Please Change to Shard1/Shard2',
+          });
+        } else if (statusCodeDynamic == 404 || statusCodeStatic == 404) {
           msg.reply({
             content: 'There was nothing found for the Map/Hex Specified!',
           });
