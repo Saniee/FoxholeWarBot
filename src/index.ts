@@ -4,7 +4,7 @@ import Discord, {
   TextChannel,
   GuildMember,
   MessageEmbed,
-  TextBasedChannels,
+  TextBasedChannel,
 } from 'discord.js';
 import path from 'path';
 import fs from 'fs';
@@ -14,19 +14,22 @@ import serverConfig from './mongodb/serverConfig';
 require('console-stamp')(console);
 dotenv.config();
 
+
 const client = new Discord.Client({
   intents: [Intents.FLAGS.GUILDS, Intents.FLAGS.GUILD_MESSAGES],
 });
+
+export class CustomClient extends Discord.Client {
+  static commands: Collection<unknown, any> = new Collection();
+}
 
 const commandFiles = fs
   .readdirSync(path.resolve(__dirname, 'commands'))
   .filter((file) => file.endsWith('.ts'));
 
-client.commands = new Collection();
-
 for (const file of commandFiles) {
   const command = require(`./commands/${file}`);
-  client.commands.set(command.name, command);
+  CustomClient.commands.set(command.name, command);
 }
 
 async function mongoConnect() {
@@ -61,8 +64,8 @@ client.on('messageCreate', async (msg) => {
   const commandName = args.shift()!;
 
   const command: any =
-    client.commands.get(commandName) ||
-    client.commands.find(
+    CustomClient.commands.get(commandName) ||
+    CustomClient.commands.find(
       (command: any) =>
         command['aliases'] && command['aliases'].includes(commandName)
     );
@@ -76,7 +79,7 @@ client.on('messageCreate', async (msg) => {
       })
       .catch((err) => {
         console.log(err);
-        (channelID as unknown as TextBasedChannels)
+        (channelID as unknown as TextBasedChannel)
           .send({
             content: `\`${msg.content.slice(
               process.env.PREFIX!.length
@@ -145,7 +148,7 @@ client.on('guildCreate', async (guild) => {
                 .send(
                   'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ'
                 )
-                .catch((err) => {
+                .catch((err: any) => {
                   console.log(err);
                 });
             }
