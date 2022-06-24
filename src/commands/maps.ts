@@ -54,7 +54,6 @@ module.exports = {
                 .setTimestamp(new Date())
                 .setTitle('All Hexes:')
                 .setDescription(`${mapHexes}`);
-
               try {
                 await msg.reply({ embeds: [maps] });
               } catch (err) {
