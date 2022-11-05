@@ -1,15 +1,8 @@
 package-lock.json
-.env
-src/assets/Images/MapIcons
-src/assets/Images/Maps
+assets/Images/MapIcons
+assets/Images/Maps
+node_modules/
+cache/getMap/
+cache/warReport/
 
-node_modules/*
-!node_modules/discord.js/
-
-src/cache/getMap/*
-!src/cache/getMap/.gitkeep
-
-src/cache/warReport/*
-!src/cache/warReport/.gitkeep
-
-src/commands/test.ts
+config.json
