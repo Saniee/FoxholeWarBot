@@ -1,41 +1,23 @@
 {
-  "name": "foxholewarbot",
-  "version": "0.0.2",
-  "description": "A Discord bot for looking at war data.",
-  "main": "src/index.ts",
+  "name": "discord.js-interaction-template",
+  "version": "0.0.1",
+  "description": "template",
+  "main": "index.js",
   "scripts": {
-    "dev": "nodemon src/index.ts",
-    "start": "npx ts-node src/index.ts"
+    "dev": "nodemon",
+    "live": "node index"
   },
-  "keywords": [
-    "foxhole",
-    "war",
-    "api"
-  ],
   "author": "Saniee",
   "license": "ISC",
   "dependencies": {
-    "axios": "^0.23.0",
-    "canvas": "^2.8.0",
-    "console-stamp": "^3.0.3",
-    "discord.js": "^13.8.0",
-    "fs": "^0.0.1-security",
-    "mongoose": "^6.0.6",
-    "node": "^16.9.1",
-    "node-fetch": "^3.0.0",
-    "pngjs": "^6.0.0",
-    "remove": "^0.1.5",
-    "request": "^2.88.2",
-    "ts-node": "^10.2.1",
-    "typescript": "^4.4.3"
+    "axios": "^1.1.3",
+    "canvas": "^2.10.2",
+    "croner": "^5.3.2",
+    "discord.js": "^14.5.0",
+    "mongoose": "^6.7.1",
+    "prompt-sync": "^4.2.0"
   },
   "devDependencies": {
-    "@types/node": "^16.9.1",
-    "@types/node-fetch": "^3.0.3",
-    "@types/request": "^2.48.7",
-    "dotenv": "^10.0.0",
-    "nodemon": "^2.0.12",
-    "npm": "^7.24.1",
-    "ts-node-dev": "^1.1.8"
+    "nodemon": "^2.0.20"
   }
 }
