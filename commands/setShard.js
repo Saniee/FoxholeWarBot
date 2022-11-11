@@ -10,7 +10,8 @@ module.exports = {
         .setDescription('Sets the server (Able, Baker) the bot will get data from. Guild Side!')
         .addStringOption(option => option.setName('server').setDescription('Choose which server to get data from.').setRequired(true).addChoices(
             { name: 'Able', value: 'shard1' },
-            { name: 'Baker', value: 'shard2' }
+            { name: 'Baker', value: 'shard2' },
+            { name: 'Charlie', value: 'shard3' }
         )),
     /**
      * 
@@ -30,6 +31,11 @@ module.exports = {
                     await interaction.editReply('Saved!')
                 } else if (shardName == 'shard2') {
                     mongoDB.shard = 'https://war-service-live-2.foxholeservices.com';
+                    mongoDB.shardName = 'Baker';
+                    mongoDB.save().catch((err) => console.log(err));
+                    await interaction.editReply('Saved!')
+                } else if (shardName == 'shard3') {
+                    mongoDB.shard = 'https://war-service-live-3.foxholeservices.com';
                     mongoDB.shardName = 'Baker';
                     mongoDB.save().catch((err) => console.log(err));
                     await interaction.editReply('Saved!')
