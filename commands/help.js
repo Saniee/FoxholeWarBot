@@ -19,24 +19,24 @@ module.exports = {
                     value: 'This command.',
                 },
                 {
-                    name: 'get-map {Map/Hex}',
-                    value: 'Gets info about a Map/Hex',
+                    name: 'get-map {Do /maps for a list of options}',
+                    value: 'Responds with an image of that Hex/Map chunk. With Colored icons and labels.',
                 },
                 {
                     name: 'maps',
                     value: 'Lists all active maps',
                 },
                 {
-                    name: 'war-report {Map/Hex}',
-                    value: 'Displays War Report for the Map/Hex',
+                    name: 'war-report {Do /maps for a list of options}',
+                    value: 'Responds with information about a Hex/Map Chunk.',
                 },
                 {
                     name: 'war-state',
-                    value: 'Displays the war state.',
+                    value: 'Gets the global state of the war. This command will default to not showing.',
                 },
                 {
                     name: 'set-server',
-                    value: 'Sets Server (Able, Baker) to get data from.',
+                    value: 'Sets the server (Able, Baker) the bot will get data from. Guild Side!',
                 }
             );
 

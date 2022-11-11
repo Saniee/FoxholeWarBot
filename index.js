@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { Cron } = require('croner');
 const mongoose = require('mongoose')
+const serverConfig = require('./serverConfig.js');
 const { Client, Collection, GatewayIntentBits, CommandInteraction, ActivityType, Status, Presence, PresenceUpdateStatus } = require('discord.js');
 const { token, MONGODB_STRING } = require('./config.json');
 
@@ -63,5 +64,21 @@ client.on('interactionCreate',
         }
     }
 )
+
+client.on('guildCreate', async (guild) => {
+    const newServerConfig = new serverConfig({
+        guildID: guild.id,
+        shard: 'https://war-service-live.foxholeservices.com',
+        shardName: 'Able',
+    });
+    newServerConfig.save().catch((err) => console.log(err));
+    console.log(`Joined server ${guild.name}, created default table!`);
+});
+
+client.on('guildDelete', async (guild) => {
+    serverConfig.deleteOne({ guildID: guild.id }).catch((err) => console.log(err));
+    console.log(`Left server ${guild.name}, dropped db table!`);
+    console.log(`In ${client.guilds.cache.size} servers!`);
+});
 
 client.login(token);

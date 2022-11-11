@@ -2,7 +2,10 @@ package-lock.json
 assets/Images/MapIcons
 assets/Images/Maps
 node_modules/
-cache/getMap/
-cache/warReport/
+
+cache/getMap/*
+!cache/getMap/.gitKeep
+cache/warReport/*
+!cache/warReport/.gitKeep
 
 config.json

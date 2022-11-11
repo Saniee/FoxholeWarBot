@@ -25,12 +25,12 @@ module.exports = {
             if (mongoDB) {
                 if (shardName == 'shard1') {
                     mongoDB.shard = 'https://war-service-live.foxholeservices.com';
-                    mongoDB.shardName = 'Shard_1';
+                    mongoDB.shardName = 'Able';
                     mongoDB.save().catch((err) => console.log(err));
                     await interaction.editReply('Saved!')
                 } else if (shardName == 'shard2') {
                     mongoDB.shard = 'https://war-service-live-2.foxholeservices.com';
-                    mongoDB.shardName = 'Shard_1';
+                    mongoDB.shardName = 'Baker';
                     mongoDB.save().catch((err) => console.log(err));
                     await interaction.editReply('Saved!')
                 }
@@ -38,7 +38,7 @@ module.exports = {
                 const newServerConfig = new serverConfig({
                     guildID: interaction.guildId,
                     shard: 'https://war-service-live.foxholeservices.com',
-                    shardName: 'Shard_1',
+                    shardName: 'Able',
                 });
 
                 await newServerConfig.save().catch((err) => console.log(err));

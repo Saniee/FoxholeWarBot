@@ -1,19 +1,24 @@
 const { SlashCommandBuilder, CommandInteraction, Colors, EmbedBuilder } = require('discord.js');
+const axios = require('axios');
 const { Model } = require('mongoose');
 /**
  * @type {Model}
  */
 const serverConfig = require('../serverConfig.js')
+
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('war-state')
-        .setDescription('example desc.'),
+        .setDescription('Gets the global state of the war. This command will default to not showing.')
+        .addBooleanOption(option => option.setName('show').setDescription('Show the response?')),
     /**
      * 
-     * @param {CommandInteraction} interaction 
+     * @param {CommandInteraction} interaction
      */
     async execute(interaction) {
-        interaction.deferReply({ ephemeral: false })
+        show = !interaction.options.getBoolean('show');
+
+        await interaction.deferReply({ ephemeral: show })
 
         serverConfig.findOne({ guildId: interaction.guildId }, async (err, mongoDB) => {
             if (mongoDB) {
@@ -29,13 +34,13 @@ module.exports = {
 
                 switch (statusCode) {
                     case 503:
-                        interaction.editReply({
+                        await interaction.editReply({
                             content:
                                 'Server not Online/Temporarily Unavailable. Please Change to Shard1/Shard2',
                         });
                         break;
                     case 404:
-                        interaction.editReply({ content: 'No War State for that HEX found!' });
+                        await interaction.editReply({ content: 'No War State for that HEX found!' });
                         break;
                     case 200:
                         console.log(
@@ -46,7 +51,7 @@ module.exports = {
                         let startTime = new Date(data.conquestStartTime);
                         const warState = new EmbedBuilder()
                             .setColor(Colors.Red)
-                            .setFields(
+                            .addFields(
                                 { name: 'Shard/Server', value: `${mongoDB.shardName}` },
                                 { name: 'War Number', value: `${data.warNumber}` },
                                 { name: 'Winner', value: `${data.winner}` },
@@ -56,12 +61,13 @@ module.exports = {
                                     value: `${data.requiredVictoryTowns}`,
                                 }
                             )
-                            .setFooter('Requested at')
-                            .setTimestamp(new Date());
+                            .setFooter({ text: 'Requested at:' })
+                            .setTimestamp(new Date())
 
-                        interaction.editReply({ embeds: [warState] })
+                        await interaction.editReply({ embeds: [warState] })
+                        break;
                 }
             }
-        }
+        })
     }
 }
