@@ -7,7 +7,7 @@ const serverConfig = require('../serverConfig.js')
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('set-server')
-        .setDescription('Sets the server (Able, Baker) the bot will get data from. Guild Side!')
+        .setDescription('Sets the server (Able, Baker, Charlie) the bot will get data from. Guild Side!')
         .addStringOption(option => option.setName('server').setDescription('Choose which server to get data from.').setRequired(true).addChoices(
             { name: 'Able', value: 'shard1' },
             { name: 'Baker', value: 'shard2' },
