@@ -17,14 +17,7 @@ for (const file of commandFiles) {
 
 const rest = new REST({ version: '10' }).setToken(token);
 
-var guild = prompt('Deploy to dev guild? :')
+rest.put(Routes.applicationCommands(clientId), { body: commands })
+    .then(() => console.log('Successfully registered global application commands.'))
+    .catch(console.error);
 
-if (guild == 'y') {
-    rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands })
-        .then(() => console.log('Successfully registered guild application commands.'))
-        .catch(console.error);
-} else {
-    rest.put(Routes.applicationCommands(clientId), { body: commands })
-        .then(() => console.log('Successfully registered global application commands.'))
-        .catch(console.error);
-}
