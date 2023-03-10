@@ -14,4 +14,4 @@ As mentioned the only info the bot stores is the Guild ID, the owner's ID and th
 
 If you want to ask anything else you can refer to <a href="https://discord.gg/9wzppSgXdQ">The Support Discord Server</a>. Or message me personally: Saniee#0007 (Discord), <a href="mailto:asamsku10@gmail.com">Email</a>
 
-[Back](/)
+[Back](https://saniee.github.io/FoxholeWarBot/)
