@@ -3,8 +3,7 @@ Getting general information about the war and rendering maps with team colors!
 
 ## About
 
-A Discord bot to display the map hexes from the game Foxhole, this project is something I wanted to try out a while ago, and I finally got the time for it.
-So far the bot can display indivudual Maps/Hexes with the icons, and it can list all the active maps so it can be easily copied. Other commands are for war reports that show casulties etc. and war status which shows general info about the war on the server.
+This bot takes the role of an Informant. It can create a dynamic render for a part of a map with its respective icons, and names (Each colored by the team occupying them so you can see how far the enemy got). You can also get statistics of the Hex or the whole war! 
 
 Contributions are welcome, unless they are reasonable and wont affect the bot.
 Issues are going to be dealt with depending on the weight of the issue.
