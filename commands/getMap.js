@@ -198,20 +198,22 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                         24
                     );
                 } else {
-                    const iconNoTeam = await loadImage(
-                        path.resolve(
-                            __dirname,
-                            `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`
-                        )
-                    );
-                    // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconNoTeam.src}`);
-                    ctx.drawImage(
-                        iconNoTeam,
-                        dataDynamic.mapItems[i].x * 1000 * 1.005,
-                        dataDynamic.mapItems[i].y * 1000 * 0.85,
-                        24,
-                        24
-                    );
+                    if (dataDynamic.mapItems[i].iconType != 55) {
+                        const iconNoTeam = await loadImage(
+                            path.resolve(
+                                __dirname,
+                                `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`
+                            )
+                        );
+                        // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconNoTeam.src}`);
+                        ctx.drawImage(
+                            iconNoTeam,
+                            dataDynamic.mapItems[i].x * 1000 * 1.005,
+                            dataDynamic.mapItems[i].y * 1000 * 0.85,
+                            24,
+                            24
+                        );
+                    }
                 }
             }
 
@@ -277,20 +279,22 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                         24
                     );
                 } else {
-                    const iconNoTeam = await loadImage(
-                        path.resolve(
-                            __dirname,
-                            `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`
-                        )
-                    );
-                    // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconNoTeam.src}`);
-                    ctx.drawImage(
-                        iconNoTeam,
-                        dataDynamic.mapItems[i].x * 1000 * 1.005,
-                        dataDynamic.mapItems[i].y * 1000 * 0.85,
-                        24,
-                        24
-                    );
+                    if (dataDynamic.mapItems[i].iconType != "55") {
+                        const iconNoTeam = await loadImage(
+                            path.resolve(
+                                __dirname,
+                                `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`
+                            )
+                        );
+                        // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconNoTeam.src}`);
+                        ctx.drawImage(
+                            iconNoTeam,
+                            dataDynamic.mapItems[i].x * 1000 * 1.005,
+                            dataDynamic.mapItems[i].y * 1000 * 0.85,
+                            24,
+                            24
+                        );
+                    }
                 }
             }
 
@@ -376,20 +380,22 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                         24
                     );
                 } else {
-                    const iconNoTeam = await loadImage(
-                        path.resolve(
-                            __dirname,
-                            `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`
-                        )
-                    );
-                    // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconNoTeam.src}`);
-                    ctx.drawImage(
-                        iconNoTeam,
-                        dataDynamic.mapItems[i].x * 1000 * 1.005,
-                        dataDynamic.mapItems[i].y * 1000 * 0.85,
-                        24,
-                        24
-                    );
+                    if (dataDynamic.mapItems[i].iconType != "55") {
+                        const iconNoTeam = await loadImage(
+                            path.resolve(
+                                __dirname,
+                                `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`
+                            )
+                        );
+                        // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconNoTeam.src}`);
+                        ctx.drawImage(
+                            iconNoTeam,
+                            dataDynamic.mapItems[i].x * 1000 * 1.005,
+                            dataDynamic.mapItems[i].y * 1000 * 0.85,
+                            24,
+                            24
+                        );
+                    }
                 }
             }
 
@@ -475,20 +481,22 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                         24
                     );
                 } else {
-                    const iconNoTeam = await loadImage(
-                        path.resolve(
-                            __dirname,
-                            `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`
-                        )
-                    );
-                    // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconNoTeam.src}`);
-                    ctx.drawImage(
-                        iconNoTeam,
-                        dataDynamic.mapItems[i].x * 1000 * 1.005,
-                        dataDynamic.mapItems[i].y * 1000 * 0.85,
-                        24,
-                        24
-                    );
+                    if (dataDynamic.mapItems[i].iconType != "55") {
+                        const iconNoTeam = await loadImage(
+                            path.resolve(
+                                __dirname,
+                                `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`
+                            )
+                        );
+                        // console.log(dataDynamic.mapItems[i].iconType + '-' + `${iconNoTeam.src}`);
+                        ctx.drawImage(
+                            iconNoTeam,
+                            dataDynamic.mapItems[i].x * 1000 * 1.005,
+                            dataDynamic.mapItems[i].y * 1000 * 0.85,
+                            24,
+                            24
+                        );
+                    }
                 }
             }
 
