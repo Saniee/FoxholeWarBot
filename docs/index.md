@@ -14,3 +14,7 @@ layout: default
 ## [Privacy Policy](privacy)
 
 - Everything about your private info and how its being handled. If any (Spoiler, this bot doesnt store any of your private data. Only the Guild ID)
+
+## [FAQ - Frequently Asked Questions/Help](faq)
+
+- Need help with the most frequent issues? Got questions? All **should** (If it isn't head over to <a href="https://discord.gg/9wzppSgXdQ">the Support Server</a>.) be here!
