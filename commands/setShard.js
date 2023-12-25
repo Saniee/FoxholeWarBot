@@ -36,7 +36,7 @@ module.exports = {
                     await interaction.editReply('Saved!')
                 } else if (shardName == 'shard3') {
                     mongoDB.shard = 'https://war-service-live-3.foxholeservices.com';
-                    mongoDB.shardName = 'Baker';
+                    mongoDB.shardName = 'Charlie';
                     mongoDB.save().catch((err) => console.log(err));
                     await interaction.editReply('Saved!')
                 }

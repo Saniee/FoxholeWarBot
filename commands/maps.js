@@ -37,7 +37,7 @@ module.exports = {
                         });
                         break;
                     case 404:
-                        await interaction.editReply({ content: 'Maps Not found!' });
+                        await interaction.editReply({ content: 'Maps were Not found!' });
                         break;
                     case 200:
                         console.log(
