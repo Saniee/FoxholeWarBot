@@ -19,7 +19,7 @@ module.exports = {
                     value: 'This command.',
                 },
                 {
-                    name: 'get-map {Do /maps for a list of options}',
+                    name: 'get-map',
                     value: 'Responds with an image of that Hex/Map chunk. With Colored icons and labels.',
                 },
                 {
@@ -27,7 +27,7 @@ module.exports = {
                     value: 'Lists all active maps',
                 },
                 {
-                    name: 'war-report {Do /maps for a list of options}',
+                    name: 'war-report',
                     value: 'Responds with information about a Hex/Map Chunk.',
                 },
                 {
@@ -36,7 +36,7 @@ module.exports = {
                 },
                 {
                     name: 'set-server',
-                    value: 'Sets the server (Able, Baker) the bot will get data from. Guild Side!',
+                    value: 'Sets the server (Able, Baker, Charlie) the bot will get data from. Guild Side!',
                 }
             );
 
