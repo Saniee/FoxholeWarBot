@@ -9,13 +9,59 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('get-map')
         .setDescription('Responds with an image of that Hex/Map chunk. With Colored icons and labels.')
-        .addStringOption(option => option.setName('map-name').setDescription('Name of the Hex you want displayed. (Do /maps for the list)').setRequired(true)),
+        .addStringOption(option => option.setName('map-name').setDescription('Name of the Hex you want displayed. (Do /maps for the list)').setRequired(true).setAutocomplete(true))
+        .addBooleanOption(option => option.setName('render-labels').setDescription('Renders labels for things on the map. Turned off by default, since it makes the render messy.'))
+        .addStringOption(option => option.setName('show-labels').setDescription('Sets what labels to render, default is Major like map names.').addChoices(
+            {name: "Major", value: "Major"},
+            {name: "Minor", value: "Minor"},
+            {name: "All", value: "All"}
+        )),
+    /**
+     * 
+     * @param {CommandInteraction} interaction 
+     */
+    async autocomplete(interaction) {
+        serverConfig.findOne({ guildID: interaction.guildId }, async (err, MongoDB) => {
+            const fileData = fs.readFileSync(
+                path.resolve(
+                    __dirname,
+                    `../cache/mapChoices/${MongoDB.shardName}Hexes.json`
+                ),
+                { encoding: 'utf-8', flag: 'r' }
+            );
+
+            mapData = await JSON.parse(fileData);
+            const focusedValue = interaction.options.getFocused();
+            const choices = mapData
+		    const filtered = choices.filter(choice => choice.startsWith(focusedValue));
+		    
+            let options;
+            if (filtered.length > 25) {
+                options = filtered.slice(0, 25)
+            } else {
+                options = filtered
+            }
+            
+            await interaction.respond(
+		    	options.map(choice => ({ name: choice.replace("Hex", ""), value: choice })),
+		    );
+        })
+    },
     /**
      * 
      * @param {CommandInteraction} interaction 
      */
     async execute(interaction) {
         mapName = interaction.options.getString('map-name')
+
+        renderLabels = interaction.options.getBoolean('render-labels')
+        if (renderLabels === null) {
+            renderLabels = false
+        }
+        showLabels = interaction.options.getString('show-labels')
+        if (showLabels === null) {
+            showLabels = "Major"
+        }
 
         await interaction.deferReply({ ephemeral: true })
 
@@ -102,7 +148,7 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
         const dataStatic = (await getStatic).data;
         const statusCodeStatic = (await getStatic).status;
 
-        console.log(statusCodeDynamic + ' | ' + statusCodeStatic);
+        // console.log(statusCodeDynamic + ' | ' + statusCodeStatic);
 
         if (statusCodeStatic == 503 || statusCodeDynamic == 503) {
             interaction.editReply({
@@ -217,15 +263,26 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                 }
             }
 
-            for (var i = 0; i < dataStatic.mapTextItems.length; i++) {
-                ctx.font = '20px serif';
-                ctx.fillStyle = '#000000';
-                ctx.fillText(
-                    `${dataStatic.mapTextItems[i].text}`,
-                    dataStatic.mapTextItems[i].x * 1000 * 0.8,
-                    dataStatic.mapTextItems[i].y * 1000 * 0.935
-                );
+            if (renderLabels == true) {
+                for (var i = 0; i < dataStatic.mapTextItems.length; i++) {
+                    ctx.font = '20px serif';
+                    ctx.fillStyle = '#000000';
+                    if (dataStatic.mapTextItems[i].mapMarkerType === showLabels && showLabels != "All") {
+                        ctx.fillText(
+                            `${dataStatic.mapTextItems[i].text}`,
+                            dataStatic.mapTextItems[i].x * 1000 * 0.9,
+                            dataStatic.mapTextItems[i].y * 1000 * 1
+                        );
+                    } else if (showLabels === "All") {
+                        ctx.fillText(
+                            `${dataStatic.mapTextItems[i].text}`,
+                            dataStatic.mapTextItems[i].x * 1000 * 0.9,
+                            dataStatic.mapTextItems[i].y * 1000 * 1
+                        );
+                    }
+                }
             }
+            
 
             await send(canvas, new Date(dataDynamic.lastUpdated), interaction);
         } else if (statusCodeDynamic == 304 && statusCodeStatic == 304) {
@@ -298,15 +355,26 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                 }
             }
 
-            for (var i = 0; i < dataStatic.mapTextItems.length; i++) {
-                ctx.font = '20px serif';
-                ctx.fillStyle = '#000000';
-                ctx.fillText(
-                    `${dataStatic.mapTextItems[i].text}`,
-                    dataStatic.mapTextItems[i].x * 1000 * 0.8,
-                    dataStatic.mapTextItems[i].y * 1000 * 0.935
-                );
+            if (renderLabels == true) {
+                for (var i = 0; i < dataStatic.mapTextItems.length; i++) {
+                    ctx.font = '20px serif';
+                    ctx.fillStyle = '#000000';
+                    if (dataStatic.mapTextItems[i].mapMarkerType === showLabels && showLabels != "All") {
+                        ctx.fillText(
+                            `${dataStatic.mapTextItems[i].text}`,
+                            dataStatic.mapTextItems[i].x * 1000 * 0.9,
+                            dataStatic.mapTextItems[i].y * 1000 * 1
+                        );
+                    } else if (showLabels === "All") {
+                        ctx.fillText(
+                            `${dataStatic.mapTextItems[i].text}`,
+                            dataStatic.mapTextItems[i].x * 1000 * 0.9,
+                            dataStatic.mapTextItems[i].y * 1000 * 1
+                        );
+                    }
+                }
             }
+            
 
             await send(canvas, new Date(dynamicCache.lastUpdated), interaction);
         } else if (statusCodeDynamic != 200 && statusCodeStatic == 200) {
@@ -399,15 +467,26 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                 }
             }
 
-            for (var i = 0; i < dataStatic.mapTextItems.length; i++) {
-                ctx.font = '20px serif';
-                ctx.fillStyle = '#000000';
-                ctx.fillText(
-                    `${dataStatic.mapTextItems[i].text}`,
-                    dataStatic.mapTextItems[i].x * 1000 * 0.8,
-                    dataStatic.mapTextItems[i].y * 1000 * 0.935
-                );
+            if (renderLabels == true) {
+                for (var i = 0; i < dataStatic.mapTextItems.length; i++) {
+                    ctx.font = '20px serif';
+                    ctx.fillStyle = '#000000';
+                    if (dataStatic.mapTextItems[i].mapMarkerType === showLabels && showLabels != "All") {
+                        ctx.fillText(
+                            `${dataStatic.mapTextItems[i].text}`,
+                            dataStatic.mapTextItems[i].x * 1000 * 0.9,
+                            dataStatic.mapTextItems[i].y * 1000 * 1
+                        );
+                    } else if (showLabels === "All") {
+                        ctx.fillText(
+                            `${dataStatic.mapTextItems[i].text}`,
+                            dataStatic.mapTextItems[i].x * 1000 * 0.9,
+                            dataStatic.mapTextItems[i].y * 1000 * 1
+                        );
+                    }
+                }
             }
+            
 
             await send(canvas, new Date(dataDynamic.lastUpdated), interaction);
         } else if (statusCodeDynamic == 200 && statusCodeStatic != 200) {
@@ -500,15 +579,26 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                 }
             }
 
-            for (var i = 0; i < dataStatic.mapTextItems.length; i++) {
-                ctx.font = '20px serif';
-                ctx.fillStyle = '#000000';
-                ctx.fillText(
-                    `${dataStatic.mapTextItems[i].text}`,
-                    dataStatic.mapTextItems[i].x * 1000 * 0.8,
-                    dataStatic.mapTextItems[i].y * 1000 * 0.935
-                );
+            if (renderLabels == true) {
+                for (var i = 0; i < dataStatic.mapTextItems.length; i++) {
+                    ctx.font = '20px serif';
+                    ctx.fillStyle = '#000000';
+                    if (dataStatic.mapTextItems[i].mapMarkerType === showLabels && showLabels != "All") {
+                        ctx.fillText(
+                            `${dataStatic.mapTextItems[i].text}`,
+                            dataStatic.mapTextItems[i].x * 1000 * 0.9,
+                            dataStatic.mapTextItems[i].y * 1000 * 1
+                        );
+                    } else if (showLabels === "All") {
+                        ctx.fillText(
+                            `${dataStatic.mapTextItems[i].text}`,
+                            dataStatic.mapTextItems[i].x * 1000 * 0.9,
+                            dataStatic.mapTextItems[i].y * 1000 * 1
+                        );
+                    }
+                }
             }
+            
 
             await send(canvas, new Date(dataDynamic.lastUpdated), interaction);
         }

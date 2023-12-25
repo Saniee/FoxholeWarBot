@@ -2,8 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord.js');
-const { clientId, guildId, token } = require('./config.json');
-const prompt = require("prompt-sync")({ sigint: true });
+const { clientId, token } = require('./config.json');
 
 const commands = [];
 const commandsPath = path.join(__dirname, 'commands');

@@ -7,5 +7,7 @@ cache/getMap/*
 !cache/getMap/.gitKeep
 cache/warReport/*
 !cache/warReport/.gitKeep
+cache/mapChoices/*
+!cache/mapChoices/.gitKeep
 
 config.json

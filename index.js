@@ -5,6 +5,7 @@ const mongoose = require('mongoose')
 const serverConfig = require('./serverConfig.js');
 const { Client, Collection, GatewayIntentBits, CommandInteraction, ActivityType, Status, Presence, PresenceUpdateStatus } = require('discord.js');
 const { token, MONGODB_STRING } = require('./config.json');
+const MapChoices = require('./MapChoices.js')
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -30,6 +31,7 @@ async function mongoConnect() {
 
 client.once('ready', async () => {
     await mongoConnect();
+    await MapChoices.generate()
 
     console.log(`Ready as ${client.user.username}!`);
     console.log(`In ${client.guilds.cache.size} servers!`);
@@ -50,17 +52,30 @@ client.on('interactionCreate',
      * @returns 
      */
     async interaction => {
-        if (!interaction.isChatInputCommand()) return;
+        if (interaction.isChatInputCommand()) {
+            const command = client.commands.get(interaction.commandName);
 
-        const command = client.commands.get(interaction.commandName);
-
-        if (!command) return;
-
-        try {
-            await command.execute(interaction);
-        } catch (error) {
-            console.error(error);
-            await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+            if (!command) return;
+    
+            try {
+                await command.execute(interaction);
+            } catch (error) {
+                console.error(error);
+                await interaction.reply({ content: 'There was an error while executing this command!', ephemeral: true });
+            }
+        } else if (interaction.isAutocomplete()) {
+            const command = interaction.client.commands.get(interaction.commandName);
+    
+            if (!command) {
+                console.error(`No command matching ${interaction.commandName} was found.`);
+                return;
+            }
+    
+            try {
+                await command.autocomplete(interaction);
+            } catch (error) {
+                console.error(error);
+            }
         }
     }
 )
