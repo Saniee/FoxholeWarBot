@@ -19,7 +19,7 @@ const rest = new REST({ version: '10' }).setToken(token);
 
 var guild = prompt('Deploy to dev guild? :')
 
-/* if (guild == 'y') {
+if (guild == 'y') {
     rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: [] })
         .then(() => console.log('Successfully deleted all guild commands.'))
         .catch(console.error);
@@ -28,4 +28,3 @@ var guild = prompt('Deploy to dev guild? :')
         .then(() => console.log('Successfully deleted all application commands.'))
         .catch(console.error);
 }
- */

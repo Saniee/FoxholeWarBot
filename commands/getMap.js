@@ -9,7 +9,7 @@ module.exports = {
     data: new SlashCommandBuilder()
         .setName('get-map')
         .setDescription('Responds with an image of that Hex/Map chunk. With Colored icons and labels.')
-        .addStringOption(option => option.setName('map-name').setDescription('Name of the Hex you want displayed. (Do /maps for the list)').setRequired(true).setAutocomplete(true))
+        .addStringOption(option => option.setName('map-name').setDescription('Name of the Hex you want displayed.').setRequired(true).setAutocomplete(true))
         .addBooleanOption(option => option.setName('render-labels').setDescription('Renders labels for things on the map. Turned off by default, since it makes the render messy.'))
         .addStringOption(option => option.setName('show-labels').setDescription('Sets what labels to render, default is Major like map names.').addChoices(
             {name: "Major", value: "Major"},
