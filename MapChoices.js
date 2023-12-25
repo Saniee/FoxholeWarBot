@@ -31,10 +31,9 @@ async function generate() {
                 console.log(`Server ${servers[i].name} not Online/Temporarily Unavailable.`,)
                 break
             case 404:
-                console.log(`Server ${servers[i].name} not found any maps.`,)
+                console.log(`Maps for the server ${servers[i].name} not found.`,)
                 break
             case 200:
-                console.log(`Server ${servers[i].name} maps found! Saving...`)
                 fs.writeFile(
                     path.resolve(
                         __dirname,
