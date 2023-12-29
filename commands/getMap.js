@@ -202,12 +202,16 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
             );
 
             const ctx = canvas.getContext('2d');
-            const map = await loadImage(
-                path.resolve(
-                    __dirname,
-                    `../assets/Images/MapsPNG/Map${mapName}.png`
-                )
-            );
+            try {
+                const map = await loadImage(
+                    path.resolve(
+                        __dirname,
+                        `../assets/Images/MapsPNG/Map${mapName}.png`
+                    )
+                );
+            } catch (err) {
+                interaction.editReply("A Hex/Map Png wasnt found for the Hex/Map specified. It either doesnt exist in the API or the bot hasnt been updated-- If so please go to the support discord: https://discord.gg/9wzppSgXdQ")
+            }
             ctx.drawImage(map, 0, 0, canvas.width, canvas.height);
 
             for (var i = 0; i < dataDynamic.mapItems.length; i++) {
@@ -294,12 +298,16 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
             const dataStatic = staticCache;
 
             const ctx = canvas.getContext('2d');
-            const map = await loadImage(
-                path.resolve(
-                    __dirname,
-                    `../assets/Images/MapsPNG/Map${mapName}.png`
-                )
-            );
+            try {
+                const map = await loadImage(
+                    path.resolve(
+                        __dirname,
+                        `../assets/Images/MapsPNG/Map${mapName}.png`
+                    )
+                );
+            } catch (err) {
+                interaction.editReply("A Hex/Map Png wasnt found for the Hex/Map specified. It either doesnt exist in the API or the bot hasnt been updated-- If so please go to the support discord: https://discord.gg/9wzppSgXdQ")
+            }
             ctx.drawImage(map, 0, 0, canvas.width, canvas.height);
 
             for (var i = 0; i < dataDynamic.mapItems.length; i++) {
@@ -406,12 +414,16 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
             const dataDynamic = dynamicCache;
 
             const ctx = canvas.getContext('2d');
-            const map = await loadImage(
-                path.resolve(
-                    __dirname,
-                    `../assets/Images/MapsPNG/Map${mapName}.png`
-                )
-            );
+            try {
+                const map = await loadImage(
+                    path.resolve(
+                        __dirname,
+                        `../assets/Images/MapsPNG/Map${mapName}.png`
+                    )
+                );
+            } catch (err) {
+                interaction.editReply("A Hex/Map Png wasnt found for the Hex/Map specified. It either doesnt exist in the API or the bot hasnt been updated-- If so please go to the support discord: https://discord.gg/9wzppSgXdQ")
+            }
             ctx.drawImage(map, 0, 0, canvas.width, canvas.height);
 
             for (var i = 0; i < dataDynamic.mapItems.length; i++) {
@@ -518,12 +530,16 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
             const dataStatic = staticCache;
 
             const ctx = canvas.getContext('2d');
-            const map = await loadImage(
-                path.resolve(
-                    __dirname,
-                    `../assets/Images/MapsPNG/Map${mapName}.png`
-                )
-            );
+            try {
+                const map = await loadImage(
+                    path.resolve(
+                        __dirname,
+                        `../assets/Images/MapsPNG/Map${mapName}.png`
+                    )
+                );
+            } catch (err) {
+                interaction.editReply("A Hex/Map Png wasnt found for the Hex/Map specified. It either doesnt exist in the API or the bot hasnt been updated-- If so please go to the support discord: https://discord.gg/9wzppSgXdQ")
+            }
             ctx.drawImage(map, 0, 0, canvas.width, canvas.height);
 
             for (var i = 0; i < dataDynamic.mapItems.length; i++) {
