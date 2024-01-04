@@ -22,29 +22,45 @@ module.exports = {
      */
     async autocomplete(interaction) {
         serverConfig.findOne({ guildID: interaction.guildId }, async (err, MongoDB) => {
-            const fileData = fs.readFileSync(
-                path.resolve(
-                    __dirname,
-                    `../cache/mapChoices/${MongoDB.shardName}Hexes.json`
-                ),
-                { encoding: 'utf-8', flag: 'r' }
-            );
-
-            mapData = await JSON.parse(fileData);
-            const focusedValue = interaction.options.getFocused();
-            const choices = mapData
-		    const filtered = choices.filter(choice => choice.startsWith(focusedValue));
-		    
-            let options;
-            if (filtered.length > 25) {
-                options = filtered.slice(0, 25)
+            if (MongoDB.shardName != null) {
+                const fileData = fs.readFileSync(
+                    path.resolve(
+                        __dirname,
+                        `../cache/mapChoices/${MongoDB.shardName}Hexes.json`
+                    ),
+                    { encoding: 'utf-8', flag: 'r' }
+                );
+    
+                mapData = await JSON.parse(fileData);
+                const focusedValue = interaction.options.getFocused();
+                const choices = mapData
+                const filtered = choices.filter(choice => choice.startsWith(focusedValue));
+                
+                let options;
+                if (filtered.length > 25) {
+                    options = filtered.slice(0, 25)
+                } else {
+                    options = filtered
+                }
+                
+                await interaction.respond(
+                    options.map(choice => ({ name: choice.replace("Hex", ""), value: choice })),
+                );
             } else {
+                const focusedValue = interaction.options.getFocused();
+                const choices = [
+                    "There was an error. First try to run /set-server.",
+                    "If that doesn't work go to the support server."
+                ]
+                const filtered = choices.filter(choice => choice.startsWith(focusedValue));
+
+                let options;
                 options = filtered
+
+                await interaction.respond(
+                    options.map(choice => ({ name: choice.replace("Hex", ""), value: choice })),
+                );
             }
-            
-            await interaction.respond(
-		    	options.map(choice => ({ name: choice.replace("Hex", ""), value: choice })),
-		    );
         })
     },
     /**
@@ -103,7 +119,7 @@ module.exports = {
                     if (fs.existsSync(path.resolve(__dirname, `../assets/Images/MapsPNG/Map${mapName}.png`))) {
                         await apiRequest(dynamicCache, staticCache, MongoDB, interaction, mapName);
                     } else {
-                        interaction.editReply("A Hex/Map Png wasn't found! Either the API doesn't have this map in the system, or the bot hasnt been updated-- if so please go to the support server to request an update: https://discord.gg/9wzppSgXdQ")
+                        interaction.editReply("A Hex/Map Png wasn't found! Either you entered a wrong name, the API doesn't have this map in the system or the bot hasnt been updated-- if so please go to the support server to request an update: https://discord.gg/9wzppSgXdQ")
                     }
                 } else if (!MongoDB) {
                     await interaction.editReply({

@@ -15,29 +15,45 @@ module.exports = {
      */
     async autocomplete(interaction) {
         serverConfig.findOne({ guildID: interaction.guildId }, async (err, MongoDB) => {
-            const fileData = fs.readFileSync(
-                path.resolve(
-                    __dirname,
-                    `../cache/mapChoices/${MongoDB.shardName}Hexes.json`
-                ),
-                { encoding: 'utf-8', flag: 'r' }
-            );
-
-            mapData = await JSON.parse(fileData);
-            const focusedValue = interaction.options.getFocused();
-            const choices = mapData
-		    const filtered = choices.filter(choice => choice.startsWith(focusedValue));
-		    
-            let options;
-            if (filtered.length > 25) {
-                options = filtered.slice(0, 25)
+            if (MongoDB.shardName != null) {
+                const fileData = fs.readFileSync(
+                    path.resolve(
+                        __dirname,
+                        `../cache/mapChoices/${MongoDB.shardName}Hexes.json`
+                    ),
+                    { encoding: 'utf-8', flag: 'r' }
+                );
+    
+                mapData = await JSON.parse(fileData);
+                const focusedValue = interaction.options.getFocused();
+                const choices = mapData
+                const filtered = choices.filter(choice => choice.startsWith(focusedValue));
+                
+                let options;
+                if (filtered.length > 25) {
+                    options = filtered.slice(0, 25)
+                } else {
+                    options = filtered
+                }
+                
+                await interaction.respond(
+                    options.map(choice => ({ name: choice.replace("Hex", ""), value: choice })),
+                );
             } else {
+                const focusedValue = interaction.options.getFocused();
+                const choices = [
+                    "There was an error. First try to run /set-server.",
+                    "If that doesn't work go to the support server."
+                ]
+                const filtered = choices.filter(choice => choice.startsWith(focusedValue));
+
+                let options;
                 options = filtered
+
+                await interaction.respond(
+                    options.map(choice => ({ name: choice.replace("Hex", ""), value: choice })),
+                );
             }
-            
-            await interaction.respond(
-		    	options.map(choice => ({ name: choice.replace("Hex", ""), value: choice })),
-		    );
         })
     },
     /**
