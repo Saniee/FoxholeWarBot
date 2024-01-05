@@ -280,7 +280,7 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                         24
                     );
                 } else {
-                    if (dataDynamic.mapItems[i].iconType != 55) {
+                    if (fs.existsSync(path.resolve(__dirname, `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`))) {
                         const iconNoTeam = await loadImage(
                             path.resolve(
                                 __dirname,
@@ -373,7 +373,7 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                         24
                     );
                 } else {
-                    if (dataDynamic.mapItems[i].iconType != "55") {
+                    if (fs.existsSync(path.resolve(__dirname, `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`))) {
                         const iconNoTeam = await loadImage(
                             path.resolve(
                                 __dirname,
@@ -486,7 +486,7 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                         24
                     );
                 } else {
-                    if (dataDynamic.mapItems[i].iconType != "55") {
+                    if (fs.existsSync(path.resolve(__dirname, `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`))) {
                         const iconNoTeam = await loadImage(
                             path.resolve(
                                 __dirname,
@@ -599,7 +599,7 @@ async function apiRequest(dynamicCache, staticCache, mongoDB, interaction, mapNa
                         24
                     );
                 } else {
-                    if (dataDynamic.mapItems[i].iconType != "55") {
+                    if (fs.existsSync(path.resolve(__dirname, `../assets/Images/MapIconsPNG/${dataDynamic.mapItems[i].iconType}.png`))) {
                         const iconNoTeam = await loadImage(
                             path.resolve(
                                 __dirname,
