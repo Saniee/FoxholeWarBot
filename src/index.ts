@@ -109,6 +109,8 @@ client.on(Events.GuildCreate, async (guild) => {
 });
 
 client.on(Events.GuildDelete, async (guild) => {
+  if (!guild.available) return;
+
   await pb
     .collection(CollectionName)
     .delete(
