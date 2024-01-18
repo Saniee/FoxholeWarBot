@@ -1,6 +1,38 @@
 import { CommandInteraction, SlashCommandBuilder } from "discord.js";
 import { CollectionName } from "../../../config.json";
 import PocketBase from "pocketbase";
+import axios from "axios";
+
+async function checkStatusCode(shardName: any) {
+  const servers = [
+    { name: "Able", url: "https://war-service-live.foxholeservices.com" },
+    { name: "Baker", url: "https://war-service-live-2.foxholeservices.com" },
+    { name: "Charlie", url: "https://war-service-live-3.foxholeservices.com" },
+  ];
+
+  if (shardName === "shard1") {
+    const response = axios.get(`${servers[0].url}/api/worldconquest/maps`, {
+      validateStatus: function (status) {
+        return status < 600;
+      },
+    });
+    return (await response).status;
+  } else if (shardName === "shard2") {
+    const response = axios.get(`${servers[1].url}/api/worldconquest/maps`, {
+      validateStatus: function (status) {
+        return status < 600;
+      },
+    });
+    return (await response).status;
+  } else if (shardName === "shard3") {
+    const response = axios.get(`${servers[2].url}/api/worldconquest/maps`, {
+      validateStatus: function (status) {
+        return status < 600;
+      },
+    });
+    return (await response).status;
+  }
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -20,10 +52,6 @@ module.exports = {
         )
     ),
   async execute(interaction: CommandInteraction, pb: PocketBase) {
-    var shardName = interaction.options.get("server")?.value;
-
-    await interaction.deferReply({ ephemeral: true });
-
     const record = await pb
       .collection(CollectionName)
       .getFirstListItem(`guildId=${interaction.guildId}`)
@@ -31,7 +59,17 @@ module.exports = {
         console.log(`No record for ${interaction.guild?.name} found!`)
       );
 
+    var shardName = interaction.options.get("server")?.value;
+
     if (record) {
+      await interaction.deferReply({ ephemeral: !record.showCommandOutput });
+      const status = await checkStatusCode(shardName);
+      if (status === 503) {
+        await interaction.editReply(
+          "Server is not Online/Temporarily Unavailable. Choose a different one."
+        );
+        return;
+      }
       var data;
       if (shardName == "shard1") {
         data = {
@@ -58,6 +96,7 @@ module.exports = {
         .catch((err) => console.log(err));
       await interaction.editReply("Saved!");
     } else {
+      await interaction.deferReply({ ephemeral: true });
       var data;
       if (shardName == "shard1") {
         data = {

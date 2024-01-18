@@ -104,6 +104,13 @@ module.exports = {
     }
   },
   async execute(interaction: CommandInteraction, pb: PocketBase) {
+    const record = await pb
+      .collection(CollectionName)
+      .getFirstListItem(`guildId=${interaction.guildId}`)
+      .catch((err) =>
+        console.log(`No record for ${interaction.guild?.name} found!`)
+      );
+
     var mapName = interaction.options.get("map-name")?.value;
 
     var renderLabels = interaction.options.get("render-labels")?.value ?? false;
@@ -114,16 +121,8 @@ module.exports = {
       showLabels = "Major";
     }
 
-    const record = await pb
-      .collection(CollectionName)
-      .getFirstListItem(`guildId=${interaction.guildId}`)
-      .catch((err) =>
-        console.log(`No record for ${interaction.guild?.name} found!`)
-      );
-
-    await interaction.deferReply({ ephemeral: true });
-
     if (record) {
+      await interaction.deferReply({ ephemeral: !record.showCommandOutput });
       var dynamicCache;
       var staticCache;
       try {
@@ -173,11 +172,12 @@ module.exports = {
           showLabels
         );
       } else {
-        interaction.editReply(
+        await interaction.editReply(
           "A Hex/Map Png wasn't found! Either you entered a wrong name, the API doesn't have this map in the system or the bot hasnt been updated-- if so please go to the support server to request an update: https://discord.gg/9wzppSgXdQ"
         );
       }
     } else {
+      await interaction.deferReply({ ephemeral: true });
       await interaction.editReply({
         content:
           "Server setting missing, please run the command `/set-server` to fix this issue!",
@@ -228,7 +228,7 @@ async function apiRequest(
     if (statusCodeStatic == 503 || statusCodeDynamic == 503) {
       interaction.editReply({
         content:
-          "Server not Online/Temporarily Unavailable. Please Change to Shard1/Shard2",
+          "Server not Online/Temporarily Unavailable. Please Change to a different server.",
       });
     } else if (statusCodeDynamic == 404 || statusCodeStatic == 404) {
       interaction.editReply({
