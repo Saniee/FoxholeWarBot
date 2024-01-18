@@ -2,16 +2,13 @@ import {
   SlashCommandBuilder,
   CommandInteraction,
   EmbedBuilder,
-  Colors,
-  AttachmentBuilder,
   AutocompleteInteraction,
 } from "discord.js";
 import axios from "axios";
 import fs from "node:fs";
 import path from "node:path";
-import { createCanvas, loadImage } from "canvas";
 import { CollectionName } from "../../../config.json";
-import PocketBase, { RecordModel } from "pocketbase";
+import PocketBase from "pocketbase";
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -92,9 +89,8 @@ module.exports = {
         console.log(`No record for ${interaction.guild?.name} found!`)
       );
 
-    await interaction.deferReply({ ephemeral: true });
-
     if (record) {
+      await interaction.deferReply({ ephemeral: !record.showCommandOutput });
       fs.readFile(
         path.resolve(
           __dirname,
@@ -117,6 +113,7 @@ module.exports = {
         }
       );
     } else {
+      await interaction.deferReply({ ephemeral: true });
       interaction.editReply({
         content:
           "Shard setting missing, please run the command `War!setShard {shard1 | shard2}` to fix this issue!",

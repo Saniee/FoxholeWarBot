@@ -3,25 +3,18 @@ import {
   CommandInteraction,
   EmbedBuilder,
   Colors,
-  AttachmentBuilder,
-  AutocompleteInteraction,
 } from "discord.js";
 import axios from "axios";
 import { CollectionName } from "../../../config.json";
-import PocketBase, { RecordModel } from "pocketbase";
+import PocketBase from "pocketbase";
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName("war-state")
     .setDescription(
       "Gets the global state of the war. This command will default to not showing."
-    )
-    .addBooleanOption((option) =>
-      option.setName("show").setDescription("Show the response?")
     ),
   async execute(interaction: CommandInteraction, pb: PocketBase) {
-    var show = !interaction.options.get("show")?.value;
-
     const record = await pb
       .collection(CollectionName)
       .getFirstListItem(`guildId=${interaction.guildId}`)
@@ -29,9 +22,8 @@ module.exports = {
         console.log(`No record for ${interaction.guild?.name} found!`)
       );
 
-    await interaction.deferReply({ ephemeral: show });
-
     if (record) {
+      await interaction.deferReply({ ephemeral: !record.showCommandOutput });
       const warStateURL = `${record.shard}/api/worldconquest/war`;
 
       const response = axios.get(warStateURL, {
@@ -80,6 +72,12 @@ module.exports = {
           await interaction.editReply({ embeds: [warState] });
           break;
       }
+    } else {
+      await interaction.deferReply({ ephemeral: true });
+      interaction.editReply({
+        content:
+          "Shard setting missing, please run the command `War!setShard {shard1 | shard2}` to fix this issue!",
+      });
     }
   },
 };
