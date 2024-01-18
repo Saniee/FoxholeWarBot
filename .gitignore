@@ -1,13 +1,15 @@
+/dist
+
 package-lock.json
 assets/Images/MapIcons
 assets/Images/Maps
 node_modules/
 
-cache/getMap/*
-!cache/getMap/.gitKeep
-cache/warReport/*
-!cache/warReport/.gitKeep
-cache/mapChoices/*
-!cache/mapChoices/.gitKeep
+src/cache/getMap/*
+!src/cache/getMap/.gitKeep
+src/cache/warReport/*
+!src/cache/warReport/.gitKeep
+src/cache/mapChoices/*
+!src/cache/mapChoices/.gitKeep
 
 config.json
