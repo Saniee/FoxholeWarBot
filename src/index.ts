@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Cron } from "croner";
-import mongoose from "mongoose";
 import {
   Client,
   Collection,
@@ -11,7 +10,6 @@ import {
   PresenceUpdateStatus,
 } from "discord.js";
 
-import serverConfig from "./serverConfig";
 import { token, CollectionName } from "../config.json";
 import { GenerateMapChoices, PocketBaseLogin } from "./Util";
 
@@ -34,7 +32,6 @@ for (const folder of commandFolders) {
   for (const file of commandFiles) {
     const filePath = path.join(commandsPath, file);
     const command = require(filePath);
-    // Set a new item in the Collection with the key as the command name and the value as the exported module
     if ("data" in command && "execute" in command) {
       client.commands.set(command.data.name, command);
     } else {
@@ -102,6 +99,7 @@ client.on(Events.GuildCreate, async (guild) => {
     guildId: guild.id,
     shard: "https://war-service-live.foxholeservices.com",
     shardName: "Able",
+    showCommandOutput: false,
   };
   await pb.collection(CollectionName).create(data);
   console.log(`Joined server ${guild.name}, created default record!`);
