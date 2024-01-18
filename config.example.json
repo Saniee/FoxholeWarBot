@@ -2,5 +2,6 @@
   "token": "",
   "clientId": "",
   "guildId": "",
-  "MONGODB_STRING": ""
+  "CollectionName": "",
+  "DatabaseURL": ""
 }
