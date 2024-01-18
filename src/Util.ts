@@ -4,6 +4,8 @@ import path from "node:path";
 
 import PocketBase from "pocketbase";
 
+import { DatabaseURL } from "../config.json";
+
 export async function GenerateMapChoices() {
   // Able 'https://war-service-live.foxholeservices.com'
   // Baker 'https://war-service-live-2.foxholeservices.com'
@@ -57,9 +59,9 @@ export async function GenerateMapChoices() {
 // TODO
 // Fix Live Build | Potential Bug with PocketBase itself.
 export async function PocketBaseLogin() {
-  const pocketbase = new PocketBase("http://127.0.0.1:8090");
+  const pocketbase = new PocketBase(DatabaseURL);
   const authData = await pocketbase.admins
-    .authWithPassword(***REMOVED***, "Axa@3436578")
+    .authWithPassword(***REMOVED***, ***REMOVED***)
     .then(() => console.log("Logged into PocketBase!"));
 
   return { pocketbase, authData };
