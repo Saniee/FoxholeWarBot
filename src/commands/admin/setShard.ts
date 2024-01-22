@@ -56,7 +56,9 @@ module.exports = {
       .collection(CollectionName)
       .getFirstListItem(`guildId=${interaction.guildId}`)
       .catch((err) =>
-        console.log(`No record for ${interaction.guild?.name} found!`)
+        console.log(
+          `No record for ${interaction.guild?.name} found! (/set-server)`
+        )
       );
 
     var shardName = interaction.options.get("server")?.value;
@@ -103,18 +105,21 @@ module.exports = {
           guildId: `${interaction.guildId}`,
           shard: "https://war-service-live.foxholeservices.com",
           shardName: "Able",
+          showCommandOutput: false,
         };
       } else if (shardName == "shard2") {
         data = {
           guildId: `${interaction.guildId}`,
           shard: "https://war-service-live-2.foxholeservices.com",
           shardName: "Baker",
+          showCommandOutput: false,
         };
       } else if (shardName == "shard3") {
         data = {
           guildId: `${interaction.guildId}`,
           shard: "https://war-service-live-3.foxholeservices.com",
           shardName: "Charlie",
+          showCommandOutput: false,
         };
       }
       await pb

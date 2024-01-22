@@ -4,7 +4,8 @@ import path from "node:path";
 
 import PocketBase from "pocketbase";
 
-import { DatabaseURL } from "../config.json";
+import { DatabaseURL, CollectionName } from "../config.json";
+import { CommandInteraction, Guild } from "discord.js";
 
 export async function GenerateMapChoices() {
   // Able 'https://war-service-live.foxholeservices.com'
@@ -53,6 +54,42 @@ export async function GenerateMapChoices() {
           }
         );
     }
+  }
+}
+
+export async function createNewDefaultRecord(
+  pb: PocketBase,
+  interaction?: CommandInteraction,
+  guild?: Guild
+) {
+  var id;
+  if (interaction) {
+    id = interaction.guildId;
+  } else if (guild) {
+    id = guild.id;
+  }
+  var data = {
+    guildId: id,
+    shard: "https://war-service-live.foxholeservices.com",
+    shardName: "Able",
+    showCommandOutput: false,
+  };
+
+  await pb
+    .collection(CollectionName)
+    .create(data)
+    .catch((err) => console.log(err));
+}
+
+export async function deleteRecord(pb: PocketBase, guild: Guild) {
+  const record = await pb
+    .collection(CollectionName)
+    .getFirstListItem(`guildId=${guild.id}`)
+    .catch((err) => {
+      `No record for ${guild.name} found! (deleteRecordFunc)`;
+    });
+  if (record) {
+    await pb.collection(CollectionName).delete(record.id);
   }
 }
 

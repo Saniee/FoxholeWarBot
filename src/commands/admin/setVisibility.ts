@@ -21,7 +21,9 @@ module.exports = {
       .collection(CollectionName)
       .getFirstListItem(`guildId=${interaction.guildId}`)
       .catch((err) =>
-        console.log(`No record for ${interaction.guild?.name} found!`)
+        console.log(
+          `No record for ${interaction.guild?.name} found! (/set-visibility)`
+        )
       );
 
     var visibility = interaction.options.get("visibility")?.value;
