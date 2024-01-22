@@ -50,7 +50,9 @@ module.exports = {
       .collection(CollectionName)
       .getFirstListItem(`guildId=${interaction.guildId}`)
       .catch((err) =>
-        console.log(`No record for ${interaction.guild?.name} found!`)
+        console.log(
+          `No record for ${interaction.guild?.name} found! (/get-map|autocomplete)`
+        )
       );
 
     if (record) {
@@ -108,7 +110,9 @@ module.exports = {
       .collection(CollectionName)
       .getFirstListItem(`guildId=${interaction.guildId}`)
       .catch((err) =>
-        console.log(`No record for ${interaction.guild?.name} found!`)
+        console.log(
+          `No record for ${interaction.guild?.name} found! (/get-map)`
+        )
       );
 
     var mapName = interaction.options.get("map-name")?.value;

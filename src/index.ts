@@ -11,7 +11,12 @@ import {
 } from "discord.js";
 
 import { token, CollectionName } from "../config.json";
-import { GenerateMapChoices, PocketBaseLogin } from "./Util";
+import {
+  GenerateMapChoices,
+  PocketBaseLogin,
+  createNewDefaultRecord,
+  deleteRecord,
+} from "./Util";
 
 import PocketBase from "pocketbase";
 
@@ -95,13 +100,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 client.on(Events.GuildCreate, async (guild) => {
-  const data = {
-    guildId: guild.id,
-    shard: "https://war-service-live.foxholeservices.com",
-    shardName: "Able",
-    showCommandOutput: false,
-  };
-  await pb.collection(CollectionName).create(data);
+  await createNewDefaultRecord(pb, undefined, guild);
   console.log(`Joined server ${guild.name}, created default record!`);
   console.log(`Now in ${client.guilds.cache.size} servers.`);
 });
@@ -109,16 +108,8 @@ client.on(Events.GuildCreate, async (guild) => {
 client.on(Events.GuildDelete, async (guild) => {
   if (!guild.available) return;
 
-  await pb
-    .collection(CollectionName)
-    .delete(
-      (
-        await pb
-          .collection(CollectionName)
-          .getFirstListItem(`guildId=${guild.id}`)
-      ).id
-    );
-  console.log(`Left server ${guild.name}, dropped record!`);
+  await deleteRecord(pb, guild);
+  console.log(`Left server ${guild.name}.`);
   console.log(`Now In ${client.guilds.cache.size} servers.`);
 });
 

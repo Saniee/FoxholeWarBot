@@ -26,7 +26,9 @@ module.exports = {
       .collection(CollectionName)
       .getFirstListItem(`guildId=${interaction.guildId}`)
       .catch((err) =>
-        console.log(`No record for ${interaction.guild?.name} found!`)
+        console.log(
+          `No record for ${interaction.guild?.name} found! (/war-report|autocomplete)`
+        )
       );
 
     if (record) {
@@ -86,7 +88,9 @@ module.exports = {
       .collection(CollectionName)
       .getFirstListItem(`guildId=${interaction.guildId}`)
       .catch((err) =>
-        console.log(`No record for ${interaction.guild?.name} found!`)
+        console.log(
+          `No record for ${interaction.guild?.name} found! (/war-report)`
+        )
       );
 
     if (record) {
@@ -116,7 +120,7 @@ module.exports = {
       await interaction.deferReply({ ephemeral: true });
       interaction.editReply({
         content:
-          "Shard setting missing, please run the command `War!setShard {shard1 | shard2}` to fix this issue!",
+          "Server setting missing, please run the command `/set-server` to fix this issue!",
       });
     }
   },
