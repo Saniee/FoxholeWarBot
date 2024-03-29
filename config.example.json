@@ -3,5 +3,9 @@
   "clientId": "",
   "guildId": "",
   "CollectionName": "",
-  "DatabaseURL": ""
+  "DatabaseURL": "",
+  "DatabaseAuth": {
+    "Email": "",
+    "Password": ""
+  }
 }

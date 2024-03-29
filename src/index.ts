@@ -10,13 +10,13 @@ import {
   PresenceUpdateStatus,
 } from "discord.js";
 
-import { token, CollectionName } from "../config.json";
+import { token } from "../config.json";
 import {
   GenerateMapChoices,
   PocketBaseLogin,
   createNewDefaultRecord,
   deleteRecord,
-} from "./Util";
+} from "./utils";
 
 import PocketBase from "pocketbase";
 
