@@ -4,7 +4,7 @@ import path from "node:path";
 
 import PocketBase from "pocketbase";
 
-import { DatabaseURL, CollectionName } from "../config.json";
+import { DatabaseURL, CollectionName, DatabaseAuth } from "../config.json";
 import { CommandInteraction, Guild } from "discord.js";
 
 export async function GenerateMapChoices() {
@@ -98,7 +98,7 @@ export async function deleteRecord(pb: PocketBase, guild: Guild) {
 export async function PocketBaseLogin() {
   const pocketbase = new PocketBase(DatabaseURL);
   const authData = await pocketbase.admins
-    .authWithPassword(***REMOVED***, ***REMOVED***)
+    .authWithPassword(DatabaseAuth.Email, DatabaseAuth.Password)
     .then(() => console.log("Logged into PocketBase!"));
 
   return { pocketbase, authData };
