@@ -72,6 +72,12 @@ module.exports = {
         );
         return;
       }
+      if (status === 504) {
+        await interaction.editReply(
+          "Server is not Online/Temporarily Unavailable. Choose a different one. [Connection Timed out.]"
+        );
+        return;
+      }
       var data;
       if (shardName == "shard1") {
         data = {

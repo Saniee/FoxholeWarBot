@@ -29,6 +29,8 @@ export async function GenerateMapChoices() {
     const responseStatus = (await response).status;
 
     switch (responseStatus) {
+	  case 504:
+		console.log(`Server ${servers[i].name} unreachable. Timed out.`)
       case 503:
         console.log(
           `Server ${servers[i].name} not Online/Temporarily Unavailable.`
