@@ -1,8 +1,6 @@
 /dist
 
 package-lock.json
-assets/Images/MapIcons
-assets/Images/Maps
 node_modules/
 
 src/cache/getMap/*
