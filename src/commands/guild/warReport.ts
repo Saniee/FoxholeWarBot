@@ -1,250 +1,254 @@
 import {
-  SlashCommandBuilder,
-  CommandInteraction,
-  EmbedBuilder,
-  AutocompleteInteraction,
-} from "discord.js";
-import axios from "axios";
-import fs from "node:fs";
-import path from "node:path";
-import { CollectionName } from "../../../config.json";
-import PocketBase from "pocketbase";
+    SlashCommandBuilder,
+    CommandInteraction,
+    EmbedBuilder,
+    AutocompleteInteraction,
+} from 'discord.js';
+import axios from 'axios';
+import fs from 'node:fs';
+import path from 'node:path';
+import { CollectionName } from '../../../config.json';
+import PocketBase from 'pocketbase';
 
 module.exports = {
-  data: new SlashCommandBuilder()
-    .setName("war-report")
-    .setDescription("Responds with information about a Hex/Map Chunk.")
-    .addStringOption((option) =>
-      option
-        .setName("map-name")
-        .setDescription("Name of the Hex you want displayed.")
-        .setRequired(true)
-        .setAutocomplete(true)
-    ),
-  async autocomplete(interaction: AutocompleteInteraction, pb: PocketBase) {
-    const record = await pb
-      .collection(CollectionName)
-      .getFirstListItem(`guildId=${interaction.guildId}`)
-      .catch((err) =>
-        console.log(
-          `No record for ${interaction.guild?.name} found! (/war-report|autocomplete)`
-        )
-      );
-
-    if (record) {
-      const fileData = fs.readFileSync(
-        path.resolve(
-          __dirname,
-          `../../cache/mapChoices/${record.shardName}Hexes.json`
+    data: new SlashCommandBuilder()
+        .setName('war-report')
+        .setDescription('Responds with information about a Hex/Map Chunk.')
+        .addStringOption((option) =>
+            option
+                .setName('map-name')
+                .setDescription('Name of the Hex you want displayed.')
+                .setRequired(true)
+                .setAutocomplete(true),
         ),
-        { encoding: "utf-8", flag: "r" }
-      );
+    async autocomplete(interaction: AutocompleteInteraction, pb: PocketBase) {
+        const record = await pb
+            .collection(CollectionName)
+            .getFirstListItem(`guildId=${interaction.guildId}`)
+            .catch((err) =>
+                console.log(
+                    `No record for ${interaction.guild?.name} found! (/war-report|autocomplete)`,
+                ),
+            );
 
-      var mapData = await JSON.parse(fileData);
-      const focusedValue = interaction.options.getFocused();
-      const choices = mapData;
-      const filtered = choices.filter((choice) =>
-        choice.startsWith(focusedValue)
-      );
+        if (record) {
+            const fileData = fs.readFileSync(
+                path.resolve(
+                    __dirname,
+                    `../../cache/mapChoices/${record.shardName}Hexes.json`,
+                ),
+                { encoding: 'utf-8', flag: 'r' },
+            );
 
-      let options;
-      if (filtered.length > 25) {
-        options = filtered.slice(0, 25);
-      } else {
-        options = filtered;
-      }
+            var mapData = await JSON.parse(fileData);
+            const focusedValue = interaction.options.getFocused();
+            const choices = mapData;
+            const filtered = choices.filter((choice) =>
+                choice.startsWith(focusedValue),
+            );
 
-      await interaction.respond(
-        options.map((choice) => ({
-          name: choice.replace("Hex", ""),
-          value: choice,
-        }))
-      );
-    } else {
-      const focusedValue = interaction.options.getFocused();
-      const choices = [
-        "There was an error. First try to run /set-server.",
-        "If that doesn't work go to the support server.",
-      ];
-      const filtered = choices.filter((choice) =>
-        choice.startsWith(focusedValue)
-      );
+            let options;
+            if (filtered.length > 25) {
+                options = filtered.slice(0, 25);
+            } else {
+                options = filtered;
+            }
 
-      let options;
-      options = filtered;
+            await interaction.respond(
+                options.map((choice) => ({
+                    name: choice.replace('Hex', ''),
+                    value: choice,
+                })),
+            );
+        } else {
+            const focusedValue = interaction.options.getFocused();
+            const choices = [
+                'There was an error. First try to run /set-server.',
+                "If that doesn't work go to the support server.",
+            ];
+            const filtered = choices.filter((choice) =>
+                choice.startsWith(focusedValue),
+            );
 
-      await interaction.respond(
-        options.map((choice) => ({
-          name: choice.replace("Hex", ""),
-          value: choice,
-        }))
-      );
-    }
-  },
-  async execute(interaction: CommandInteraction, pb: PocketBase) {
-    var mapName = interaction.options.get("map-name")?.value;
+            let options;
+            options = filtered;
 
-    const record = await pb
-      .collection(CollectionName)
-      .getFirstListItem(`guildId=${interaction.guildId}`)
-      .catch((err) =>
-        console.log(
-          `No record for ${interaction.guild?.name} found! (/war-report)`
-        )
-      );
-
-    if (record) {
-      await interaction.deferReply({ ephemeral: !record.showCommandOutput });
-      fs.readFile(
-        path.resolve(
-          __dirname,
-          `../../cache/warReport/${mapName}${record.shardName}.json`
-        ),
-        "utf-8",
-        async (err, fileData) => {
-          if (fileData) {
-            const cache = JSON.parse(fileData);
-            await apiRequest(cache, record, interaction, mapName);
-          } else if (!fileData) {
-            const cache = {
-              version: "0",
-            };
-            await apiRequest(cache, record, interaction, mapName);
-          } else {
-            console.log(err);
-            interaction.editReply("An error has occured!");
-          }
+            await interaction.respond(
+                options.map((choice) => ({
+                    name: choice.replace('Hex', ''),
+                    value: choice,
+                })),
+            );
         }
-      );
-    } else {
-      await interaction.deferReply({ ephemeral: true });
-      interaction.editReply({
-        content:
-          "Server setting missing, please run the command `/set-server` to fix this issue!",
-      });
-    }
-  },
+    },
+    async execute(interaction: CommandInteraction, pb: PocketBase) {
+        var mapName = interaction.options.get('map-name')?.value;
+
+        const record = await pb
+            .collection(CollectionName)
+            .getFirstListItem(`guildId=${interaction.guildId}`)
+            .catch((err) =>
+                console.log(
+                    `No record for ${interaction.guild?.name} found! (/war-report)`,
+                ),
+            );
+
+        if (record) {
+            await interaction.deferReply({
+                ephemeral: !record.showCommandOutput,
+            });
+            fs.readFile(
+                path.resolve(
+                    __dirname,
+                    `../../cache/warReport/${mapName}${record.shardName}.json`,
+                ),
+                'utf-8',
+                async (err, fileData) => {
+                    if (fileData) {
+                        const cache = JSON.parse(fileData);
+                        await apiRequest(cache, record, interaction, mapName);
+                    } else if (!fileData) {
+                        const cache = {
+                            version: '0',
+                        };
+                        await apiRequest(cache, record, interaction, mapName);
+                    } else {
+                        console.log(err);
+                        interaction.editReply('An error has occured!');
+                    }
+                },
+            );
+        } else {
+            await interaction.deferReply({ ephemeral: true });
+            interaction.editReply({
+                content:
+                    'Server setting missing, please run the command `/set-server` to fix this issue!',
+            });
+        }
+    },
 };
 
 async function apiRequest(cache, record, interaction, mapName) {
-  const warReportURL = `${record.shard}/api/worldconquest/warReport/${mapName}`;
+    const warReportURL = `${record.shard}/api/worldconquest/warReport/${mapName}`;
 
-  try {
-    const response = axios.get(warReportURL, {
-      validateStatus: function (status) {
-        return status < 600;
-      },
-      headers: { "If-None-Match": `"${cache.version}"` },
-    });
-
-    const statusCode = (await response).status;
-
-    switch (statusCode) {
-      case 503:
-        interaction.editReply({
-          content:
-            "Server not Online/Temporarily Unavailable. Please Change to Shard1/Shard2",
+    try {
+        const response = axios.get(warReportURL, {
+            validateStatus: function (status) {
+                return status < 600;
+            },
+            headers: { 'If-None-Match': `"${cache.version}"` },
         });
-        break;
-      case 404:
-        interaction.editReply({ content: "No War Report for that Hex found!" });
-        break;
-      case 200:
-        console.log(
-          `Api request for: WarReport, Response Code: ${statusCode}, File: Not Up-to Date!`
-        );
 
-        const data = (await response).data;
+        const statusCode = (await response).status;
 
-        fs.writeFile(
-          path.resolve(
-            __dirname,
-            `../../cache/warReport/${mapName}${record.shardName}.json`
-          ),
-          JSON.stringify(data, null, 2),
-          "utf-8",
-          (err) => {
-            if (err) {
-              console.log(err);
-            } else {
-              console.log(`File: Updated!`);
-            }
-          }
-        );
+        switch (statusCode) {
+            case 503:
+                interaction.editReply({
+                    content:
+                        'Server not Online/Temporarily Unavailable. Please Change to Shard1/Shard2',
+                });
+                break;
+            case 404:
+                interaction.editReply({
+                    content: 'No War Report for that Hex found!',
+                });
+                break;
+            case 200:
+                console.log(
+                    `Api request for: WarReport, Response Code: ${statusCode}, File: Not Up-to Date!`,
+                );
 
-        const warReport = new EmbedBuilder()
-          .addFields(
-            {
-              name: "Total Enlistments",
-              value: `${data.totalEnlistments}`,
-            },
-            {
-              name: "Colonial Casualties",
-              value: `${data.colonialCasualties}`,
-            },
-            {
-              name: "Warden Casualties",
-              value: `${data.wardenCasualties}`,
-            },
-            {
-              name: "Day Of War",
-              value: `${data.dayOfWar}`,
-            }
-          )
-          .setFooter({ text: "Requested at" })
-          .setTimestamp(new Date());
-        try {
-          await interaction.editReply({ embeds: [warReport] });
-        } catch (err) {
-          console.log(err);
-          await interaction.editReply({
-            content:
-              "Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ",
-          });
+                const data = (await response).data;
+
+                fs.writeFile(
+                    path.resolve(
+                        __dirname,
+                        `../../cache/warReport/${mapName}${record.shardName}.json`,
+                    ),
+                    JSON.stringify(data, null, 2),
+                    'utf-8',
+                    (err) => {
+                        if (err) {
+                            console.log(err);
+                        } else {
+                            console.log(`File: Updated!`);
+                        }
+                    },
+                );
+
+                const warReport = new EmbedBuilder()
+                    .addFields(
+                        {
+                            name: 'Total Enlistments',
+                            value: `${data.totalEnlistments}`,
+                        },
+                        {
+                            name: 'Colonial Casualties',
+                            value: `${data.colonialCasualties}`,
+                        },
+                        {
+                            name: 'Warden Casualties',
+                            value: `${data.wardenCasualties}`,
+                        },
+                        {
+                            name: 'Day Of War',
+                            value: `${data.dayOfWar}`,
+                        },
+                    )
+                    .setFooter({ text: 'Requested at' })
+                    .setTimestamp(new Date());
+                try {
+                    await interaction.editReply({ embeds: [warReport] });
+                } catch (err) {
+                    console.log(err);
+                    await interaction.editReply({
+                        content:
+                            'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ',
+                    });
+                }
+                break;
+            case 304:
+                console.log(
+                    `Api Request for: WarReport, Response Code: ${statusCode}, File: Up-to Date!`,
+                );
+
+                const warReportCached = new EmbedBuilder()
+                    .addFields(
+                        {
+                            name: 'Total Enlistments',
+                            value: `${cache.totalEnlistments}`,
+                        },
+                        {
+                            name: 'Colonial Casualties',
+                            value: `${cache.colonialCasualties}`,
+                        },
+                        {
+                            name: 'Warden Casualties',
+                            value: `${cache.wardenCasualties}`,
+                        },
+                        {
+                            name: 'Day Of War',
+                            value: `${cache.dayOfWar}`,
+                        },
+                    )
+                    .setFooter({ text: 'Requested at' })
+                    .setTimestamp(new Date());
+                try {
+                    await interaction.editReply({ embeds: [warReportCached] });
+                } catch (err) {
+                    console.log(err);
+                    await interaction.editReply({
+                        content:
+                            'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ',
+                    });
+                }
+                break;
         }
-        break;
-      case 304:
-        console.log(
-          `Api Request for: WarReport, Response Code: ${statusCode}, File: Up-to Date!`
-        );
-
-        const warReportCached = new EmbedBuilder()
-          .addFields(
-            {
-              name: "Total Enlistments",
-              value: `${cache.totalEnlistments}`,
-            },
-            {
-              name: "Colonial Casualties",
-              value: `${cache.colonialCasualties}`,
-            },
-            {
-              name: "Warden Casualties",
-              value: `${cache.wardenCasualties}`,
-            },
-            {
-              name: "Day Of War",
-              value: `${cache.dayOfWar}`,
-            }
-          )
-          .setFooter({ text: "Requested at" })
-          .setTimestamp(new Date());
-        try {
-          await interaction.editReply({ embeds: [warReportCached] });
-        } catch (err) {
-          console.log(err);
-          await interaction.editReply({
+    } catch (err) {
+        console.log(err);
+        await interaction.editReply({
             content:
-              "Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ",
-          });
-        }
-        break;
+                'Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ',
+        });
     }
-  } catch (err) {
-    console.log(err);
-    await interaction.editReply({
-      content:
-        "Please enable all needed permisions. Or wait for an issue to be fixed. Support server: https://discord.gg/9wzppSgXdQ",
-    });
-  }
 }
