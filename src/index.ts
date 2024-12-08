@@ -58,7 +58,7 @@ client.once(Events.ClientReady, async () => {
     client.user?.setStatus(PresenceUpdateStatus.Idle);
     client.user?.setActivity('Foxhole Wars', { type: ActivityType.Watching });
 
-    Cron('0 0 * * *', async () => {
+    Cron('0 1 * * */2', async () => {
         if (client.user == null) return;
         client.user.setStatus(PresenceUpdateStatus.Idle);
         client.user.setActivity('Foxhole Wars', {
