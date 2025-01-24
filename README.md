@@ -20,6 +20,7 @@ The good part of this is that the bot will be crash free, so it won't be offline
 
 ## So far, the development is in it's early stages. So the early plans are to:
 
+- [x] Functioning map rendering.
 - [ ] Have a functioning Discord implementation that is stable.
 - [ ] Have a basic grasp of the interaction system that discord uses.
 - [ ] Have all the needed Discord systems implemented.
