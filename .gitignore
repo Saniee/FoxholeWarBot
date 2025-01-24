@@ -1,13 +1,1 @@
-/dist
-
-package-lock.json
-node_modules/
-
-src/cache/getMap/*
-!src/cache/getMap/.gitKeep
-src/cache/warReport/*
-!src/cache/warReport/.gitKeep
-src/cache/mapChoices/*
-!src/cache/mapChoices/.gitKeep
-
-config.json
+/target
