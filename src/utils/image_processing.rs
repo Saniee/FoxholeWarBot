@@ -1,9 +1,8 @@
 use ab_glyph::{FontRef, PxScale};
-use image::{codecs::ico, imageops::overlay, ImageBuffer, Pixel, Rgba};
-use imageproc::drawing::{draw_text_mut, Canvas};
-use log::{debug, error};
+use image::{imageops::overlay, ImageBuffer, Rgba};
+use imageproc::drawing::draw_text_mut;
 
-use crate::api_definitions::foxhole::{DynamicMapData, StaticMapData, TeamId};
+use crate::utils::api_definitions::foxhole::{DynamicMapData, StaticMapData};
 
 pub fn place_info<P>(dynamic_data: DynamicMapData, static_data: StaticMapData, draw_text: bool, background_img_path: &P)
 -> Option<ImageBuffer<Rgba<u8>, Vec<u8>>> 
@@ -19,8 +18,8 @@ where
         let icon_path = std::path::Path::new(&path);
         
         if !icon_path.exists() {
-            error!("Icon path: {:?} doesn't exist!", icon_path);
-            debug!("Using debug icon as fallback for missing icon...");
+            println!("Icon path: {:?} doesn't exist!", icon_path);
+            println!("Using debug icon as fallback for missing icon...");
             let mut icon = load_img("./assets/MapIcons/DebugIcon.png").unwrap();
 
             let icon_desired_width: u32 = (icon.width() as f64 * 0.5) as u32;
@@ -33,7 +32,7 @@ where
             let mut icon = match load_img(icon_path) {
                 Some(i) => i,
                 None => {
-                    error!("Error loading image: {:?}", icon_path);
+                    println!("Error loading image: {:?}", icon_path);
                     return None;
                 }
             };
@@ -48,14 +47,14 @@ where
     }
 
     if draw_text {
-        let font_data = include_bytes!("../assets/Inter-Bold.ttf") as &[u8];
+        let font_data = include_bytes!("../../assets/Inter-Bold.ttf") as &[u8];
         let font = FontRef::try_from_slice(font_data).unwrap();
         let scale = PxScale {
             x: 25.0,
             y: 25.0
         };
         for map_text in static_data.map_text_items {
-            draw_text_mut(&mut bg_img, Rgba([255, 255, 255, 0]), (map_text.x * bg_width) as i32, (map_text.y * bg_height) as i32, scale, &font, &map_text.text);
+            draw_text_mut(&mut bg_img, Rgba([0, 0, 0, 255]), (map_text.x * bg_width) as i32, (map_text.y * bg_height) as i32, scale, &font, &map_text.text);
         }
     }
 
@@ -69,7 +68,7 @@ where
     let sb_img = match image::open(path) {
         Ok(img) => img,
         Err(msg) => {
-            error!("An error occured at loading img with path: {:?}, Error Msg: {}", path, msg);
+            println!("An error occured at loading img with path: {:?}, Error Msg: {}", path, msg);
             return None;
         }
     };

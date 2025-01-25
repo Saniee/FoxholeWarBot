@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 ab_glyph = "0.2.29"
+chrono = "0.4.39"
+dotenv = "0.15.0"
 ftail = "0.2.0"
 image = { version = "0.25.5", features = ["serde"] }
 imageproc = "0.25.0"
@@ -12,4 +14,5 @@ log = "0.4.25"
 reqwest = { version = "0.12.12", features = ["json"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.137"
+serenity = "0.12.4"
 tokio = { version = "1.43.0", features = ["full"] }

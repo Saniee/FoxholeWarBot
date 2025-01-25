@@ -21,10 +21,13 @@ The good part of this is that the bot will be crash free, so it won't be offline
 ## So far, the development is in it's early stages. So the early plans are to:
 
 - [x] Functioning map rendering.
-- [ ] Have a functioning Discord implementation that is stable.
-- [ ] Have a basic grasp of the interaction system that discord uses.
-- [ ] Have all the needed Discord systems implemented.
-- [ ] Remake the old commands and they're features again, in a new language. Hopefully with better performance and flexibility of changes.
+- [x] Have all the needed Discord systems implemented.
+- Remake the old commands and they're features again, in a new language. Hopefully with better performance and flexibility of changes.
+  - [x] get-map
+  - [ ] war-report
+  - [ ] war-state
+  - [ ] set-shard
+  - [ ] set-visibility
 - [ ] Make the first steps of improving the user experience. (Making it easier to search for hexes etc.)
 - [ ] Improve Self Hosting ease of use...? `I'm unsure if this bot has been self hosted before.`
 
