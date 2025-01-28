@@ -1,22 +1,16 @@
 use ftail::Ftail;
-use serde::{Deserialize, Serialize};
 
-use serenity::all::{ActivityData, CreateAutocompleteResponse};
+use serenity::all::ActivityData;
 use serenity::async_trait;
-use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage, AutocompleteChoice};
+use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::application::Interaction;
 use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
 use serenity::prelude::*;
-use utils::api_definitions::foxhole::Maps;
+use utils::cache::save_maps_cache;
 
 mod utils;
 mod commands;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Cfg {
-    token: String,
-}
 
 struct Handler;
 
@@ -24,7 +18,7 @@ struct Handler;
 impl EventHandler for Handler {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Command(command) = &interaction {
-            println!("Received command interaction!");
+            // println!("Received command interaction!");
 
             let content = match command.data.name.as_str() {
                 "get-map" => {
@@ -43,27 +37,14 @@ impl EventHandler for Handler {
             }
         }
         if let Interaction::Autocomplete(command) = &interaction {
-            println!("Recieved Autocomplete Interaction");
+            // println!("Recieved Autocomplete Interaction");
 
-            let client = reqwest::Client::new();
-
-            let maps = client.get("https://war-service-live.foxholeservices.com/api/worldconquest/maps").send().await.unwrap().json::<Maps>().await.unwrap();
-
-            let mut choices: Vec<AutocompleteChoice> = vec![];
-
-            let filter = command.data.options[0].value.as_str().unwrap_or("").trim().to_lowercase();
-            
-            for str in maps {
-                if str == "OriginHex" {
-                    continue;
-                }
-                if str.trim().to_lowercase().contains(&filter) && choices.len() < 25 {
-                    choices.push(AutocompleteChoice::new(str.replace("Hex", "").as_str(), str));
-                }
+            match command.data.name.as_str() {
+                "get-map" => {
+                    commands::get_map::autocomplete(&ctx, command).await.unwrap();
+                },
+                _ => return
             }
-            let response = CreateInteractionResponse::Autocomplete(CreateAutocompleteResponse::new().set_choices(choices));
-
-            let _ = command.create_response(&ctx.http, response).await;
         }
     }
     
@@ -71,6 +52,8 @@ impl EventHandler for Handler {
         println!("{} is connected!\nIn {} guild/s!", ready.user.name, ready.guilds.len());
 
         ctx.set_activity(Some(ActivityData::watching("Foxhole Wars")));
+
+        save_maps_cache().await;
 
         let guild_id = GuildId::new(
             dotenv::var("GUILD_ID")
@@ -84,6 +67,8 @@ impl EventHandler for Handler {
                 commands::get_map::register(),
             ])
             .await;
+
+        // Command::create_global_command(&ctx.http, commands::get_map::register()).await;
     }
 }
 
