@@ -114,6 +114,6 @@ pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: D
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("war-report").description("test")
-    .add_option(CreateCommandOption::new(CommandOptionType::String, "map-name", "Map name.").required(true).set_autocomplete(true))
+    CreateCommand::new("war-report").description("Responds with information about a Hex/Map Chunk.")
+    .add_option(CreateCommandOption::new(CommandOptionType::String, "map-name", "Name of the Hex you want displayed.").required(true).set_autocomplete(true))
 }

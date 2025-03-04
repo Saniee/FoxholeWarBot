@@ -137,7 +137,7 @@ pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: D
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("get-map").description("test")
-    .add_option(CreateCommandOption::new(CommandOptionType::String, "map-name", "Map name.").required(true).set_autocomplete(true))
-    .add_option(CreateCommandOption::new(CommandOptionType::Boolean, "draw-text", "Display info text?").required(false))
+    CreateCommand::new("get-map").description("Responds with an image of that Hex/Map chunk. With Colored icons and labels.")
+    .add_option(CreateCommandOption::new(CommandOptionType::String, "map-name", "Name of the Hex you want displayed.").required(true).set_autocomplete(true))
+    .add_option(CreateCommandOption::new(CommandOptionType::Boolean, "draw-text", "Renders Text for things on the map. Turned off by default, since it makes the render messy.").required(false))
 }

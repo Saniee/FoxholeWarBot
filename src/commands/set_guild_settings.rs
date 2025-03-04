@@ -78,5 +78,5 @@ pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction) -> Re
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("set-guild-settings").default_member_permissions(Permissions::ADMINISTRATOR).description("test").add_option(CreateCommandOption::new(CommandOptionType::String, "shard", "value").set_autocomplete(true).required(true)).add_option(CreateCommandOption::new(CommandOptionType::Boolean, "show-messages", "value").required(true))
+    CreateCommand::new("set-guild-settings").default_member_permissions(Permissions::ADMINISTRATOR).description("Sets the server the bot will get data from and whether or not messages will show to others.").add_option(CreateCommandOption::new(CommandOptionType::String, "shard", "Choose which server to get data from.").set_autocomplete(true).required(true)).add_option(CreateCommandOption::new(CommandOptionType::Boolean, "show-messages", "True shows commands to everyone. False to only the one who called the command.").required(true))
 }

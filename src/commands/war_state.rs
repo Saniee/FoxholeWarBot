@@ -38,5 +38,5 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("war-state").description("test")
+    CreateCommand::new("war-state").description("Gets the global state of the war. This command will default to not showing.")
 }
