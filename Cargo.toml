@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 ab_glyph = "0.2.29"
 chrono = "0.4.39"
+clap = { version = "4.5.31", features = ["derive"] }
 dotenv = "0.15.0"
 ftail = "0.2.0"
 image = { version = "0.25.5", features = ["serde"] }
@@ -15,4 +16,5 @@ reqwest = { version = "0.12.12", features = ["json"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.137"
 serenity = "0.12.4"
+sqlx = { version = "0.8.3", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.43.0", features = ["full"] }

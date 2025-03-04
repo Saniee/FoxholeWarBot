@@ -2,6 +2,28 @@ use serde::{Serialize, Deserialize};
 
 pub type Maps = Vec<String>;
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct War {
+    pub war_id: String,
+    pub war_number: i64,
+    pub winner: String,
+    pub conquest_start_time: i64,
+    pub conquest_end_time: Option<serde_json::Value>,
+    pub resistance_start_time: Option<serde_json::Value>,
+    pub required_victory_towns: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WarReport {
+    pub total_enlistments: i64,
+    pub colonial_casualties: i64,
+    pub warden_casualties: i64,
+    pub day_of_war: i64,
+    pub version: i64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DynamicMapData {

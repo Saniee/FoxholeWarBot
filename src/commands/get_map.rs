@@ -1,14 +1,33 @@
 use reqwest::StatusCode;
-use serenity::all::{AutocompleteChoice, CommandInteraction, CommandOptionType, Context, CreateAttachment, CreateAutocompleteResponse, CreateCommand, CreateCommandOption, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, EditInteractionResponse};
+use serenity::all::{AutocompleteChoice, CommandInteraction, CommandOptionType, Context, CreateAttachment, CreateAutocompleteResponse, CreateCommand, CreateCommandOption, CreateEmbed, CreateEmbedFooter, CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse};
 
 use crate::utils::api_definitions::foxhole::{DynamicMapData, StaticMapData};
-use crate::utils::cache::{load_cache, load_maps, save_cache};
+use crate::utils::cache::{load_map_cache, load_maps, save_map_cache};
+use crate::utils::db::{Database, Shard};
 use crate::utils::request_processing::place_image_info;
 
-pub async fn run(ctx: &Context, interaction: &CommandInteraction) -> Result<(), serenity::Error> {
-    interaction.defer(ctx).await?;
+pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
+    let guild_id = interaction.guild_id.unwrap().get();
+    let data = db.get_guild(guild_id).await;
+
+    let guild = match data {
+        None => {
+            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content("No Shard set for the guild. Run the `/set-guild-settings` command to do so."))).await?;
+            return Ok(());
+        }
+        Some(data) => data
+    };
+    
+    if guild.show_command_output == 1 {
+        interaction.defer(ctx).await?;
+    } else if guild.show_command_output == 0 {
+        interaction.defer_ephemeral(ctx).await?;
+    }
 
     let map_name = interaction.data.options[0].value.as_str().unwrap();
+
+    let api_url: String = guild.shard;
+
     let draw_text = if interaction.data.options.len() > 1 {
         interaction.data.options[1].value.as_bool().unwrap()
     } else {
@@ -17,7 +36,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction) -> Result<(), 
 
     let request_client = reqwest::Client::new();
 
-    let cache_data = match load_cache(map_name).await {
+    let cache_data = match load_map_cache(map_name, &guild.shard_name).await {
         Some(data) => Some(data),
         None => {
             println!("No cached data found... Creating...");
@@ -30,15 +49,15 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction) -> Result<(), 
     let last_updated;
 
     if cache_data.is_none() {
-        dynamic_response = request_client.get(format!("https://war-service-live.foxholeservices.com/api/worldconquest/maps/{}/dynamic/public", map_name)).header("If-None-Match", "\"0\"").send().await.unwrap();
+        dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/dynamic/public", map_name)).header("If-None-Match", "\"0\"").send().await.unwrap();
         
-        static_response = request_client.get(format!("https://war-service-live.foxholeservices.com/api/worldconquest/maps/{}/static", map_name)).header("If-None-Match", "\"0\"").send().await.unwrap();
+        static_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/static", map_name)).header("If-None-Match", "\"0\"").send().await.unwrap();
 
         //println!("{} | {}", dynamic_response.status(), static_response.status());
     } else {
-        dynamic_response = request_client.get(format!("https://war-service-live.foxholeservices.com/api/worldconquest/maps/{}/dynamic/public", map_name)).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().0.version)).send().await.unwrap();
+        dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/dynamic/public", map_name)).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().0.version)).send().await.unwrap();
         
-        static_response = request_client.get(format!("https://war-service-live.foxholeservices.com/api/worldconquest/maps/{}/static", map_name)).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().1.version)).send().await.unwrap();
+        static_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/static", map_name)).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().1.version)).send().await.unwrap();
     }
 
     if dynamic_response.status() == StatusCode::INTERNAL_SERVER_ERROR && static_response.status() == StatusCode::INTERNAL_SERVER_ERROR {
@@ -51,7 +70,6 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction) -> Result<(), 
 
         let static_data = static_response.json::<StaticMapData>().await.unwrap();
 
-
         let img = match place_image_info(&dynamic_data, &static_data, draw_text, &format!("./assets/Maps/Map{}.TGA", map_name)) {
             Some(i) => i,
             None => {
@@ -62,7 +80,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction) -> Result<(), 
         };
     
         let _ = img.save("render.png");
-        save_cache(dynamic_data, static_data, map_name).await;
+        save_map_cache(dynamic_data, static_data, map_name, &guild.shard_name).await;
     } else {
         last_updated = cache_data.clone().unwrap().0.last_updated;
         let img = match place_image_info(&cache_data.clone().unwrap().0, &cache_data.clone().unwrap().1, draw_text, &format!("./assets/Maps/Map{}.TGA", map_name)) {
@@ -85,10 +103,22 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction) -> Result<(), 
     Ok(())
 }
 
-pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction) -> Result<(), serenity::Error> {
-    let maps = load_maps().await;
+pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
+    let guild_id = interaction.guild_id.unwrap().get();
+    let data = db.get_guild(guild_id).await;
 
     let mut choices: Vec<AutocompleteChoice> = vec![];
+
+    let guild = match data {
+        None => {
+            choices.push(AutocompleteChoice::new("Please Run the /set-guild-settings command for this to work!", ""));
+            interaction.create_response(&ctx.http, CreateInteractionResponse::Autocomplete(CreateAutocompleteResponse::new().set_choices(choices))).await?;
+            return Ok(());
+        },
+        Some(guild) => guild
+    };
+    
+    let maps = load_maps(Shard::from_str(&guild.shard_name)).await;
 
     let filter = interaction.data.options[0].value.as_str().unwrap_or("").trim().to_lowercase();
     
