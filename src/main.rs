@@ -77,6 +77,7 @@ impl EventHandler for Handler {
         println!("{} is connected!\nIn {} guild/s!", ready.user.name, ready.guilds.len());
 
         ctx.set_activity(Some(ActivityData::watching("Foxhole Wars")));
+        ctx.idle();
 
         save_maps_cache().await;
 
@@ -113,7 +114,7 @@ async fn main() {
     if args.clear_commands {
         let token = dotenv::var("TOKEN").expect("No token string found in .env!");
         let app_id = dotenv::var("APP_ID").expect("No app id found in .env!").parse().unwrap();
-        
+
         let client = Client::builder(token, GatewayIntents::empty()).application_id(app_id)
             .await
             .expect("Error creating client");
