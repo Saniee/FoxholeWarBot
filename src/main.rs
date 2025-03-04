@@ -1,6 +1,5 @@
 use args::Args;
 use clap::Parser;
-use ftail::Ftail;
 
 use serenity::all::{ActivityData, Command, Guild, UnavailableGuild};
 use serenity::async_trait;
@@ -161,8 +160,6 @@ async fn main() {
         }
         return;
     }
-
-    Ftail::new().daily_file("logs", log::LevelFilter::Debug).init().unwrap();
 
     let token = dotenv::var("TOKEN").expect("No token string found in .env!");
 
