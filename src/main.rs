@@ -2,7 +2,7 @@ use args::Args;
 use clap::Parser;
 use ftail::Ftail;
 
-use serenity::all::{ActivityData, Command};
+use serenity::all::{ActivityData, Command, Guild, UnavailableGuild};
 use serenity::async_trait;
 use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
 use serenity::model::application::Interaction;
@@ -70,6 +70,31 @@ impl EventHandler for Handler {
                 }
                 _ => return
             }
+        }
+    }
+    
+    async fn guild_create(&self, _ctx: Context, guild: Guild, is_new: Option<bool>) {
+        let new = match is_new {
+            Some(new) => new,
+            None => return
+        };
+
+        if new {
+            println!("Joined {}. Now in {} Guilds!", guild.name, _ctx.cache.guilds().len());
+            self.db.create_guild(guild.id.get(), None).await;
+        }
+    }
+
+    async fn guild_delete(&self, _ctx: Context, incomplete: UnavailableGuild, full: Option<Guild>) {
+        
+        if full.is_some() {
+            if !incomplete.unavailable {
+                println!("Left {}. Now in {} Guilds!", full.clone().unwrap().name, _ctx.cache.guilds().len());
+                self.db.delete_guild(full.clone().unwrap().id.get()).await;
+            }
+        } else if !incomplete.unavailable {
+            println!("Left {} (Incomplete Data). Now in {} Guilds!", incomplete.id, _ctx.cache.guilds().len());
+            self.db.delete_guild(incomplete.id.get()).await;
         }
     }
     
@@ -151,7 +176,9 @@ async fn main() {
         show_command_output INTEGER CHECK (show_command_output IN (0,1))
     )").await.unwrap();
 
-    let mut client = Client::builder(token, GatewayIntents::empty())
+    let intents = GatewayIntents::GUILDS;
+
+    let mut client = Client::builder(token, intents)
         .event_handler(Handler { db })
         .await
         .expect("Error creating client");
