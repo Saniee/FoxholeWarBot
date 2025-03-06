@@ -3,6 +3,8 @@ use serenity::all::{AutocompleteChoice, CommandInteraction, CommandOptionType, C
 
 use crate::utils::db::{Database, Shard};
 
+pub const NAME: &str = "set-guild-settings";
+
 pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
     interaction.defer_ephemeral(ctx).await?;
 
@@ -78,5 +80,5 @@ pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction) -> Re
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("set-guild-settings").default_member_permissions(Permissions::ADMINISTRATOR).description("Sets the server the bot will get data from and whether or not messages will show to others.").add_option(CreateCommandOption::new(CommandOptionType::String, "shard", "Choose which server to get data from.").set_autocomplete(true).required(true)).add_option(CreateCommandOption::new(CommandOptionType::Boolean, "show-messages", "True shows commands to everyone. False to only the one who called the command.").required(true))
+    CreateCommand::new(NAME).default_member_permissions(Permissions::ADMINISTRATOR).description("Sets the server the bot will get data from and whether or not messages will show to others.").add_option(CreateCommandOption::new(CommandOptionType::String, "shard", "Choose which server to get data from.").set_autocomplete(true).required(true)).add_option(CreateCommandOption::new(CommandOptionType::Boolean, "show-messages", "True shows commands to everyone. False to only the one who called the command.").required(true))
 }
