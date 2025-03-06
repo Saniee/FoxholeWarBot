@@ -3,6 +3,8 @@ use serenity::all::{CommandInteraction, CommandOptionType, Context, CreateComman
 
 use crate::utils::db::{Database, Shard};
 
+pub const NAME: &str = "set-guild-settings";
+
 pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
     interaction.defer_ephemeral(ctx).await?;
 

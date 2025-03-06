@@ -11,13 +11,16 @@ use serenity::prelude::*;
 use sqlx::Executor;
 use utils::cache::save_maps_cache;
 use utils::db::Database;
+use utils::cron::CronHandler;
 
 mod utils;
 mod commands;
 mod args;
 
 struct Handler {
-    db: Database
+    db: Database,
+    local: bool,
+    cron_handler: CronHandler
 }
 
 #[async_trait]
@@ -27,20 +30,24 @@ impl EventHandler for Handler {
             // println!("Received command interaction!");
 
             let content = match command.data.name.as_str() {
-                "get-map" => {
+                commands::get_map::NAME => {
                     commands::get_map::run(&ctx, command, self.db.clone()).await.unwrap();
                     None
                 },
-                "war-report" => {
+                commands::war_report::NAME => {
                     commands::war_report::run(&ctx, command, self.db.clone()).await.unwrap();
                     None
                 },
-                "war-state" => {
+                commands::war_state::NAME => {
                     commands::war_state::run(&ctx, command, self.db.clone()).await.unwrap();
                     None
                 },
-                "set-guild-settings" => {
+                commands::set_guild_settings::NAME => {
                     commands::set_guild_settings::run(&ctx, command, self.db.clone()).await.unwrap();
+                    None
+                },
+                commands::schedule_report::NAME => {
+                    commands::schedule_report::run(&ctx, command, self.db.clone(), self.cron_handler.clone()).await.unwrap();
                     None
                 }
                 _ => Some("not implemented :(".to_string()),
@@ -102,34 +109,36 @@ impl EventHandler for Handler {
 
         save_maps_cache().await;
 
-        let _ = GuildId::new(
+        let guild_id = GuildId::new(
             dotenv::var("GUILD_ID")
                 .expect("Expected GUILD_ID in environment")
                 .parse()
                 .expect("GUILD_ID must be an integer"),
         );
 
-        /* let _ = guild_id
-            .set_commands(&ctx.http, vec![
+        if !&self.local {
+            let _ = Command::set_global_commands(&ctx.http, vec![
+                commands::get_map::register(),
+                commands::war_report::register(),
+                commands::war_state::register(),
+                commands::set_guild_settings::register(),
+            ]).await;
+        } else {
+            let _ = guild_id.set_commands(&ctx.http, vec![
                 commands::get_map::register(),
                 commands::war_report::register(),
                 commands::war_state::register(),
                 commands::set_guild_settings::register(),
             ])
-            .await; */
-
-        let _ = Command::set_global_commands(&ctx.http, vec![
-            commands::get_map::register(),
-            commands::war_report::register(),
-            commands::war_state::register(),
-            commands::set_guild_settings::register(),
-        ]).await;
+            .await;
+        }
     }
 }
 
 #[tokio::main]
 async fn main() {
     let args = Args::parse();
+    let local = args.local;
 
     // Clear All Commands on App
     if args.clear_commands {
@@ -162,18 +171,29 @@ async fn main() {
 
     let db = Database::connect().await;
 
-    let _ = db.conn.execute("CREATE TABLE IF NOT EXISTS foxholewarbot (
+    let cron_handler = CronHandler::new().await.unwrap();
+
+    let _ = db.conn.execute("
+        CREATE TABLE IF NOT EXISTS guilds (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         guild_id INTEGER,
         shard TEXT,
         shard_name TEXT,
-        show_command_output INTEGER CHECK (show_command_output IN (0,1))
-    )").await.unwrap();
+        show_command_output INTEGER CHECK (show_command_output IN (0,1)) )").await.unwrap();
+
+    let _ = db.conn.execute("
+        CREATE TABLE IF NOT EXISTS cronjobs (
+        guild INTEGER REFERENCES guilds(id),
+        job_name TEXT,
+        schedule TEXT,
+        channel_id INTEGER,
+        map_name TEXT,
+        draw_text INTEGER CHECK (draw_text IN (0,1)) )").await.unwrap();
 
     let intents = GatewayIntents::GUILDS;
 
     let mut client = Client::builder(token, intents)
-        .event_handler(Handler { db })
+        .event_handler(Handler { db, local, cron_handler })
         .await
         .expect("Error creating client");
 

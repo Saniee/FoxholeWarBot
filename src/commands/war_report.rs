@@ -5,6 +5,8 @@ use crate::utils::api_definitions::foxhole::WarReport;
 use crate::utils::cache::{load_war_report, load_maps, save_war_report};
 use crate::utils::db::{Database, Shard};
 
+pub const NAME: &str = "war-report";
+
 pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
     let guild_id = interaction.guild_id.unwrap().get();
     let data = db.get_guild(guild_id).await;
@@ -114,6 +116,6 @@ pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: D
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("war-report").description("Responds with information about a Hex/Map Chunk.")
+    CreateCommand::new(NAME).description("Responds with information about a Hex/Map Chunk.")
     .add_option(CreateCommandOption::new(CommandOptionType::String, "map-name", "Name of the Hex you want displayed.").required(true).set_autocomplete(true))
 }
