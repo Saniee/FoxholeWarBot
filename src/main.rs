@@ -49,7 +49,7 @@ impl EventHandler for Handler {
                 commands::schedule_report::NAME => {
                     commands::schedule_report::run(&ctx, command, self.db.clone(), self.cron_handler.clone()).await.unwrap();
                     None
-                }
+                },
                 _ => Some("not implemented :(".to_string()),
             };
 
@@ -65,14 +65,17 @@ impl EventHandler for Handler {
             // println!("Recieved Autocomplete Interaction");
 
             match command.data.name.as_str() {
-                "get-map" => {
+                commands::get_map::NAME => {
                     commands::get_map::autocomplete(&ctx, command, self.db.clone()).await.unwrap();
                 },
-                "war-report" => {
+                commands::war_report::NAME => {
                     commands::war_report::autocomplete(&ctx, command, self.db.clone()).await.unwrap();
                 },
-                "set-guild-settings" => {
+                commands::set_guild_settings::NAME => {
                     commands::set_guild_settings::autocomplete(&ctx, command).await.unwrap();
+                },
+                commands::schedule_report::NAME => {
+                    commands::schedule_report::autocomplete(&ctx, command, self.db.clone()).await.unwrap();
                 }
                 _ => return
             }
@@ -111,6 +114,7 @@ impl EventHandler for Handler {
         ctx.idle();
 
         save_maps_cache().await;
+        self.cron_handler.start_map_update_job().await;
 
         let guild_id = GuildId::new(
             dotenv::var("GUILD_ID")
@@ -124,16 +128,18 @@ impl EventHandler for Handler {
                 commands::get_map::register(),
                 commands::war_report::register(),
                 commands::war_state::register(),
+                commands::schedule_report::register(),
                 commands::set_guild_settings::register(),
-            ]).await;
+            ]).await.unwrap();
         } else {
             let _ = guild_id.set_commands(&ctx.http, vec![
                 commands::get_map::register(),
                 commands::war_report::register(),
                 commands::war_state::register(),
+                commands::schedule_report::register(),
                 commands::set_guild_settings::register(),
             ])
-            .await;
+            .await.unwrap();
         }
     }
 }
@@ -187,9 +193,10 @@ async fn main() {
     let _ = db.conn.execute("
         CREATE TABLE IF NOT EXISTS cronjobs (
         guild INTEGER REFERENCES guilds(id),
+        uuid INTEGER,
         job_name TEXT,
         schedule TEXT,
-        channel_id INTEGER,
+        webhook_url TEXT,
         map_name TEXT,
         draw_text INTEGER CHECK (draw_text IN (0,1)) )").await.unwrap();
 
