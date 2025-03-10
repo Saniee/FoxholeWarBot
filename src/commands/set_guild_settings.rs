@@ -19,7 +19,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
         0
     };
 
-    let guild_id = interaction.guild_id.unwrap().get();
+    let guild_id = interaction.guild_id.unwrap().get().try_into().unwrap();
 
     let data = db.get_guild(guild_id).await;
 

@@ -2,13 +2,12 @@ use serenity::all::{AutocompleteChoice, CommandInteraction, Context, CreateAutoc
 
 use crate::utils::{cache::load_maps, cron::CronHandler, db::{Database, Shard}};
 
-#[allow(dead_code)]
 #[derive(Clone)]
 pub struct ReportJob {
     pub schedule_name: String,
     pub schedule: String,
     pub webhook: Webhook,
-    pub guild_id: u64,
+    pub guild_id: i64,
     pub map_name: String,
     pub draw_text: i32,
     pub db: Database,
@@ -16,8 +15,8 @@ pub struct ReportJob {
 
 pub const NAME: &str = "schedule-report";
 
-pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, cron_handler: CronHandler) -> Result<(), serenity::Error> {
-    let guild_id = interaction.guild_id.unwrap().get();
+pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, cron_handler: &mut CronHandler) -> Result<(), serenity::Error> {
+    let guild_id: i64 = interaction.guild_id.unwrap().get().try_into().unwrap();
     let data = db.get_guild(guild_id).await;
 
     let guild = match data {
@@ -27,17 +26,18 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, 
         }
         Some(data) => data
     };
-    
+    let guild_id = guild.guild_id;
+
     if guild.show_command_output == 1 {
         interaction.defer(ctx).await?;
     } else if guild.show_command_output == 0 {
         interaction.defer_ephemeral(ctx).await?;
     }
 
-    let channel = interaction.data.options[0].value.as_channel_id().unwrap();
-    let schedule_name = interaction.data.options[3].value.as_str().unwrap().to_owned();
-    let schedule = interaction.data.options[1].value.as_str().unwrap().to_owned();
-    let map_name = interaction.data.options[2].value.as_str().unwrap().to_owned();
+    let schedule_name = interaction.data.options[0].value.as_str().unwrap().to_owned();
+    let channel = interaction.data.options[1].value.as_channel_id().unwrap();
+    let schedule = interaction.data.options[2].value.as_str().unwrap().to_owned();
+    let map_name = interaction.data.options[3].value.as_str().unwrap().to_owned();
     
     let draw_text_bool = interaction.data.options[4].value.as_bool().unwrap();
     #[allow(clippy::needless_late_init)]
@@ -59,15 +59,22 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, 
         }
     };
 
-    cron_handler.add_job(ctx.clone(), ReportJob { schedule_name, schedule, webhook, db, guild_id: u64::try_from(guild.id).unwrap(), map_name, draw_text }).await;
+    let err = cron_handler.add_report_job(ctx.clone(), ReportJob { schedule_name, schedule, webhook, db, guild_id, map_name, draw_text }).await;
 
-    interaction.edit_response(&ctx, EditInteractionResponse::new().content("Done!")).await?;
+    match err {
+        Some(_) => {
+            interaction.edit_response(&ctx, EditInteractionResponse::new().content("Created!")).await?;
+        },
+        None => {
+            interaction.edit_response(&ctx, EditInteractionResponse::new().content("Job with that name already exists!")).await?;
+        }
+    }
 
     Ok(())
 }
 
 pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
-    let guild_id = interaction.guild_id.unwrap().get();
+    let guild_id = interaction.guild_id.unwrap().get().try_into().unwrap();
     let data = db.get_guild(guild_id).await;
 
     let mut choices: Vec<AutocompleteChoice> = vec![];
@@ -83,7 +90,7 @@ pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: D
     
     let maps = load_maps(Shard::from_str(&guild.shard_name)).await;
 
-    let filter = interaction.data.options[0].value.as_str().unwrap_or("").trim().to_lowercase();
+    let filter = interaction.data.options[3].value.as_str().unwrap_or("").trim().to_lowercase();
     
     for str in maps {
         if str == "OriginHex" {

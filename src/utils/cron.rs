@@ -1,14 +1,21 @@
 use reqwest::StatusCode;
 use serenity::all::{Context, CreateAttachment, CreateEmbed, CreateEmbedFooter, ExecuteWebhook, Webhook};
 use tokio_cron_scheduler::{Job, JobScheduler, JobSchedulerError};
-
+use uuid::Uuid;
 use crate::commands::schedule_report::ReportJob;
 
-use super::{api_definitions::foxhole::{DynamicMapData, StaticMapData}, cache::{load_map_cache, save_map_cache, save_maps_cache}, db::{Database, JobData}, request_processing::place_image_info};
+use super::{api_definitions::foxhole::{DynamicMapData, StaticMapData}, cache::{load_map_cache, save_map_cache, save_maps_cache}, db::{Database, GuildData, JobData}, request_processing::place_image_info};
+
+#[derive(Debug, Clone)]
+pub struct Report {
+    uuid: Uuid,
+    name: String,
+}
 
 #[derive(Clone)]
 pub struct CronHandler {
-    scheduler: JobScheduler
+    scheduler: JobScheduler,
+    uuid_list: Vec<Report>
 }
 
 impl CronHandler {
@@ -17,35 +24,63 @@ impl CronHandler {
         sched.start().await?;
         
         Ok(
-            CronHandler { scheduler: sched }
+            CronHandler { scheduler: sched, uuid_list: Vec::new() }
         )
     }
 
+    pub fn list_all_jobs(&mut self) -> Vec<Report> {
+        println!("Current active Reports: {:?}", self.uuid_list.len());
+        self.uuid_list.clone()
+    }
+
     pub async fn start_map_update_job(&self) {
-        self.scheduler.add(Job::new_async("0 0 * * *", |uuid, mut l| {
+        self.scheduler.add(Job::new_async("0 0 0 * * *", |_uuid, mut _l| {
             Box::pin({
                 async move {
                     save_maps_cache().await;
                     println!("Map List Updated!");
-                    
-                    let next_tick = l.next_tick_for_job(uuid).await;
-                    match next_tick {
-                        Ok(Some(ts)) => println!("Next updated at {:?}", ts),
-                        _ => println!("Couldn't get the next update time.")
-                    }
                 }
             })
         }).unwrap()).await.unwrap();
     }
 
-    #[allow(dead_code)]
-    pub async fn restart_jobs(&self, db: Database) {
-        let _jobs: Vec<JobData> = sqlx::query_as("SELECT * FROM cronjobs").fetch_all(&db.conn).await.unwrap();
-        todo!();
+    pub async fn restart_report_jobs(&mut self, ctx: &Context, db: Database) {
+        let jobs_f = sqlx::query_as("SELECT * FROM cronjobs").fetch_all(&db.conn).await;
+        let jobs: Vec<JobData> = match jobs_f {
+            Ok(jobs) => jobs,
+            Err(_) => return
+        };
+
+        if jobs.is_empty() {
+            println!("Report Jobs Database is Empty.");
+            return;
+        }
+
+        let guild: GuildData = sqlx::query_as("SELECT * FROM guilds WHERE id == ?1").bind(jobs[0].guild).fetch_one(&db.conn).await.unwrap();
+        for job in jobs {
+            let report_job = ReportJob {
+                schedule_name: job.job_name,
+                schedule: job.schedule,
+                webhook: serenity::all::Webhook::from_url(&ctx, &job.webhook_url.to_owned()).await.unwrap(),
+                guild_id: guild.guild_id,
+                map_name: job.map_name,
+                draw_text: job.draw_text,
+                db: db.clone(),
+            };
+            self.add_report_job(ctx.clone(), report_job).await;
+        }
     }
 
-    pub async fn add_job(&self, ctx: Context,  report_job: ReportJob) {
+    pub async fn add_report_job(&mut self, ctx: Context,  report_job: ReportJob) -> Option<Vec<Report>> {
         let job = report_job.clone();
+
+        let success = report_job.db.add_job_entry(report_job.guild_id, report_job.clone()).await;
+
+        match success {
+            Some(_) => {},
+            None => return None,
+        }
+
         let uuid = self.scheduler.add(Job::new_async(job.schedule, move |uuid, mut l| {
             Box::pin(
                 {
@@ -145,14 +180,16 @@ impl CronHandler {
                 }
             )
         }).unwrap()).await.unwrap();
-        let job_data = report_job.db.get_job_entry(&report_job.schedule_name).await;
+        
+        /* let job_data = report_job.db.get_job_entry(&report_job.schedule_name).await;
         match job_data {
-            Some(_) => {
-                report_job.db.update_job_entry(uuid.as_u128(), report_job.clone().schedule_name, report_job.clone()).await;
-            },
+            Some(_) => {},
             None => {
-                report_job.db.add_job_entry(uuid.as_u128(), report_job.guild_id, report_job.clone()).await;
+                
             }
-        }
+        } */
+
+        self.uuid_list.push(Report { uuid, name: report_job.clone().schedule_name });
+        Some(self.list_all_jobs())
     }
 }

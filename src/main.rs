@@ -47,9 +47,13 @@ impl EventHandler for Handler {
                     None
                 },
                 commands::schedule_report::NAME => {
-                    commands::schedule_report::run(&ctx, command, self.db.clone(), self.cron_handler.clone()).await.unwrap();
+                    commands::schedule_report::run(&ctx, command, self.db.clone(), &mut self.cron_handler.clone()).await.unwrap();
                     None
                 },
+                commands::remove_report::NAME => {
+                    commands::remove_report::run(&ctx, command, self.db.clone(), &mut self.cron_handler.clone()).await.unwrap();
+                    None
+                }
                 _ => Some("not implemented :(".to_string()),
             };
 
@@ -76,6 +80,9 @@ impl EventHandler for Handler {
                 },
                 commands::schedule_report::NAME => {
                     commands::schedule_report::autocomplete(&ctx, command, self.db.clone()).await.unwrap();
+                },
+                commands::remove_report::NAME => {
+                    commands::remove_report::autocomplete(&ctx, command, self.db.clone()).await.unwrap();
                 }
                 _ => return
             }
@@ -90,7 +97,7 @@ impl EventHandler for Handler {
 
         if new {
             println!("Joined {}. Now in {} Guilds!", guild.name, _ctx.cache.guilds().len());
-            self.db.create_guild(guild.id.get(), None).await;
+            self.db.create_guild(i64::try_from(guild.id.get()).unwrap(), None).await;
         }
     }
 
@@ -99,11 +106,11 @@ impl EventHandler for Handler {
         if full.is_some() {
             if !incomplete.unavailable {
                 println!("Left {}. Now in {} Guilds!", full.clone().unwrap().name, _ctx.cache.guilds().len());
-                self.db.delete_guild(full.clone().unwrap().id.get()).await;
+                self.db.delete_guild(i64::try_from(full.clone().unwrap().id.get()).unwrap()).await;
             }
         } else if !incomplete.unavailable {
             println!("Left {} (Incomplete Data). Now in {} Guilds!", incomplete.id, _ctx.cache.guilds().len());
-            self.db.delete_guild(incomplete.id.get()).await;
+            self.db.delete_guild(i64::try_from(incomplete.id.get()).unwrap()).await;
         }
     }
     
@@ -115,6 +122,8 @@ impl EventHandler for Handler {
 
         save_maps_cache().await;
         self.cron_handler.start_map_update_job().await;
+
+        self.cron_handler.clone().restart_report_jobs(&ctx, self.db.clone()).await;
 
         let guild_id = GuildId::new(
             dotenv::var("GUILD_ID")
@@ -129,6 +138,7 @@ impl EventHandler for Handler {
                 commands::war_report::register(),
                 commands::war_state::register(),
                 commands::schedule_report::register(),
+                commands::remove_report::register(),
                 commands::set_guild_settings::register(),
             ]).await.unwrap();
         } else {
@@ -137,6 +147,7 @@ impl EventHandler for Handler {
                 commands::war_report::register(),
                 commands::war_state::register(),
                 commands::schedule_report::register(),
+                commands::remove_report::register(),
                 commands::set_guild_settings::register(),
             ])
             .await.unwrap();
@@ -193,8 +204,7 @@ async fn main() {
     let _ = db.conn.execute("
         CREATE TABLE IF NOT EXISTS cronjobs (
         guild INTEGER REFERENCES guilds(id),
-        uuid INTEGER,
-        job_name TEXT,
+        job_name TEXT UNIQUE,
         schedule TEXT,
         webhook_url TEXT,
         map_name TEXT,
