@@ -63,9 +63,6 @@ impl EventHandler for Handler {
                 },
                 "war-report" => {
                     commands::war_report::autocomplete(&ctx, command, self.db.clone()).await.unwrap();
-                },
-                "set-guild-settings" => {
-                    commands::set_guild_settings::autocomplete(&ctx, command).await.unwrap();
                 }
                 _ => return
             }

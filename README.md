@@ -24,10 +24,10 @@ The good part of this is that the bot will be crash free, so it won't be offline
 - [x] Have all the needed Discord systems implemented.
 - Remake the old commands and they're features again, in a new language. Hopefully with better performance and flexibility of changes.
   - [x] get-map
-  - [ ] war-report
-  - [ ] war-state
-  - [ ] set-shard
-  - [ ] set-visibility
+  - [x] war-report
+  - [x] war-state
+  - [x] set-shard
+  - [x] set-visibility
 - [ ] Make the first steps of improving the user experience. (Making it easier to search for hexes etc.)
 - [ ] Improve Self Hosting ease of use...? `I'm unsure if this bot has been self hosted before.`
 

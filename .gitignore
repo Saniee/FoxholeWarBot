@@ -6,3 +6,4 @@
 !/assets
 !/.env.example
 !/README.md
+src/commands/template_command_rs.example
