@@ -9,7 +9,7 @@ use crate::utils::request_processing::place_image_info;
 pub const NAME: &str = "get-map";
 
 pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
-    let guild_id = interaction.guild_id.unwrap().get();
+    let guild_id = interaction.guild_id.unwrap().get().try_into().unwrap();
     let data = db.get_guild(guild_id).await;
 
     let guild = match data {
@@ -106,7 +106,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
 }
 
 pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
-    let guild_id = interaction.guild_id.unwrap().get();
+    let guild_id = interaction.guild_id.unwrap().get().try_into().unwrap();
     let data = db.get_guild(guild_id).await;
 
     let mut choices: Vec<AutocompleteChoice> = vec![];

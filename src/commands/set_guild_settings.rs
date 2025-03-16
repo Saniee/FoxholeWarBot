@@ -1,5 +1,5 @@
 use reqwest::StatusCode;
-use serenity::all::{CommandInteraction, CommandOptionType, Context, CreateCommand, CreateCommandOption, EditInteractionResponse, Permissions};
+use serenity::all::{AutocompleteChoice, CommandInteraction, CommandOptionType, Context, CreateAutocompleteResponse, CreateCommand, CreateCommandOption, CreateInteractionResponse, EditInteractionResponse, Permissions};
 
 use crate::utils::db::{Database, Shard};
 
@@ -19,7 +19,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
         0
     };
 
-    let guild_id = interaction.guild_id.unwrap().get();
+    let guild_id = interaction.guild_id.unwrap().get().try_into().unwrap();
 
     let data = db.get_guild(guild_id).await;
 
@@ -69,8 +69,16 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
     }
 }
 
+pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction) -> Result<(), serenity::Error> {
+    let choices: Vec<AutocompleteChoice> = vec![AutocompleteChoice::new("Able", "Able"), AutocompleteChoice::new("Baker", "Baker"), AutocompleteChoice::new("Charlie", "Charlie")];
+
+    let response = CreateInteractionResponse::Autocomplete(CreateAutocompleteResponse::new().set_choices(choices));
+
+    interaction.create_response(&ctx.http, response).await?;
+    
+    Ok(())
+}
+
 pub fn register() -> CreateCommand {
-    CreateCommand::new("set-guild-settings").default_member_permissions(Permissions::ADMINISTRATOR).description("Sets the server the bot will get data from and whether or not messages will show to others.")
-    .add_option(CreateCommandOption::new(CommandOptionType::String, "shard", "Choose which server to get data from.").required(true).add_string_choice("Able", "Able").add_string_choice("Baker", "Baker").add_string_choice("Charlie", "Charlie"))
-    .add_option(CreateCommandOption::new(CommandOptionType::Boolean, "show-messages", "True shows commands to everyone. False to only the one who called the command.").required(true))
+    CreateCommand::new(NAME).default_member_permissions(Permissions::ADMINISTRATOR).description("Sets the server the bot will get data from and whether or not messages will show to others.").add_option(CreateCommandOption::new(CommandOptionType::String, "shard", "Choose which server to get data from.").set_autocomplete(true).required(true)).add_option(CreateCommandOption::new(CommandOptionType::Boolean, "show-messages", "True shows commands to everyone. False to only the one who called the command.").required(true))
 }
