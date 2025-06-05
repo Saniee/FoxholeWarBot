@@ -102,7 +102,6 @@ impl EventHandler for Handler {
     }
 
     async fn guild_delete(&self, _ctx: Context, incomplete: UnavailableGuild, full: Option<Guild>) {
-        
         if full.is_some() {
             if !incomplete.unavailable {
                 println!("Left {}. Now in {} Guilds!", full.clone().unwrap().name, _ctx.cache.guilds().len());
@@ -122,8 +121,6 @@ impl EventHandler for Handler {
 
         save_maps_cache().await;
         self.cron_handler.start_map_update_job().await;
-
-        self.cron_handler.clone().restart_report_jobs(&ctx, self.db.clone()).await;
 
         let guild_id = GuildId::new(
             dotenv::var("GUILD_ID")
@@ -152,6 +149,8 @@ impl EventHandler for Handler {
             ])
             .await.unwrap();
         }
+
+        self.cron_handler.clone().restart_report_jobs(&ctx, self.db.clone()).await;
     }
 }
 
@@ -159,6 +158,7 @@ impl EventHandler for Handler {
 async fn main() {
     let args = Args::parse();
     let local = args.local;
+    let cron_handler = CronHandler::new().await.unwrap();
 
     // Clear All Commands on App
     if args.clear_commands {
@@ -191,8 +191,6 @@ async fn main() {
 
     let db = Database::connect().await;
 
-    let cron_handler = CronHandler::new().await.unwrap();
-
     let _ = db.conn.execute("
         CREATE TABLE IF NOT EXISTS guilds (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -208,7 +206,8 @@ async fn main() {
         schedule TEXT,
         webhook_url TEXT,
         map_name TEXT,
-        draw_text INTEGER CHECK (draw_text IN (0,1)) )").await.unwrap();
+        draw_text INTEGER CHECK (draw_text IN (0,1)),
+        job_id TEXT UNIQUE )").await.unwrap();
 
     let intents = GatewayIntents::GUILDS;
 

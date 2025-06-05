@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use reqwest::StatusCode;
 use serenity::all::{Context, CreateAttachment, CreateEmbed, CreateEmbedFooter, ExecuteWebhook, Webhook};
 use tokio_cron_scheduler::{Job, JobScheduler, JobSchedulerError};
@@ -6,34 +8,23 @@ use crate::commands::schedule_report::ReportJob;
 
 use super::{api_definitions::foxhole::{DynamicMapData, StaticMapData}, cache::{load_map_cache, save_map_cache, save_maps_cache}, db::{Database, GuildData, JobData}, request_processing::place_image_info};
 
-#[derive(Debug, Clone)]
-pub struct Report {
-    uuid: Uuid,
-    name: String,
-}
-
 #[derive(Clone)]
 pub struct CronHandler {
-    scheduler: JobScheduler,
-    uuid_list: Vec<Report>
+    scheduler: JobScheduler
 }
 
 impl CronHandler {
     pub async fn new() -> Result<Self, JobSchedulerError> {
         let sched = JobScheduler::new().await?;
         sched.start().await?;
-        
+
         Ok(
-            CronHandler { scheduler: sched, uuid_list: Vec::new() }
+            CronHandler { scheduler: sched}
         )
     }
 
-    pub fn list_all_jobs(&mut self) -> Vec<Report> {
-        println!("Current active Reports: {:?}", self.uuid_list.len());
-        self.uuid_list.clone()
-    }
-
     pub async fn start_map_update_job(&self) {
+        println!("Starting map updating job!");
         self.scheduler.add(Job::new_async("0 0 0 * * *", |_uuid, mut _l| {
             Box::pin({
                 async move {
@@ -45,15 +36,15 @@ impl CronHandler {
     }
 
     pub async fn restart_report_jobs(&mut self, ctx: &Context, db: Database) {
+        println!("Restarting scheduled report jobs from the database!");
         let jobs_f = sqlx::query_as("SELECT * FROM cronjobs").fetch_all(&db.conn).await;
         let jobs: Vec<JobData> = match jobs_f {
             Ok(jobs) => jobs,
-            Err(_) => return
+            Err(_) => return println!("Error getting jobs from database!")
         };
 
         if jobs.is_empty() {
-            println!("Report Jobs Database is Empty.");
-            return;
+            return println!("Report Jobs Database is Empty.");
         }
 
         let guild: GuildData = sqlx::query_as("SELECT * FROM guilds WHERE id == ?1").bind(jobs[0].guild).fetch_one(&db.conn).await.unwrap();
@@ -67,18 +58,20 @@ impl CronHandler {
                 draw_text: job.draw_text,
                 db: db.clone(),
             };
-            self.add_report_job(ctx.clone(), report_job).await;
+            self.add_report_job(ctx.clone(), db.clone(), report_job, true).await;
         }
     }
 
-    pub async fn add_report_job(&mut self, ctx: Context,  report_job: ReportJob) -> Option<Vec<Report>> {
+    pub async fn add_report_job(&mut self, ctx: Context, db: Database,  report_job: ReportJob, from_db: bool) {
         let job = report_job.clone();
 
-        let success = report_job.db.add_job_entry(report_job.guild_id, report_job.clone()).await;
+        if !from_db {
+            let success = report_job.db.add_job_entry(report_job.guild_id, report_job.clone()).await;
 
-        match success {
-            Some(_) => {},
-            None => return None,
+            match success {
+                Some(_) => {},
+                None => return println!("Didnt succeed to add a job entry."),
+            }
         }
 
         let uuid = self.scheduler.add(Job::new_async(job.schedule, move |uuid, mut l| {
@@ -89,6 +82,7 @@ impl CronHandler {
                     let url = job.webhook.url().unwrap().clone();
                     let db = job.db.clone();
                     let map_name = job.map_name.clone();
+                    let job_name = job.schedule_name.clone();
                     async move {
                         let next_tick_q = l.next_tick_for_job(uuid).await;
                         let next_tick = match next_tick_q {
@@ -164,7 +158,7 @@ impl CronHandler {
                             let _ = img.save("render.png");
                         }
 
-                        let mut e = CreateEmbed::new().color((0, 255, 0)).attachment("attachment://render.png").image("attachment://render.png").footer(CreateEmbedFooter::new("Requested at")).timestamp(chrono::Local::now());
+                        let mut e = CreateEmbed::new().title(format!("Scheduled Report: {}", job_name)).color((0, 255, 0)).attachment("attachment://render.png").image("attachment://render.png").footer(CreateEmbedFooter::new("Requested at")).timestamp(chrono::Local::now());
 
                         if next_tick.is_some() {
                             e = e.description(format!("Last API Update: {}\nNext Scheduled Update: {}", chrono::DateTime::from_timestamp_millis(last_updated).unwrap().format("%Y %m %d %H:%M:%S"), next_tick.unwrap().format("%Y %m %d %H:%M:%S")));
@@ -179,17 +173,19 @@ impl CronHandler {
                     }
                 }
             )
-        }).unwrap()).await.unwrap();
-        
-        /* let job_data = report_job.db.get_job_entry(&report_job.schedule_name).await;
-        match job_data {
-            Some(_) => {},
-            None => {
-                
-            }
-        } */
+        }).unwrap()).await;
 
-        self.uuid_list.push(Report { uuid, name: report_job.clone().schedule_name });
-        Some(self.list_all_jobs())
+        match uuid {
+            Ok(id) => {
+                db.update_job_uuid(report_job.schedule_name, id.to_string()).await;
+            },
+            Err(err) => println!("Error adding job into list: {}", err)
+        }
+    }
+
+    pub async fn remove_report_job(&mut self, _ctx: &Context, db: Database, job_name: String) {
+        let job = db.get_job_entry(&job_name).await.unwrap();
+        let _ = self.scheduler.remove(&Uuid::from_str(&job.job_id).unwrap()).await;
+        db.remove_job_entry(job_name).await;
     }
 }

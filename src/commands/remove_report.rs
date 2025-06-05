@@ -1,10 +1,33 @@
-use serenity::all::{AutocompleteChoice, CommandInteraction, Context, CreateAutocompleteResponse, CreateCommand, CreateCommandOption, CreateInteractionResponse};
+use serenity::all::{AutocompleteChoice, CommandInteraction, Context, CreateAutocompleteResponse, CreateCommand, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse};
 
 use crate::utils::{cron::CronHandler, db::Database};
 
 pub const NAME: &str = "remove-report";
 
 pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, cron_handler: &mut CronHandler) -> Result<(), serenity::Error> {
+    let guild_id = interaction.guild_id.unwrap().get().try_into().unwrap();
+    let data = db.get_guild(guild_id).await;
+
+    let guild = match data {
+        None => {
+            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content("No Shard set for the guild. Run the `/set-guild-settings` command to do so."))).await?;
+            return Ok(());
+        }
+        Some(data) => data
+    };
+    
+    if guild.show_command_output == 1 {
+        interaction.defer(ctx).await?;
+    } else if guild.show_command_output == 0 {
+        interaction.defer_ephemeral(ctx).await?;
+    }
+
+    let schedule_name = interaction.data.options[0].value.as_str().unwrap();
+
+    cron_handler.remove_report_job(ctx, db, schedule_name.to_string()).await;
+    
+    interaction.edit_response(ctx, EditInteractionResponse::new().content(format!("Your scheduled report with the name: {}, was removed!", schedule_name))).await?;
+
     Ok(())
 }
 

@@ -57,7 +57,8 @@ pub struct JobData {
     pub schedule: String,
     pub webhook_url: String,
     pub map_name: String,
-    pub draw_text: i32
+    pub draw_text: i32,
+    pub job_id: String
 }
 
 #[derive(Clone)]
@@ -123,15 +124,12 @@ impl Database {
         .bind(job.draw_text)
         .execute(&self.conn).await;
 
-        match res {
-            Ok(res) => Some(res),
-            Err(_) => None
-        }
+        res.ok()
     }
 
     #[allow(unused_variables)]
-    pub async fn remove_job_entry(&self, report_job: ReportJob) {
-        todo!()
+    pub async fn remove_job_entry(&self, job_name: String) {
+        sqlx::query("DELETE FROM cronjobs WHERE job_name == ?1").bind(job_name).execute(&self.conn).await.unwrap();
     }
 
     pub async fn update_job_entry(&self, job_name: String, job: ReportJob) {
@@ -143,5 +141,9 @@ impl Database {
         .bind(job.draw_text)
         .bind(job_name)
         .execute(&self.conn).await.unwrap();
+    }
+
+    pub async fn update_job_uuid(&self, job_name:String, uuid: String) {
+        sqlx::query("UPDATE cronjobs SET job_id = ?1 WHERE job_name == ?2").bind(uuid).bind(job_name).execute(&self.conn).await.unwrap();
     }
 }
