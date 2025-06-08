@@ -96,19 +96,9 @@ pub async fn save_war_report(war_report: WarReport, map_name: &str, shard: &str)
 }
 
 pub async fn load_map_cache(map_name: &str, shard: &str) -> Option<(DynamicMapData, StaticMapData)> {
-    let dynamic_data_str = match tokio::fs::read_to_string(format!("./cache/dynamic/Dynamic_{}-{}.json", map_name, shard)).await {
-        Ok(data) => Some(data),
-        Err(_) => {
-            None
-        }
-    };
+    let dynamic_data_str = (tokio::fs::read_to_string(format!("./cache/dynamic/Dynamic_{}-{}.json", map_name, shard)).await).ok();
 
-    let static_data_str = match tokio::fs::read_to_string(format!("./cache/static/Static_{}-{}.json", map_name,shard)).await {
-        Ok(data) => Some(data),
-        Err(_) => {
-            None
-        }
-    };
+    let static_data_str = (tokio::fs::read_to_string(format!("./cache/static/Static_{}-{}.json", map_name,shard)).await).ok();
 
     if dynamic_data_str.is_some() && static_data_str.is_some() {
         let dynamic_data = serde_json::from_str(&dynamic_data_str.unwrap()).unwrap();

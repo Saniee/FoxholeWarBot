@@ -6,3 +6,4 @@
 !/assets
 !/.env.example
 !/README.md
+*.example

@@ -6,8 +6,10 @@ use crate::utils::cache::{load_map_cache, load_maps, save_map_cache};
 use crate::utils::db::{Database, Shard};
 use crate::utils::request_processing::place_image_info;
 
+pub const NAME: &str = "get-map";
+
 pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
-    let guild_id = interaction.guild_id.unwrap().get();
+    let guild_id = interaction.guild_id.unwrap().get().try_into().unwrap();
     let data = db.get_guild(guild_id).await;
 
     let guild = match data {
@@ -104,7 +106,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
 }
 
 pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
-    let guild_id = interaction.guild_id.unwrap().get();
+    let guild_id = interaction.guild_id.unwrap().get().try_into().unwrap();
     let data = db.get_guild(guild_id).await;
 
     let mut choices: Vec<AutocompleteChoice> = vec![];
@@ -137,7 +139,7 @@ pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: D
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("get-map").description("Responds with an image of that Hex/Map chunk. With Colored icons and labels.")
+    CreateCommand::new(NAME).description("Responds with an image of that Hex/Map chunk. With Colored icons and labels.")
     .add_option(CreateCommandOption::new(CommandOptionType::String, "map-name", "Name of the Hex you want displayed.").required(true).set_autocomplete(true))
     .add_option(CreateCommandOption::new(CommandOptionType::Boolean, "draw-text", "Renders Text for things on the map. Turned off by default, since it makes the render messy.").required(false))
 }

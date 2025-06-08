@@ -3,8 +3,10 @@ use serenity::all::{CommandInteraction, Context, CreateCommand, CreateEmbed, Cre
 use crate::utils::api_definitions::foxhole::War;
 use crate::utils::db::Database;
 
+pub const NAME: &str = "war-state";
+
 pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
-    let guild_id = interaction.guild_id.unwrap().get();
+    let guild_id = interaction.guild_id.unwrap().get().try_into().unwrap();
     let data = db.get_guild(guild_id).await;
 
     let guild = match data {
@@ -38,5 +40,5 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("war-state").description("Gets the global state of the war. This command will default to not showing.")
+    CreateCommand::new(NAME).description("Gets the global state of the war. This command will default to not showing.")
 }
