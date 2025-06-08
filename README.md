@@ -1,6 +1,6 @@
 # FoxholeWarBot
 
-### The old (Buggy) version of this bot is on this [branch (Click Me!)](https://github.com/Saniee/FoxholeWarBot/tree/old-version). <br>
+### The old (Buggy) version of this bot is on this [branch (Click Me!)](http://156.67.30.147:3000/Saniee/FoxholeWarBot/src/branch/old-version/). <br>
 
 ---
 
