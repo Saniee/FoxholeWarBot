@@ -2,7 +2,12 @@
 
 ## The bot needs these permissions:
 
-![permissionsList](https://imgur.com/jA9LEse)
+- Add Reactions
+- Attach Files
+- Embed Links
+- Manage Webhooks
+- Send Messages
+- Send Messages in Threads
 
 # [](#header-2)Downtime or bot is down?:
 
