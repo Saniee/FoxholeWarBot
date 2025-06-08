@@ -39,7 +39,6 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, 
     let channel = interaction.data.options[2].value.as_channel_id().unwrap();
     let schedule = interaction.data.options[3].value.as_str().unwrap().to_owned();
     
-    
     let draw_text_bool = interaction.data.options[4].value.as_bool().unwrap();
     #[allow(clippy::needless_late_init)]
     let draw_text;
@@ -67,10 +66,14 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, 
         webhook = webhook_find.unwrap().clone();
     }
 
-    cron_handler.add_report_job(ctx.clone(), db.clone(), ReportJob { schedule_name: schedule_name.clone(), schedule, webhook, db, guild_id, map_name, draw_text }, false).await;
-    
-    interaction.edit_response(ctx, EditInteractionResponse::new().content(format!("Your scheduled report with the name: {}, was created! You can look into <#{}> for it working.", schedule_name, channel.get()))).await?;
+    let done = cron_handler.add_report_job(ctx.clone(), db.clone(), ReportJob { schedule_name: schedule_name.clone(), schedule, webhook, db, guild_id, map_name, draw_text }, false).await;
 
+    if done.is_some() {
+        interaction.edit_response(ctx, EditInteractionResponse::new().content(format!("Your scheduled report with the name: {}, was created! You can look into <#{}> for it working.", schedule_name, channel.get()))).await?;
+    } else {
+        interaction.edit_response(ctx, EditInteractionResponse::new().content("Your report already has a name that's being used. Please choose a different one!")).await?;
+    };
+    
     Ok(())
 }
 
@@ -108,10 +111,10 @@ pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: D
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new(NAME).description("wip")
-    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "map-name", "wip").required(true).set_autocomplete(true))
-    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "schedule-name", "wip").required(true))
+    CreateCommand::new(NAME).description("Creates a recurring scheduled report for a specified map!")
+    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "map-name", "Map name from which to gather data.").required(true).set_autocomplete(true))
+    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "schedule-name", "The name of the scheduled report. !!! NEEDS TO BE UNIQUE !!!").required(true))
     .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::Channel, "report-channel", "The channel where the bot will send the reports.").required(true))
-    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "schedule", "wip").required(true))
-    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::Boolean, "draw-text", "wip").required(true))
+    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "schedule", "The schedule. Phrases which work: every x seconds, at xx:xx am/pm, On [day] at xx:xx.").required(true))
+    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::Boolean, "draw-text", "Draw optional text or not. (City names etc.)").required(true))
 }

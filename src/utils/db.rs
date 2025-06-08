@@ -1,6 +1,7 @@
 #![allow(dead_code, unused_imports)]
 
-use sqlx::{sqlite::{self, SqliteError}, FromRow, Pool, Sqlite};
+use serenity::model::guild;
+use sqlx::{query, sqlite::{self, SqliteError}, FromRow, Pool, Sqlite};
 
 use crate::commands::schedule_report::ReportJob;
 
@@ -41,7 +42,7 @@ impl Shard {
     }
 }
 
-#[derive(Debug, FromRow)]
+#[derive(Debug, FromRow, Clone)]
 pub struct GuildData{
     pub id: i64,
     pub guild_id: i64,
@@ -73,6 +74,24 @@ impl Database {
         let conn = sqlite::SqlitePool::connect_with(opt).await.unwrap();
         Database {
             conn
+        }
+    }
+
+    pub async fn migrate(&self) {
+        println!("Migrating database...");
+        let old_data_res: Result<Vec<GuildData>, sqlx::Error> = sqlx::query_as("SELECT * FROM foxholewarbot").fetch_all(&self.conn).await;
+        let old_data = match old_data_res {
+            Ok(data) => data,
+            Err(_) => {
+                return println!("No migration needed!")
+            }
+        };
+        for guild in old_data {
+            sqlx::query("INSERT INTO guilds (guild_id, shard, shard_name, show_command_output) VALUES (?1, ?2, ?3, ?4)").bind(guild.guild_id).bind(guild.shard).bind(guild.shard_name).bind(guild.show_command_output).execute(&self.conn).await.unwrap();
+        }
+        match sqlx::query("DROP TABLE foxholewarbot").execute(&self.conn).await {
+            Ok(_) => println!("Migration succesfull! Dropped old table."),
+            Err(err) => println!("Couldn't drop the old table! {err}")
         }
     }
 

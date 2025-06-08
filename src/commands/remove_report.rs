@@ -24,7 +24,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, 
 
     let schedule_name = interaction.data.options[0].value.as_str().unwrap();
 
-    cron_handler.remove_report_job(ctx, db, schedule_name.to_string()).await;
+    cron_handler.remove_report_job(ctx, db.clone(), schedule_name.to_string(), guild.clone()).await;
     
     interaction.edit_response(ctx, EditInteractionResponse::new().content(format!("Your scheduled report with the name: {}, was removed!", schedule_name))).await?;
 
@@ -50,10 +50,14 @@ pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: D
 
     let filter = interaction.data.options[0].value.as_str().unwrap_or("").trim().to_lowercase();
 
-    for job in jobs {
+    if jobs.is_empty() {
+        choices.push(AutocompleteChoice::new("There are no scheduled reports for this guild.", "-"));
+    } else {
+        for job in jobs {
         if job.job_name.trim().contains(&filter) && choices.len() < 25 {
             choices.push(AutocompleteChoice::new(job.clone().job_name, job.job_name));
         }
+    }
     }
 
     let response = CreateInteractionResponse::Autocomplete(CreateAutocompleteResponse::new().set_choices(choices));
@@ -63,5 +67,5 @@ pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: D
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new(NAME).description("wip").add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "schedule-name", "wip").required(true).set_autocomplete(true))
+    CreateCommand::new(NAME).description("Removes a scheduled report.").add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "schedule-name", "The name of the schedule which will be deleted.").required(true).set_autocomplete(true))
 }

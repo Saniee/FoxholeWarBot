@@ -53,6 +53,10 @@ impl EventHandler for Handler {
                 commands::remove_report::NAME => {
                     commands::remove_report::run(&ctx, command, self.db.clone(), &mut self.cron_handler.clone()).await.unwrap();
                     None
+                },
+                commands::schedule_help::NAME => {
+                    commands::schedule_help::run(&ctx, command, self.db.clone()).await.unwrap();
+                    None
                 }
                 _ => Some("not implemented :(".to_string()),
             };
@@ -135,6 +139,7 @@ impl EventHandler for Handler {
                 commands::war_report::register(),
                 commands::war_state::register(),
                 commands::schedule_report::register(),
+                commands::schedule_help::register(),
                 commands::remove_report::register(),
                 commands::set_guild_settings::register(),
             ]).await.unwrap();
@@ -144,6 +149,7 @@ impl EventHandler for Handler {
                 commands::war_report::register(),
                 commands::war_state::register(),
                 commands::schedule_report::register(),
+                commands::schedule_help::register(),
                 commands::remove_report::register(),
                 commands::set_guild_settings::register(),
             ])
@@ -210,6 +216,8 @@ async fn main() {
         job_id TEXT UNIQUE )").await.unwrap();
 
     let intents = GatewayIntents::GUILDS;
+
+    db.migrate().await;
 
     let mut client = Client::builder(token, intents)
         .event_handler(Handler { db, local, cron_handler })

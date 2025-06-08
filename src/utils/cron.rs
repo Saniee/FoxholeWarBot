@@ -62,7 +62,7 @@ impl CronHandler {
         }
     }
 
-    pub async fn add_report_job(&mut self, ctx: Context, db: Database,  report_job: ReportJob, from_db: bool) {
+    pub async fn add_report_job(&mut self, ctx: Context, db: Database,  report_job: ReportJob, from_db: bool) -> Option<bool> {
         let job = report_job.clone();
 
         if !from_db {
@@ -70,7 +70,7 @@ impl CronHandler {
 
             match success {
                 Some(_) => {},
-                None => return println!("Didnt succeed to add a job entry."),
+                None => return None
             }
         }
 
@@ -180,11 +180,17 @@ impl CronHandler {
                 db.update_job_uuid(report_job.schedule_name, id.to_string()).await;
             },
             Err(err) => println!("Error adding job into list: {}", err)
-        }
+        };
+        Some(true)
     }
 
-    pub async fn remove_report_job(&mut self, _ctx: &Context, db: Database, job_name: String) {
+    pub async fn remove_report_job(&mut self, ctx: &Context, db: Database, job_name: String, guild_data: GuildData) {
         let job = db.get_job_entry(&job_name).await.unwrap();
+        let jobs = db.get_jobs_for_guild(guild_data).await;
+        if jobs.len() == 1 {
+            let webhook = Webhook::from_url(&ctx, &job.webhook_url).await.unwrap();
+            webhook.delete(ctx).await.unwrap();
+        };
         let _ = self.scheduler.remove(&Uuid::from_str(&job.job_id).unwrap()).await;
         db.remove_job_entry(job_name).await;
     }
