@@ -4,7 +4,7 @@ layout: default
 
 # [](#header-1)FoxholeWarBot - The bot for all tactical needs!
 
-### [Invite Link](https://discord.com/api/oauth2/authorize?client_id=886994381259833374&permissions=0&scope=bot)
+### [Invite Link](https://discord.com/oauth2/authorize?client_id=886994381259833374)
 
 ## [Terms of Service](tos)
 
