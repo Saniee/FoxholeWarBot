@@ -68,7 +68,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, 
 
     let done = cron_handler.add_report_job(ctx.clone(), db.clone(), ReportJob { schedule_name: schedule_name.clone(), schedule, webhook, db, guild_id, map_name, draw_text }, false).await;
 
-    if done.is_some() {
+    if done.is_ok() {
         interaction.edit_response(ctx, EditInteractionResponse::new().content(format!("Your scheduled report with the name: {}, was created! You can look into <#{}> for it working.", schedule_name, channel.get()))).await?;
     } else {
         interaction.edit_response(ctx, EditInteractionResponse::new().content("Your report already has a name that's being used. Please choose a different one!")).await?;

@@ -1,6 +1,6 @@
 use serenity::all::{AutocompleteChoice, CommandInteraction, Context, CreateAutocompleteResponse, CreateCommand, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, EditInteractionResponse};
 
-use crate::utils::{cron::CronHandler, db::Database};
+use crate::utils::{cron::{CronError, CronHandler}, db::Database};
 
 pub const NAME: &str = "remove-report";
 
@@ -24,9 +24,24 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, 
 
     let schedule_name = interaction.data.options[0].value.as_str().unwrap();
 
-    cron_handler.remove_report_job(ctx, db.clone(), schedule_name.to_string(), guild.clone()).await;
-    
-    interaction.edit_response(ctx, EditInteractionResponse::new().content(format!("Your scheduled report with the name: {}, was removed!", schedule_name))).await?;
+    match cron_handler.remove_report_job(ctx, db.clone(), schedule_name.to_string(), guild.clone()).await {
+        Ok(_) => {
+            interaction.edit_response(ctx, EditInteractionResponse::new().content(format!("Your scheduled report with the name: {}, was removed!", schedule_name))).await?;
+        },
+        Err(err) => {
+            match err {
+                CronError::NoJobFound(_) => {
+                    interaction.edit_response(ctx, EditInteractionResponse::new().content("The job name you have inputed is not in the guild database. Please double check if you typed it out correctly.".to_string())).await?;
+                },
+                CronError::JobListEmpty(_) => {
+                    interaction.edit_response(ctx, EditInteractionResponse::new().content("Your guild currently has no scheduled reports. Cannot remove nothing.".to_string())).await?;
+                },
+                _ => {
+                    interaction.edit_response(ctx, EditInteractionResponse::new().content("An unknown error occured! Please report it to the support server: [Invite](https://discord.com/invite/9wzppSgXdQ)".to_string())).await?;
+                }
+            }
+        }
+    }
 
     Ok(())
 }
