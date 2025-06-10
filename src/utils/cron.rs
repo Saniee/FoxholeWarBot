@@ -4,9 +4,24 @@ use reqwest::StatusCode;
 use serenity::all::{Context, CreateAttachment, CreateEmbed, CreateEmbedFooter, ExecuteWebhook, Webhook};
 use tokio_cron_scheduler::{Job, JobScheduler, JobSchedulerError};
 use uuid::Uuid;
+use thiserror::Error;
 use crate::commands::schedule_report::ReportJob;
 
 use super::{api_definitions::foxhole::{DynamicMapData, StaticMapData}, cache::{load_map_cache, save_map_cache, save_maps_cache}, db::{Database, GuildData, JobData}, request_processing::place_image_info};
+
+#[derive(Error, Debug)]
+pub enum CronError {
+    #[error("No Job found for the given job name [{0}]!")]
+    NoJobFound(String),
+    #[error("No jobs found for the guild [{0}]!")]
+    JobListEmpty(i64),
+    #[error("Couldn't add a job to the database.")]
+    ErrorAddingJob(),
+    #[error("Couldn't update a job's UUID!")]
+    ErrorUpdatingUuid {
+        scheduler_error: JobSchedulerError
+    }
+}
 
 #[derive(Clone)]
 pub struct CronHandler {
@@ -58,11 +73,11 @@ impl CronHandler {
                 draw_text: job.draw_text,
                 db: db.clone(),
             };
-            self.add_report_job(ctx.clone(), db.clone(), report_job, true).await;
+            let _ = self.add_report_job(ctx.clone(), db.clone(), report_job, true).await;
         }
     }
 
-    pub async fn add_report_job(&mut self, ctx: Context, db: Database,  report_job: ReportJob, from_db: bool) -> Option<bool> {
+    pub async fn add_report_job(&mut self, ctx: Context, db: Database,  report_job: ReportJob, from_db: bool) -> Result<(), CronError> {
         let job = report_job.clone();
 
         if !from_db {
@@ -70,7 +85,7 @@ impl CronHandler {
 
             match success {
                 Some(_) => {},
-                None => return None
+                None => return Err(CronError::ErrorAddingJob())
             }
         }
 
@@ -179,19 +194,25 @@ impl CronHandler {
             Ok(id) => {
                 db.update_job_uuid(report_job.schedule_name, id.to_string()).await;
             },
-            Err(err) => println!("Error adding job into list: {}", err)
+            Err(err) => return Err(CronError::ErrorUpdatingUuid { scheduler_error: err })
         };
-        Some(true)
+        Ok(())
     }
 
-    pub async fn remove_report_job(&mut self, ctx: &Context, db: Database, job_name: String, guild_data: GuildData) {
-        let job = db.get_job_entry(&job_name).await.unwrap();
-        let jobs = db.get_jobs_for_guild(guild_data).await;
+    pub async fn remove_report_job(&mut self, ctx: &Context, db: Database, job_name: String, guild_data: GuildData) -> Result<(), CronError> {
+        let job = match db.get_job_entry(&job_name).await {
+            Some(job) => job,
+            None => return Err(CronError::NoJobFound(job_name))
+        };
+        let jobs = db.get_jobs_for_guild(guild_data.clone()).await;
         if jobs.len() == 1 {
             let webhook = Webhook::from_url(&ctx, &job.webhook_url).await.unwrap();
             webhook.delete(ctx).await.unwrap();
+        } else if jobs.is_empty() {
+            return Err(CronError::JobListEmpty(guild_data.id))
         };
         let _ = self.scheduler.remove(&Uuid::from_str(&job.job_id).unwrap()).await;
         db.remove_job_entry(job_name).await;
+        Ok(())
     }
 }
