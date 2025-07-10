@@ -17,10 +17,16 @@ mod utils;
 mod commands;
 mod args;
 
+#[derive(Clone)]
 struct Handler {
     db: Database,
     local: bool,
     cron_handler: CronHandler
+}
+
+#[derive(Clone, Default)]
+struct HandlerData {
+    cron_jobs_restarted: bool
 }
 
 #[async_trait]
@@ -118,13 +124,14 @@ impl EventHandler for Handler {
     }
     
     async fn ready(&self, ctx: Context, ready: Ready) {
+        let mut data = HandlerData::default();
+
         println!("{} is connected!\nIn {} guild/s!", ready.user.name, ready.guilds.len());
 
         ctx.set_activity(Some(ActivityData::watching("Foxhole Wars")));
         ctx.idle();
 
         save_maps_cache().await;
-        self.cron_handler.start_map_update_job().await;
 
         let guild_id = GuildId::new(
             dotenv::var("GUILD_ID")
@@ -156,7 +163,12 @@ impl EventHandler for Handler {
             .await.unwrap();
         }
 
-        self.cron_handler.clone().restart_report_jobs(&ctx, self.db.clone()).await;
+        if !data.cron_jobs_restarted {
+            self.cron_handler.clone().restart_report_jobs(&ctx, self.db.clone()).await;
+            self.cron_handler.start_map_update_job().await;
+            
+            data.cron_jobs_restarted = true;
+        }
     }
 }
 
@@ -227,4 +239,6 @@ async fn main() {
     if let Err(why) = client.start().await {
         println!("Client error: {why:?}");
     }
+
+    // self.cron_handler.clone().restart_report_jobs(&ctx, self.db.clone()).await;
 }
