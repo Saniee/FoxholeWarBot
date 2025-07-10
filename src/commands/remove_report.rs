@@ -26,7 +26,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, 
 
     match cron_handler.remove_report_job(ctx, db.clone(), schedule_name.to_string(), guild.clone()).await {
         Ok(_) => {
-            interaction.edit_response(ctx, EditInteractionResponse::new().content(format!("Your scheduled report with the name: {}, was removed!", schedule_name))).await?;
+            interaction.edit_response(ctx, EditInteractionResponse::new().content(format!("Your scheduled report with the name: {schedule_name}, was removed!"))).await?;
         },
         Err(err) => {
             match err {

@@ -51,15 +51,15 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
     let last_updated;
 
     if cache_data.is_none() {
-        dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/dynamic/public", map_name)).header("If-None-Match", "\"0\"").send().await.unwrap();
+        dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/dynamic/public")).header("If-None-Match", "\"0\"").send().await.unwrap();
         
-        static_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/static", map_name)).header("If-None-Match", "\"0\"").send().await.unwrap();
+        static_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/static")).header("If-None-Match", "\"0\"").send().await.unwrap();
 
         //println!("{} | {}", dynamic_response.status(), static_response.status());
     } else {
-        dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/dynamic/public", map_name)).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().0.version)).send().await.unwrap();
+        dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/dynamic/public")).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().0.version)).send().await.unwrap();
         
-        static_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/static", map_name)).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().1.version)).send().await.unwrap();
+        static_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/static")).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().1.version)).send().await.unwrap();
     }
 
     if dynamic_response.status() == StatusCode::INTERNAL_SERVER_ERROR && static_response.status() == StatusCode::INTERNAL_SERVER_ERROR {
@@ -72,7 +72,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
 
         let static_data = static_response.json::<StaticMapData>().await.unwrap();
 
-        let img = match place_image_info(&dynamic_data, &static_data, draw_text, &format!("./assets/Maps/Map{}.TGA", map_name)) {
+        let img = match place_image_info(&dynamic_data, &static_data, draw_text, &format!("./assets/Maps/Map{map_name}.TGA")) {
             Some(i) => i,
             None => {
                 interaction.edit_response(ctx, EditInteractionResponse::new().content("Couldn't find the map...")).await?;
@@ -85,7 +85,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
         save_map_cache(dynamic_data, static_data, map_name, &guild.shard_name).await;
     } else {
         last_updated = cache_data.clone().unwrap().0.last_updated;
-        let img = match place_image_info(&cache_data.clone().unwrap().0, &cache_data.clone().unwrap().1, draw_text, &format!("./assets/Maps/Map{}.TGA", map_name)) {
+        let img = match place_image_info(&cache_data.clone().unwrap().0, &cache_data.clone().unwrap().1, draw_text, &format!("./assets/Maps/Map{map_name}.TGA")) {
             Some(i) => i,
             None => {
                 interaction.edit_response(ctx, EditInteractionResponse::new().content("Couldn't find the map...")).await?;

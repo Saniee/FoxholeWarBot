@@ -131,15 +131,15 @@ impl CronHandler {
                         let last_updated;
 
                         if cache_data.is_none() {
-                            dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/dynamic/public", map_name)).header("If-None-Match", "\"0\"").send().await.unwrap();
+                            dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/dynamic/public")).header("If-None-Match", "\"0\"").send().await.unwrap();
                             
-                            static_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/static", map_name)).header("If-None-Match", "\"0\"").send().await.unwrap();
+                            static_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/static")).header("If-None-Match", "\"0\"").send().await.unwrap();
                     
                             //println!("{} | {}", dynamic_response.status(), static_response.status());
                         } else {
-                            dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/dynamic/public", map_name)).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().0.version)).send().await.unwrap();
+                            dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/dynamic/public")).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().0.version)).send().await.unwrap();
                             
-                            static_response = request_client.get(format!("{api_url}/worldconquest/maps/{}/static", map_name)).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().1.version)).send().await.unwrap();
+                            static_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/static")).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().1.version)).send().await.unwrap();
                         }
 
                         if dynamic_response.status() == StatusCode::INTERNAL_SERVER_ERROR && static_response.status() == StatusCode::INTERNAL_SERVER_ERROR {
@@ -152,7 +152,7 @@ impl CronHandler {
                     
                             let static_data = static_response.json::<StaticMapData>().await.unwrap();
                     
-                            let img = match place_image_info(&dynamic_data, &static_data, draw_text, &format!("./assets/Maps/Map{}.TGA", map_name)) {
+                            let img = match place_image_info(&dynamic_data, &static_data, draw_text, &format!("./assets/Maps/Map{map_name}.TGA")) {
                                 Some(i) => i,
                                 None => {
                                     return;
@@ -163,7 +163,7 @@ impl CronHandler {
                             save_map_cache(dynamic_data, static_data, &map_name, &guild.shard_name).await;
                         } else {
                             last_updated = cache_data.clone().unwrap().0.last_updated;
-                            let img = match place_image_info(&cache_data.clone().unwrap().0, &cache_data.clone().unwrap().1, draw_text, &format!("./assets/Maps/Map{}.TGA", map_name)) {
+                            let img = match place_image_info(&cache_data.clone().unwrap().0, &cache_data.clone().unwrap().1, draw_text, &format!("./assets/Maps/Map{map_name}.TGA")) {
                                 Some(i) => i,
                                 None => {
                                     return;
@@ -173,7 +173,7 @@ impl CronHandler {
                             let _ = img.save("render.png");
                         }
 
-                        let mut e = CreateEmbed::new().title(format!("Scheduled Report: {}", job_name)).color((0, 255, 0)).attachment("attachment://render.png").image("attachment://render.png").footer(CreateEmbedFooter::new("Requested at")).timestamp(chrono::Local::now());
+                        let mut e = CreateEmbed::new().title(format!("Scheduled Report: {job_name}")).color((0, 255, 0)).attachment("attachment://render.png").image("attachment://render.png").footer(CreateEmbedFooter::new("Requested at")).timestamp(chrono::Local::now());
 
                         if next_tick.is_some() {
                             e = e.description(format!("Last API Update: {}\nNext Scheduled Update: {}", chrono::DateTime::from_timestamp_millis(last_updated).unwrap().format("%Y %m %d %H:%M:%S"), next_tick.unwrap().format("%Y %m %d %H:%M:%S")));

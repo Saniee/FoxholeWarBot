@@ -35,7 +35,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
                     interaction.edit_response(ctx, EditInteractionResponse::new().content("Created!")).await?;
                 }
                 StatusCode::SERVICE_UNAVAILABLE => {
-                    println!("{:?}", resp);
+                    println!("{resp:?}");
                     interaction.edit_response(ctx, EditInteractionResponse::new().content("Cannot set as the server selected is Unavailable!")).await?;
                 }
                 _ => {
@@ -55,7 +55,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
                     interaction.edit_response(ctx, EditInteractionResponse::new().content("Updated!")).await?;
                 }
                 StatusCode::SERVICE_UNAVAILABLE => {
-                    println!("{:?}", resp);
+                    println!("{resp:?}");
                     interaction.edit_response(ctx, EditInteractionResponse::new().content("Cannot set as the server selected is Unavailable!")).await?;
                 }
                 _ => {

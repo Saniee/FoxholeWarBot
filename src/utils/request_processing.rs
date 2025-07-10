@@ -19,7 +19,7 @@ where
         let icon_path = std::path::Path::new(&path);
         
         if !icon_path.exists() {
-            println!("Icon path: {:?} doesn't exist!", icon_path);
+            println!("Icon path: {icon_path:?} doesn't exist!");
             println!("Using debug icon as fallback for missing icon...");
             let mut icon = load_img("./assets/MapIcons/DebugIcon.png").unwrap();
 
@@ -33,7 +33,7 @@ where
             let mut icon = match load_img(icon_path) {
                 Some(i) => i,
                 None => {
-                    println!("Error loading image: {:?}", icon_path);
+                    println!("Error loading image: {icon_path:?}");
                     return None;
                 }
             };
@@ -70,7 +70,7 @@ where
     let sb_img = match image::open(path) {
         Ok(img) => img,
         Err(msg) => {
-            println!("An error occured at loading img with path: {:?}, Error Msg: {}", path, msg);
+            println!("An error occured at loading img with path: {path:?}, Error Msg: {msg}");
             return None;
         }
     };

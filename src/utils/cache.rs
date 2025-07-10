@@ -70,16 +70,16 @@ pub async fn load_maps(shard: Shard) -> Maps {
 pub async fn save_map_cache(dynamic_data: DynamicMapData, static_data: StaticMapData, map_name: &str, shard: &str) {
     create_cache_dirs().await;
     
-    match tokio::fs::write(format!("./cache/dynamic/Dynamic_{}-{}.json", map_name, shard), serde_json::to_string(&dynamic_data).unwrap()).await {
+    match tokio::fs::write(format!("./cache/dynamic/Dynamic_{map_name}-{shard}.json"), serde_json::to_string(&dynamic_data).unwrap()).await {
         Ok(()) => {},
         Err(msg) => {
-            println!("Error at writing dynamic data for {}. Error: {}", map_name, msg)
+            println!("Error at writing dynamic data for {map_name}. Error: {msg}")
         }
     }
-    match tokio::fs::write(format!("./cache/static/Static_{}-{}.json", map_name, shard), serde_json::to_string(&static_data).unwrap()).await {
+    match tokio::fs::write(format!("./cache/static/Static_{map_name}-{shard}.json"), serde_json::to_string(&static_data).unwrap()).await {
         Ok(()) => {},
         Err(msg) => {
-            println!("Error at writing static data for {}. Error: {}", map_name, msg)
+            println!("Error at writing static data for {map_name}. Error: {msg}")
         },
     };
 }
@@ -87,18 +87,18 @@ pub async fn save_map_cache(dynamic_data: DynamicMapData, static_data: StaticMap
 pub async fn save_war_report(war_report: WarReport, map_name: &str, shard: &str) {
     create_cache_dirs().await;
 
-    match tokio::fs::write(format!("./cache/war_reports/Report_{}-{}.json", map_name, shard), serde_json::to_string(&war_report).unwrap()).await {
+    match tokio::fs::write(format!("./cache/war_reports/Report_{map_name}-{shard}.json"), serde_json::to_string(&war_report).unwrap()).await {
         Ok(()) => {},
         Err(msg) => {
-            println!("Error at writing war report data for {}. Error: {}", map_name, msg)
+            println!("Error at writing war report data for {map_name}. Error: {msg}")
         }
     }
 }
 
 pub async fn load_map_cache(map_name: &str, shard: &str) -> Option<(DynamicMapData, StaticMapData)> {
-    let dynamic_data_str = (tokio::fs::read_to_string(format!("./cache/dynamic/Dynamic_{}-{}.json", map_name, shard)).await).ok();
+    let dynamic_data_str = (tokio::fs::read_to_string(format!("./cache/dynamic/Dynamic_{map_name}-{shard}.json")).await).ok();
 
-    let static_data_str = (tokio::fs::read_to_string(format!("./cache/static/Static_{}-{}.json", map_name,shard)).await).ok();
+    let static_data_str = (tokio::fs::read_to_string(format!("./cache/static/Static_{map_name}-{shard}.json")).await).ok();
 
     if dynamic_data_str.is_some() && static_data_str.is_some() {
         let dynamic_data = serde_json::from_str(&dynamic_data_str.unwrap()).unwrap();
@@ -111,7 +111,7 @@ pub async fn load_map_cache(map_name: &str, shard: &str) -> Option<(DynamicMapDa
 }
 
 pub async fn load_war_report(map_name: &str, shard: &str) -> Option<WarReport> {
-    match tokio::fs::read_to_string(format!("./cache/war_reports/Report_{}-{}.json", map_name, shard)).await {
+    match tokio::fs::read_to_string(format!("./cache/war_reports/Report_{map_name}-{shard}.json")).await {
         Ok(data) => serde_json::from_str(&data).unwrap(),
         Err(_) => {
             None

@@ -43,9 +43,9 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
     let war_report_res;
 
     if cache_data.is_none() {
-        war_report_res = request_client.get(format!("{}/worldconquest/warReport/{}", api_url, map_name)).header("If-None-Match", "\"0\"").send().await.unwrap();
+        war_report_res = request_client.get(format!("{api_url}/worldconquest/warReport/{map_name}")).header("If-None-Match", "\"0\"").send().await.unwrap();
     } else {
-        war_report_res = request_client.get(format!("{}/worldconquest/warReport/{}", api_url, map_name)).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().version)).send().await.unwrap();
+        war_report_res = request_client.get(format!("{api_url}/worldconquest/warReport/{map_name}")).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().version)).send().await.unwrap();
     }
 
     if war_report_res.status() == StatusCode::INTERNAL_SERVER_ERROR {
