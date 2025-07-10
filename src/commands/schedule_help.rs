@@ -23,7 +23,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
     }
 
     // IMG: https://prnt.sc/JOzbuRouDNmq
-    interaction.edit_response(&ctx, EditInteractionResponse::new().content("For further phrases that you can use, refer to this: https://prnt.sc/JOzbuRouDNmq")).await?;
+    interaction.edit_response(&ctx, EditInteractionResponse::new().content("Schedules need to have unique names!\nThe schedule argument has certain rules in which it can be written:\nFor phrases you can use/modify for custom ones, refer to this screenshot: https://prnt.sc/JOzbuRouDNmq")).await?;
 
     Ok(())
 }
