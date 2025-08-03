@@ -164,8 +164,8 @@ impl EventHandler for Handler {
         }
 
         if !data.cron_jobs_restarted {
-            self.cron_handler.clone().restart_report_jobs(&ctx, self.db.clone()).await;
             self.cron_handler.start_map_update_job().await;
+            self.cron_handler.clone().restart_report_jobs(&ctx, self.db.clone()).await;
             
             data.cron_jobs_restarted = true;
         }

@@ -9,7 +9,15 @@ pub fn place_image_info<P>(dynamic_data: &DynamicMapData, static_data: &StaticMa
 where 
     P: AsRef<std::path::Path>
 {
-    let mut bg_img = image::open(background_img_path).expect("Error loading bg image!").to_rgba8();
+    let mut bg_img = match image::open(background_img_path) {
+        Ok(img) => img.to_rgba8(),
+        Err(_) => {
+            println!("Error loading bg image! {:?}", background_img_path.as_ref());
+            return None;
+        }
+    };
+    // .to_rgba8()
+
     let bg_width: f64 = bg_img.width().into();
     let bg_height: f64 = bg_img.height().into();
 

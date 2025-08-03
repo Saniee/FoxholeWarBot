@@ -63,12 +63,13 @@ impl CronHandler {
         }
 
         let guild: GuildData = sqlx::query_as("SELECT * FROM guilds WHERE id == ?1").bind(jobs[0].guild).fetch_one(&db.conn).await.unwrap();
+        
         for job in jobs {
             match Job::schedule_to_cron(&job.schedule) {
-                Ok(_) => {
+                Ok(schedule) => {
                     let report_job = ReportJob {
                         schedule_name: job.job_name,
-                        schedule: job.schedule,
+                        schedule,
                         webhook: serenity::all::Webhook::from_url(&ctx, &job.webhook_url.to_owned()).await.unwrap(),
                         guild_id: guild.guild_id,
                         map_name: job.map_name,

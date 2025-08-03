@@ -1,4 +1,5 @@
 use serenity::all::{AutocompleteChoice, CommandInteraction, Context, CreateAutocompleteResponse, CreateCommand, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, CreateWebhook, EditInteractionResponse, Webhook};
+use tokio_cron_scheduler::Job;
 
 use crate::utils::{cache::load_maps, cron::{CronHandler}, db::{Database, Shard}};
 
@@ -38,6 +39,14 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, 
     let schedule_name = interaction.data.options[1].value.as_str().unwrap().to_owned();
     let channel = interaction.data.options[2].value.as_channel_id().unwrap();
     let schedule = interaction.data.options[3].value.as_str().unwrap().to_owned();
+
+    match Job::schedule_to_cron(&schedule) {
+        Ok(_) => (),
+        Err(_) => {
+            interaction.edit_response(ctx, EditInteractionResponse::new().content("The provided schedule is not formated acordingly to the rules!")).await?;
+            return Ok(());
+        }
+    }
     
     let draw_text_bool = interaction.data.options[4].value.as_bool().unwrap();
     #[allow(clippy::needless_late_init)]
