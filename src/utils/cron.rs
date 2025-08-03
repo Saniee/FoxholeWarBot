@@ -78,7 +78,7 @@ impl CronHandler {
                     let _ = self.add_report_job(ctx.clone(), db.clone(), report_job, true).await;
                 }
                 Err(_) => {
-                    println!("Job #{} has an improper schedule!", job.job_id);
+                    println!("Job '{}' has an improper schedule!", job.job_name);
                     continue;
                 }
             }
