@@ -64,16 +64,26 @@ impl CronHandler {
 
         let guild: GuildData = sqlx::query_as("SELECT * FROM guilds WHERE id == ?1").bind(jobs[0].guild).fetch_one(&db.conn).await.unwrap();
         for job in jobs {
-            let report_job = ReportJob {
-                schedule_name: job.job_name,
-                schedule: job.schedule,
-                webhook: serenity::all::Webhook::from_url(&ctx, &job.webhook_url.to_owned()).await.unwrap(),
-                guild_id: guild.guild_id,
-                map_name: job.map_name,
-                draw_text: job.draw_text,
-                db: db.clone(),
-            };
-            let _ = self.add_report_job(ctx.clone(), db.clone(), report_job, true).await;
+            match english_to_cron::str_cron_syntax(&job.schedule) {
+                Ok(_) => {
+                    let report_job = ReportJob {
+                        schedule_name: job.job_name,
+                        schedule: job.schedule,
+                        webhook: serenity::all::Webhook::from_url(&ctx, &job.webhook_url.to_owned()).await.unwrap(),
+                        guild_id: guild.guild_id,
+                        map_name: job.map_name,
+                        draw_text: job.draw_text,
+                        db: db.clone(),
+                    };
+                    let _ = self.add_report_job(ctx.clone(), db.clone(), report_job, true).await;
+                }
+                Err(_) => {
+                    println!("Job #{} has an improper schedule!", job.job_id);
+                    continue;
+                }
+            }
+
+            
         }
     }
 
@@ -89,6 +99,8 @@ impl CronHandler {
             }
         }
 
+        
+        
         let uuid = self.scheduler.add(Job::new_async(job.schedule, move |uuid, mut l| {
             Box::pin(
                 {
@@ -196,6 +208,7 @@ impl CronHandler {
             },
             Err(err) => return Err(CronError::ErrorUpdatingUuid { scheduler_error: err })
         };
+
         Ok(())
     }
 

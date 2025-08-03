@@ -75,7 +75,7 @@ pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database) 
         let img = match place_image_info(&dynamic_data, &static_data, draw_text, &format!("./assets/Maps/Map{map_name}.TGA")) {
             Some(i) => i,
             None => {
-                interaction.edit_response(ctx, EditInteractionResponse::new().content("Couldn't find the map...")).await?;
+                interaction.edit_response(ctx, EditInteractionResponse::new().content("Couldn't find the map... ||Or an error occured...||")).await?;
     
                 return Ok(());
             }

@@ -9,7 +9,7 @@ pub fn place_image_info<P>(dynamic_data: &DynamicMapData, static_data: &StaticMa
 where 
     P: AsRef<std::path::Path>
 {
-    let mut bg_img = image::open(background_img_path).unwrap().to_rgba8();
+    let mut bg_img = image::open(background_img_path).expect("Error loading bg image!").to_rgba8();
     let bg_width: f64 = bg_img.width().into();
     let bg_height: f64 = bg_img.height().into();
 
@@ -21,7 +21,7 @@ where
         if !icon_path.exists() {
             println!("Icon path: {icon_path:?} doesn't exist!");
             println!("Using debug icon as fallback for missing icon...");
-            let mut icon = load_img("./assets/MapIcons/DebugIcon.png").unwrap();
+            let mut icon = load_img("./assets/MapIcons/DebugIcon.png").expect("Error loading debug icon!");
 
             let icon_desired_width: u32 = (icon.width() as f64 * 0.5) as u32;
             let icon_desired_height: u32 = (icon.height() as f64 * 0.5) as u32;
