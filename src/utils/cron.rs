@@ -64,7 +64,7 @@ impl CronHandler {
 
         let guild: GuildData = sqlx::query_as("SELECT * FROM guilds WHERE id == ?1").bind(jobs[0].guild).fetch_one(&db.conn).await.unwrap();
         for job in jobs {
-            match english_to_cron::str_cron_syntax(&job.schedule) {
+            match Job::schedule_to_cron(&job.schedule) {
                 Ok(_) => {
                     let report_job = ReportJob {
                         schedule_name: job.job_name,
@@ -96,8 +96,6 @@ impl CronHandler {
                 None => return Err(CronError::ErrorAddingJob())
             }
         }
-
-        
         
         let uuid = self.scheduler.add(Job::new_async(job.schedule, move |uuid, mut l| {
             Box::pin(
