@@ -82,8 +82,6 @@ impl CronHandler {
                     continue;
                 }
             }
-
-            
         }
     }
 
@@ -200,7 +198,7 @@ impl CronHandler {
                     }
                 }
             )
-        }).unwrap()).await;
+        }).expect("Error adding a job!")).await;
 
         match uuid {
             Ok(id) => {
