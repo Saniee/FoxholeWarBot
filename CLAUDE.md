@@ -62,8 +62,9 @@ recurring scheduled map reports via webhooks.
 - Each command module exports a `#[poise::command(slash_command)]` async fn (typed params for
   options, `#[autocomplete = "..."]` for autocomplete); all are collected into the framework's
   `commands` list. Shared state (`db`, `cron`, `local`) is reached via `ctx.data()`.
-- Guild-scoped settings (shard + output visibility) live in the `guilds` table; a guild
-  with no row is treated as "not set up" and prompts the user to run `/set-guild-settings`.
+- Guild-scoped settings (shard, output visibility, full-map faction tint) live in the `guilds`
+  table; a guild with no row is treated as "not set up" and prompts the user to run
+  `/set-guild-settings`.
 - Foxhole API responses are cached to disk and revalidated with `If-None-Match` ETags
   (the API's `version` field); a `304 Not Modified` serves the cached copy. The dynamic and
   static halves revalidate independently — never assume they agree.

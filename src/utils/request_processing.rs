@@ -13,7 +13,7 @@ use imageproc::drawing::{draw_text_mut, text_size};
 use thiserror::Error;
 
 use crate::utils::api_definitions::foxhole::{
-    DynamicMapData, MapMarkerType, StaticMapData,
+    DynamicMapData, MapMarkerType, StaticMapData, TeamId,
 };
 
 /// Every `assets/Maps/Map*Hex.TGA` is 1024 x 888 (a regular flat-top hexagon:
@@ -118,6 +118,16 @@ pub struct RenderConfig {
     /// 5 px — which is why the first full render looked like bare terrain.
     /// [`RenderConfig::for_full_map`] sizes source icons backwards from this.
     pub full_map_icon_px: u32,
+    /// Wash each hex in its controlling faction's colour. Off unless a guild
+    /// opts in (`guilds.full_map_faction_tint`), and only ever set for the full
+    /// map — see [`controlling_team`] for what "controlling" means.
+    pub faction_tint: bool,
+    pub colonial_tint: Rgba<u8>,
+    pub warden_tint: Rgba<u8>,
+    /// How far a tinted pixel moves toward the faction colour, 0.0 to 1.0.
+    /// Low on purpose: the point is to read ownership at a glance without
+    /// losing the terrain underneath it.
+    pub faction_tint_strength: f32,
 }
 
 impl Default for RenderConfig {
@@ -136,6 +146,13 @@ impl Default for RenderConfig {
             full_map_long_edge: 2048,
             full_map_resample: FilterType::Triangle,
             full_map_icon_px: 12,
+            faction_tint: false,
+            // Faction greens and blues, muted. Saturated versions of these read
+            // as UI chrome laid over the map rather than as the map's own
+            // colour, which is the opposite of what a control wash is for.
+            colonial_tint: Rgba([74, 106, 62, 255]),
+            warden_tint: Rgba([58, 92, 142, 255]),
+            faction_tint_strength: 0.3,
         }
     }
 }
@@ -186,6 +203,16 @@ impl RenderConfig {
         RenderConfig {
             icon_size_ratio: source_px.max(1.0) / REGION_WIDTH as f32,
             ..self.clone()
+        }
+    }
+
+    /// The wash colour for a faction, or `None` for the neutral team — which
+    /// has no colour by design, so an uncontested hex keeps its plain art.
+    pub fn tint_color(&self, team: TeamId) -> Option<Rgba<u8>> {
+        match team {
+            TeamId::Colonials => Some(self.colonial_tint),
+            TeamId::Wardens => Some(self.warden_tint),
+            TeamId::None => None,
         }
     }
 
@@ -251,6 +278,15 @@ where
     let canvas_w = bg_img.width();
     let canvas_h = bg_img.height();
 
+    // Before the icons, never after: the icons are already faction-coloured,
+    // and washing them in the same colour is how you make a map you can't read.
+    if config.faction_tint {
+        if let Some(color) = controlling_team(dynamic_data).and_then(|team| config.tint_color(team))
+        {
+            tint_region(&mut bg_img, color, config.faction_tint_strength);
+        }
+    }
+
     draw_icons(&mut bg_img, dynamic_data, config)?;
 
     if draw_text {
@@ -258,6 +294,67 @@ where
     }
 
     Ok(bg_img)
+}
+
+/// The API's `iconType`s that actually decide who holds a region: town bases
+/// and relic bases.
+///
+/// Everything else a faction builds — refineries, storage, garrisons — says
+/// where they have *been*, not what they hold, and counting it tints a hex for
+/// whoever built more sheds in it. Relic bases 46 and 47 were retired in
+/// Update 52 and simply never appear now; listing them costs nothing and means
+/// the tint keeps working if they come back.
+///
+/// ids from <https://github.com/clapfoot/warapi> (MapIconType).
+const CONTROL_ICON_TYPES: &[i64] = &[45, 46, 47, 56, 57, 58];
+
+/// Which faction holds a region, by majority of its control structures.
+///
+/// `None` when the hex has no control structures at all (open country, or a
+/// region the API didn't report) or when the two sides hold an equal number —
+/// a contested hex is left untinted rather than assigned to whoever happens to
+/// sort first, so the front line shows up as a seam of plain terrain.
+fn controlling_team(dynamic_data: &DynamicMapData) -> Option<TeamId> {
+    let mut colonial = 0usize;
+    let mut warden = 0usize;
+
+    for item in &dynamic_data.map_items {
+        if !CONTROL_ICON_TYPES.contains(&item.icon_type) {
+            continue;
+        }
+
+        match item.team_id {
+            TeamId::Colonials => colonial += 1,
+            TeamId::Wardens => warden += 1,
+            TeamId::None => {}
+        }
+    }
+
+    match colonial.cmp(&warden) {
+        std::cmp::Ordering::Greater => Some(TeamId::Colonials),
+        std::cmp::Ordering::Less => Some(TeamId::Wardens),
+        std::cmp::Ordering::Equal => None,
+    }
+}
+
+/// Blends every pixel toward `color`, scaled by its own alpha.
+///
+/// Scaling by alpha is what keeps the wash inside the hexagon: the art's corners
+/// are transparent so the tiles can interlock, and tinting them flat would paint
+/// the faction colour into the gaps between hexes and turn the seams visible.
+/// Alpha itself is never touched.
+fn tint_region(canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, color: Rgba<u8>, strength: f32) {
+    let strength = strength.clamp(0.0, 1.0);
+
+    for pixel in canvas.pixels_mut() {
+        let weight = strength * (pixel.0[3] as f32 / 255.0);
+
+        for channel in 0..3 {
+            let base = pixel.0[channel] as f32;
+            let target = color.0[channel] as f32;
+            pixel.0[channel] = (base + (target - base) * weight).round() as u8;
+        }
+    }
 }
 
 fn draw_icons(

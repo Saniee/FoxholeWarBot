@@ -19,16 +19,17 @@ pub async fn full_map(ctx: Context<'_>) -> Result<(), Error> {
 
     defer_for(ctx, &guild).await?;
 
+    // The tint is the one render setting a guild owns, and it is honored here
+    // only: a single `/get-map` hex is looked at closely enough that a colour
+    // wash costs more than it tells you.
+    let config = RenderConfig {
+        faction_tint: guild.full_map_faction_tint,
+        ..RenderConfig::default()
+    };
+
     // No labels: at the composite's downscale, in-region text is a smudge. A
     // per-hex region name drawn *after* the downscale is the v2 answer.
-    let rendered = match render_full_map(
-        &guild.shard,
-        &guild.shard_name,
-        false,
-        RenderConfig::default(),
-    )
-    .await
-    {
+    let rendered = match render_full_map(&guild.shard, &guild.shard_name, false, config).await {
         Ok(rendered) => rendered,
         // Every failure path replies. A deferred interaction that never gets a
         // final response leaves the user staring at a spinner forever (QA C-12).

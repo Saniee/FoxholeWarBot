@@ -47,6 +47,7 @@ pub struct GuildData {
     pub shard: String,
     pub shard_name: String,
     pub show_command_output: bool,
+    pub full_map_faction_tint: bool,
 }
 
 impl GuildData {
@@ -144,25 +145,34 @@ impl Database {
     /// caller's `show` flag on first insert instead of hardcoding it off (QA B-1),
     /// and relies on `guild_id UNIQUE` so a guild can never end up with two rows
     /// (QA C-10).
+    ///
+    /// `tint` is optional in the "leave it alone" sense, not the "default it"
+    /// sense: `/set-guild-settings` requires the shard every time, so a guild
+    /// changing shards would silently lose its tint setting if an absent option
+    /// meant `FALSE`. `None` keeps whatever is already there, and only an insert
+    /// falls back to off.
     pub async fn upsert_guild(
         &self,
         guild_id: i64,
         shard: Shard,
         show: bool,
+        tint: Option<bool>,
     ) -> Result<GuildData, sqlx::Error> {
         sqlx::query_as(
-            "INSERT INTO guilds (guild_id, shard, shard_name, show_command_output) \
-             VALUES ($1, $2, $3, $4) \
+            "INSERT INTO guilds (guild_id, shard, shard_name, show_command_output, full_map_faction_tint) \
+             VALUES ($1, $2, $3, $4, COALESCE($5::BOOLEAN, FALSE)) \
              ON CONFLICT (guild_id) DO UPDATE \
              SET shard = EXCLUDED.shard, \
                  shard_name = EXCLUDED.shard_name, \
-                 show_command_output = EXCLUDED.show_command_output \
+                 show_command_output = EXCLUDED.show_command_output, \
+                 full_map_faction_tint = COALESCE($5::BOOLEAN, guilds.full_map_faction_tint) \
              RETURNING *",
         )
         .bind(guild_id)
         .bind(shard.api_url())
         .bind(shard.as_str())
         .bind(show)
+        .bind(tint)
         .fetch_one(&self.conn)
         .await
     }

@@ -25,8 +25,8 @@ impl From<ShardChoice> for Shard {
     }
 }
 
-/// Sets the shard this server pulls data from, and whether command output is
-/// visible to everyone.
+/// Sets the shard this server pulls data from, whether command output is
+/// visible to everyone, and whether the full map is tinted by faction control.
 #[poise::command(
     slash_command,
     guild_only,
@@ -37,6 +37,10 @@ pub async fn set_guild_settings(
     #[description = "Which shard to get data from."] shard: ShardChoice,
     #[description = "True shows command output to everyone, false only to the caller."]
     show_messages: bool,
+    // Optional so that changing shards doesn't silently reset it: left out, the
+    // guild keeps whatever it already chose (see `Database::upsert_guild`).
+    #[description = "Shade each hex on /full-map by who controls it. Leave blank to keep current."]
+    faction_tint: Option<bool>,
 ) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
@@ -74,9 +78,10 @@ pub async fn set_guild_settings(
     // visibility flag off, so `show-messages` was silently ignored the first
     // time a server ran this (QA B-1).
     let existed = ctx.data().db.get_guild(guild_id).await?.is_some();
-    ctx.data()
+    let guild = ctx
+        .data()
         .db
-        .upsert_guild(guild_id, shard, show_messages)
+        .upsert_guild(guild_id, shard, show_messages, faction_tint)
         .await?;
 
     let visibility = if show_messages {
@@ -85,8 +90,16 @@ pub async fn set_guild_settings(
         "only visible to whoever runs them"
     };
 
+    // Reported from the stored row rather than the option, so an omitted
+    // `faction-tint` says what the guild actually has, not "unchanged".
+    let tint = if guild.full_map_faction_tint {
+        "on"
+    } else {
+        "off"
+    };
+
     ctx.say(format!(
-        "{} — shard **{}**, command output {visibility}.",
+        "{} — shard **{}**, command output {visibility}, full-map faction tint **{tint}**.",
         if existed { "Updated" } else { "Created" },
         shard.as_str()
     ))

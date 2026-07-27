@@ -8,8 +8,8 @@ Short version: the bot stores per-server settings and nothing about you personal
 
 # [](#header-2)What is collected
 
-- **Server settings.** The server (guild) ID, the shard it reads from, and whether replies are
-  public or private.
+- **Server settings.** The server (guild) ID, the shard it reads from, whether replies are
+  public or private, and whether the full map is shaded by faction control.
 - **Scheduled reports.** For each one: its name, the schedule phrase, the webhook URL it posts
   to, the region, and whether labels are drawn.
 

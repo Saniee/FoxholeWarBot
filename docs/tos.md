@@ -23,6 +23,7 @@ Exactly this, and nothing else:
 - The server (guild) ID.
 - The chosen shard (Able / Baker / Charlie) and its display name.
 - Whether command output is public or private.
+- Whether the full map is shaded by faction control.
 
 **Per scheduled report**
 

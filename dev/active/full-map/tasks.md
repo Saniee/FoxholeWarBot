@@ -23,12 +23,17 @@
       from the finished PNG. Downscale untouched. **Unverified — needs a build**
 - [x] Deleted the stale `MapMarbanHollow.TGA` and `MapClahstraHexMap.TGA`; `assets/Maps/` is now
       exactly one file per table region plus three non-conquest assets
-- [ ] Optional faction tint behind a `RenderConfig` flag, OFF by default
+- [x] Faction tint behind `RenderConfig::faction_tint`, off by default, opt-in per guild via
+      `/set-guild-settings faction-tint:true`. Full map only; control = town + relic bases by
+      majority; ties untinted. **Unverified — needs a build**
+- [x] `scripts/update_assets.py` — pull art from a local warapi clone, renaming to the table's
+      spelling; `--audit` cross-checks `assets/Maps/` against `regions.rs`
 - [ ] Promote the spec out of `specs/active/`, reconcile it to shipped behavior
 
 ## Phase 2 — gate (`specs/active/premium-full-map.md`)
-- [ ] `migrations/0002_*.sql` — `guilds.full_map_approved` + `full_map_approved_at`;
-      `full_map_requests` table (incl. `member_count` snapshot); full-map marker on `cronjobs`
+- [ ] `migrations/0003_*.sql` — `guilds.full_map_approved` + `full_map_approved_at`;
+      `full_map_requests` table (incl. `member_count` snapshot); full-map marker on `cronjobs`.
+      **0002 is taken** by the faction tint column
 - [ ] `FullMapScheduling` trait + default impl (`guild.full_map_approved`, no size branch)
 - [ ] `/schedule-report`: full-map target + unapproved ⇒ route into the form, don't hard-refuse
 - [ ] `/request-full-map-schedule` — modal, writes a `pending` row

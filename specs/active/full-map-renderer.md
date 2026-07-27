@@ -227,11 +227,24 @@ This is 53× the work of a single hex — the reason scheduled full-map renders 
   requests share one render.
 
 ## Decisions (settled)
-- **Faction control tint — implement as an optional flag, OFF by default in v1.** The reference
-  tints each hex blue/green by controlling faction; our renderer composites the real map art, so a
-  tint is a visual departure from the per-hex renders. Build it behind a `RenderConfig` flag
-  (tint colors + alpha as named constants) so it can be switched on after visual review. The
+- **Faction control tint — shipped, opt-in per guild.** The reference tints each hex blue/green by
+  controlling faction; our renderer composites the real map art, so a tint is a visual departure
+  from the per-hex renders. It lives behind `RenderConfig::faction_tint` with the colours and
+  strength as named constants, and a guild turns it on with
+  `/set-guild-settings faction-tint:true` (`guilds.full_map_faction_tint`, default off). The
   "darker = more recent change" recency shading is **not** in scope for v1.
+  - **Full map only.** `/get-map` renders one hex at a scale where the terrain is what you are
+    reading, and a wash over it costs more than it says. The flag is set in `full_map.rs` and
+    nowhere else, so `/get-map` cannot pick it up by accident.
+  - **Control = town bases + relic bases, by majority** (`CONTROL_ICON_TYPES`: 45, 46, 47, 56, 57,
+    58). Those are the structures that actually flip a region. Counting every faction-owned
+    structure instead would tint a hex for whoever built more sheds in it. A tie, or a hex with no
+    control structures, is left untinted — so the front line reads as a seam of plain terrain
+    rather than being assigned to whichever faction sorts first.
+  - **The wash is applied to the background before the icons**, and scaled by each pixel's alpha.
+    Both matter: tinting after would wash the already-faction-coloured icons in the same colour,
+    and tinting flat would paint the hex's transparent corners — which carry real RGB under
+    `alpha = 0` — making every interlock seam visible.
 - **Per-hex region name labels — deferred to v2.** In-region POI labels (`draw_text`) would be
   unreadable at the 0.2× composite scale, so a full-map render draws no text in v1. A dedicated
   "region name per hex" pass (drawn *after* downscale, at readable size) is the v2 approach.
