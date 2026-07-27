@@ -33,8 +33,8 @@
 - [x] Clear the dev guild's commands on a global registration — stale guild-scoped registrations
       from `--local` outlive the process and hang as unhandled interactions
 - [x] One shared HTTP client with timeouts (`utils::http`) — nothing had a request timeout
-- [ ] **Diagnose the `/set_guild_settings` non-reply** — see "Open question" in `context.md`.
-      Needs `docker compose logs bot`; the timeout fix may or may not cover it
+- [x] **`/set_guild_settings` replies again.** Never diagnosed as such — it came back working
+      after the HTTP timeout landed, which fits the "hung on a silent connection" candidate
 - [ ] Promote the spec out of `specs/active/`, reconcile it to shipped behavior
 
 ## Phase 2 — gate (`specs/active/premium-full-map.md`)
@@ -70,70 +70,29 @@
 - [x] Dormancy notice says **withdrawn**, not "isn't active" — it is the only message that ever
       reports a revocation
 - [x] `/request-full-map-schedule` replies in public, not ephemerally
-- [ ] **Release test pass — see "Release checklist" below.** Everything after the first live run
-      is uncompiled
+- [x] **Release test pass — walked, and it holds.** See the checklist below for what's left
 - [ ] Promote the spec out of `specs/active/`, reconcile to shipped behavior
 
 ## Release checklist — full-map + gate
-Ordered so each step sets up the next. Anything marked **never observed** has no runtime evidence
-behind it at all.
+**Walked by the user and it holds.** Boot and migration `0004`, the renderer and the tint
+tiebreak, applying, withdrawing, deciding, and scheduling + dormancy all behave as designed.
+`/set_guild_settings` replies again too.
 
-### 0. Boot
-- [ ] `docker compose up -d --build` applies `0004` cleanly on the **existing** database (0001–0003
-      already ran there; this is the first migration landing on live rows)
-- [ ] Startup log: `N full-map reviewer(s) configured`. Empty `REVIEWER_IDS` warns instead
-- [ ] Commands register; no duplicates in the dev guild
+What that pass did *not* cover — the only things standing between here and a tag:
 
-### 1. Renderer (Phase 1 leftovers)
-- [ ] `/full-map` — all 53 hexes, icons legible, no missing tiles
-- [ ] Faction tint on: **every** contested hex tinted. The even-split tiebreak is **never
-      observed** — a genuine dead heat still renders plain, which is correct, not a fault
-- [ ] Peak container memory during a full-map render (**never measured**; the canvas is 63.6 MP,
-      ~254 MB RGBA before downscale)
-- [ ] `/set_guild_settings shard:… show_messages:… faction_tint:…` **replies**. Old bug, never
-      diagnosed — if it hangs again, grab `docker compose logs bot` around it
-
-### 2. Applying
-- [ ] `/request-full-map-schedule` without `/set-guild-settings` first ⇒ the needs-setup reply
-- [ ] Filing works; reply is **public**, carries **Withdraw request**
-- [ ] The post appears in `REQUESTS_CHANNEL_ID` with Approve/Deny
-- [ ] Filing a second time ⇒ "already open", also with Withdraw (not a duplicate row)
-- [ ] Modal dismissed without submitting ⇒ nothing recorded, no error
-
-### 3. Withdrawing (new, uncompiled)
-- [ ] Applicant presses Withdraw ⇒ their message becomes "withdrawn", buttons gone
-- [ ] **The review post updates too** — grey, `withdrawn`, "Closed by", no buttons. This is what
-      `0004` bought; if it doesn't happen, check `message_id` on the row
-- [ ] A **different member** presses Withdraw ⇒ "That isn't your request to withdraw", nothing
-      changes. The reply is public, so this is reachable
-- [ ] After withdrawing, a new request can be filed (the one-pending index released)
-
-### 4. Deciding
-- [ ] Approve from the post ⇒ green embed, Revoke button, requester told in their channel
-- [ ] Approve from `/full-map-requests approve` ⇒ **the post updates as well**
-- [ ] Deny ⇒ red, no buttons, requester told
-- [ ] Two reviewers race one request ⇒ second gets "already decided by someone else"
-- [ ] `/full-map-requests list` from a non-reviewer ⇒ refused. **Check it refuses a server admin
-      who isn't in `REVIEWER_IDS`** — the whole point of dropping the admin path
-- [ ] `REQUESTS_CHANNEL_ID` unset ⇒ requests still file, `/full-map-requests` still reviews
-
-### 5. Scheduling and dormancy — **never observed end to end**
-- [ ] Unapproved `/schedule-report map-name:full-map` ⇒ the short pointer at the form, no schedule
-- [ ] Approved ⇒ schedule created; a full map actually posts at its first tick
-- [ ] Revoke (button **and** `/full-map-requests revoke`) ⇒ next tick posts
-      **Full-Map Approval Withdrawn**, renders nothing, deletes nothing
-- [ ] **The notice appears exactly once** across several ticks (`dormant_notified`). This flag has
-      no observation behind it whatsoever
-- [ ] Re-approve ⇒ the schedule resumes on its own, and a later revoke notifies again
-- [ ] A single-region schedule keeps running untouched through all of the above
-- [ ] Restart the bot mid-way ⇒ `restore_jobs` brings both kinds back
-
-### 6. Before tagging
+- [ ] **90-day purge** — can't be exercised without waiting or backdating rows. Either backdate a
+      denied/withdrawn row's `reviewed_at` past the window and watch the 03:30 job take it, or
+      accept it on inspection. `docs/privacy.md` states the window, so something has to make it
+      true; the query is `purge_stale_full_map_requests`
+- [ ] **Peak memory during a full-map render** — never measured. 63.6 MP canvas, ~254 MB RGBA
+      before downscale, and the container ceiling is not large
 - [ ] `cargo clippy` clean
 - [ ] `scripts/update_assets.py --audit` exits 0
-- [ ] `docs/` matches the schema after `0004` (message id, withdrawn retention) — already written,
-      worth re-reading against the built behavior
-- [ ] Both `specs/active/` specs promoted and reconciled
+- [ ] Both `specs/active/` specs promoted out of `active/` and reconciled to shipped behavior
+
+Untested and low-stakes, worth knowing rather than doing: `REQUESTS_CHANNEL_ID` unset (should
+degrade to command-only review), and a two-reviewer race on one request (should answer "already
+decided by someone else").
 
 ## Next up (`specs/active/schedule-input.md`) — specced, nothing built
 Raised by the user this session: people can't get a phrase past the free-text `schedule` box, and

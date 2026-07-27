@@ -11,9 +11,13 @@ ungated, then the gate around it.
 **Phase 1 is functionally complete and rendering correctly.** All 53 hexes, icons legible,
 faction tint in and seen working.
 
-**Phase 2 builds and its request → approve path has been seen working live.** The undo surfaces
-(Withdraw / Revoke buttons) and the message-shortening pass came after that run and are
-uncompiled.
+**Phase 2 is done and walked end to end by the user**: boot + migration `0004`, applying,
+withdrawing, deciding, scheduling, and the dormancy pause all behave as designed. The tint
+tiebreak reads correctly at full-map scale.
+
+Only two things in this task are unverified, and neither blocks the work that comes next: the
+90-day purge (can't be exercised without backdating a row) and peak render memory (never
+measured). See `tasks.md` → Release checklist.
 
 Both earlier open loops are closed and confirmed by live renders: the two missing hexes are back,
 and the invisible icons are visible (`full_map_icon_px`, sized backwards from the finished PNG).
@@ -120,27 +124,16 @@ were rendering as `DebugIcon.png`.
   `dev/done/core-rewrite/context.md`), and this task adds a second job kind to them.
 - User compiles and runs locally; **don't run `cargo build`/`check`/`run`** unless told otherwise.
 
-## Open question, unresolved
-`/set_guild_settings shard:Able show_messages:false faction_tint:true` **did not reply** — the
-user reported it hangs, then clarified the effect appeared to work. Not diagnosed. Two candidates,
-and the logs decide between them:
-- The shard health check had **no HTTP timeout** (now fixed — `utils::http`). If the API accepted
-  the connection and went quiet, the command hung before ever writing to the DB. This fits "no
-  reply" but *not* "the setting applied".
-- Something after `upsert_guild` failed, so the write landed and `ctx.say` didn't. That fits both
-  halves of the report and is **not** fixed by the timeout work.
-
-Ask for `docker compose logs bot` around the invocation. `on_error` logs `command /… failed: …`
-for any command error, so its presence or absence splits the two cleanly.
+## Closed: the `/set_guild_settings` non-reply
+It replies again, and has since the HTTP timeout work landed (`utils::http`). Never diagnosed
+directly — no logs were captured — so this is a fix by circumstance, not by proof. The candidate
+it fits is the shard health check hanging on a connection the API accepted and then went quiet on,
+with no request timeout to cut it. If it ever returns, the other candidate was "something after
+`upsert_guild` failed", and `on_error`'s `command /… failed: …` line splits the two cleanly.
 
 ## Adjacent work raised this session
-`specs/active/schedule-input.md` — **proposed, nothing built.** The free-text schedule phrase is
-failing users, and no timezone is captured anywhere, so every schedule is UTC. Written up with
-four open questions. Two findings in it worth not re-deriving:
-- `Job::new_async_tz` snapshots a **fixed offset** at construction and never re-reads the
-  timezone, so DST is applied on restart and not before. A nightly job rebuild is the fix.
-- "every 6 hours" becomes `0 0 */6 * * *` — absolute clock times, not six hours from now. Some of
-  the "fires at the wrong time" reports are probably this rather than timezones.
+`specs/active/schedule-input.md` — **specced, nothing built, and now the priority.** See
+"Next steps".
 
 ## Phase 2 decisions taken while building (not in the spec — worth keeping)
 - **Reviewers are exactly `REVIEWER_IDS`, with no implicit owner.** The spec said "owner/admin";
@@ -184,23 +177,22 @@ four open questions. Two findings in it worth not re-deriving:
   it.
 
 ## Next steps
-**Phase 2 compiles and the happy path has been seen working end to end**: request → post in
-`REQUESTS_CHANNEL_ID` → Approve → approved embed. Full-map renders confirmed good at full scale.
+**This task is finished bar the two unverified items in `tasks.md`. Start the next one.**
 
-Unbuilt since that run: the Withdraw and Revoke buttons, the `withdrawn` status wiring, and a
-pass shortening every user-facing message (the submitted reply, the unapproved `/schedule-report`
-reply, the reviewer refusal). Needs a compile.
+**`specs/active/schedule-input.md` is now the user's stated priority** — the schedule rework for
+cron jobs. It is specced and nothing is built. Read the spec first; the shape is settled (guild
+timezone default + per-schedule override, choice list + `Custom…`, existing schedules left
+alone), and two questions are still open: weekly in v1, and whether full-map schedules get a
+minimum interval.
 
-Still unwalked: `/schedule-report map-name:full-map` → Revoke → confirm the next tick pauses and
-says so **exactly once** (`dormant_notified`). That flag is the only part of the gate with no
-observation behind it at all.
+Start at `migrations/0005_*.sql` (`guilds.timezone`, `cronjobs.timezone`,
+`cronjobs.schedule_label`). Two findings in the spec worth not re-deriving:
+- `Job::new_async_tz` snapshots a **fixed offset** at construction and never re-reads the zone, so
+  DST only applies at restart. A nightly job rebuild is the fix.
+- `"every 6 hours"` becomes `0 0 */6 * * *` — absolute clock times, not six hours from now. Some
+  of the "fires at the wrong time" reports are probably this and not timezones at all.
 
-~~Known gap: withdrawing doesn't edit the review post.~~ **Closed** by `0004_request_message.sql`
-— `announce` records the post's id and `review::refresh_post` brings it back into line whenever a
-decision is made anywhere other than on the post itself (the applicant's Withdraw button, or any
-`/full-map-requests` subcommand).
+Remember: a `migrations/` change is a `docs/tos.md` + `docs/privacy.md` change in the same commit.
+Timezone strings are per-guild stored data and belong in both lists.
 
-Also unverified from Phase 1: the tint tiebreak (one hex was untinted at an even base split).
-Peak memory during a full-map render is still unmeasured.
-
-Then `specs/active/schedule-input.md`, starting with `migrations/0005_*.sql`.
+When this task's last two items are closed, move `dev/active/full-map/` to `dev/done/`.
