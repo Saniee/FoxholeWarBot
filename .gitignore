@@ -9,4 +9,5 @@
 !/docs
 !/CLAUDE.md
 !/specs
+!/.github
 *.example
