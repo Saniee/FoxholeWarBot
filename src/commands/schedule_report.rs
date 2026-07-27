@@ -82,7 +82,10 @@ pub async fn schedule_report(
         schedule_name: schedule_name.clone(),
         schedule: schedule.clone(),
         webhook_url: webhook_url.clone(),
-        map_name: map_name.clone(),
+        // Always a region here: `/schedule-report` cannot target the full map.
+        // That path is `/request-full-map-schedule` and only opens once the
+        // request is approved (`specs/active/premium-full-map.md`).
+        map_name: Some(map_name.clone()),
         draw_text,
     };
 
@@ -109,7 +112,7 @@ pub async fn schedule_report(
             job_name: schedule_name.clone(),
             schedule,
             webhook_url,
-            map_name,
+            map_name: Some(map_name),
             draw_text,
             job_id: uuid.to_string(),
         })

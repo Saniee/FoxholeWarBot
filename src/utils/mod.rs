@@ -2,6 +2,7 @@ pub mod api_definitions;
 pub mod cache;
 pub mod cron;
 pub mod db;
+pub mod entitlement;
 pub mod http;
 pub mod map_render;
 pub mod regions;

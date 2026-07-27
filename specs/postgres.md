@@ -71,6 +71,22 @@ CREATE TABLE cronjobs (
 );
 ```
 
+Later migrations, in order (each is additive; `0001` has run against live databases and is never
+edited):
+- **`0002_faction_tint.sql`** — `guilds.full_map_faction_tint BOOLEAN NOT NULL DEFAULT FALSE`.
+  Per-guild opt-in for the full map's control wash (`specs/active/full-map-renderer.md`).
+- **`0003_full_map_gate.sql`** — the approval gate
+  (`specs/active/premium-full-map.md`): `guilds.full_map_approved` + `full_map_approved_at`; the
+  `full_map_requests` queue; `cronjobs.dormant_notified`; and `cronjobs.map_name` becomes
+  **nullable**, where NULL means "this job renders the whole world map". There is deliberately no
+  `is_full_map` boolean beside it — a flag and a nullable name are two facts that can disagree,
+  and NULL arrives in Rust as an `Option` the compiler makes every call site answer.
+
+  Two partial indexes carry rules the application would otherwise have to remember: a unique one
+  on `(guild) WHERE status = 'pending'` (one open application per guild, so approving one can't
+  strand another), and a plain one on `(created_at) WHERE status = 'pending'` for the reviewer's
+  queue.
+
 Constraint changes vs current SQLite schema:
 - `guilds.guild_id` gains `NOT NULL UNIQUE` → kills duplicate-row lookups (QA **C-10**) and
   enables the upsert.

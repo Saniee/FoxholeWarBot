@@ -74,6 +74,7 @@ async fn main() -> Result<(), Error> {
                 register_commands(ctx, framework, local).await?;
 
                 cron.start_map_update_job().await?;
+                cron.start_request_purge_job(db.clone()).await?;
                 cron.restore_jobs(ctx.http.clone(), &db).await;
 
                 Ok(Data { db, cron, local })

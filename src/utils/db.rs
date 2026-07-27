@@ -48,6 +48,9 @@ pub struct GuildData {
     pub shard_name: String,
     pub show_command_output: bool,
     pub full_map_faction_tint: bool,
+    /// May this guild put a full-map report on a timer? Rendering one on demand
+    /// never consults this. See `specs/active/premium-full-map.md`.
+    pub full_map_approved: bool,
 }
 
 impl GuildData {
@@ -64,9 +67,14 @@ pub struct JobData {
     pub job_name: String,
     pub schedule: String,
     pub webhook_url: String,
-    pub map_name: String,
+    /// The region this job renders, or `None` for a full-map job. See
+    /// `migrations/0003_full_map_gate.sql` for why the absence *is* the marker.
+    pub map_name: Option<String>,
     pub draw_text: bool,
     pub job_id: Option<String>,
+    /// Whether this job's channel has already been told the schedule went
+    /// dormant. Only ever true for a full-map job, since nothing else is gated.
+    pub dormant_notified: bool,
 }
 
 /// One `cronjobs` row plus the Discord id of the guild that owns it. Columns are
@@ -82,7 +90,7 @@ pub struct JobWithGuild {
     pub job_name: String,
     pub schedule: String,
     pub webhook_url: String,
-    pub map_name: String,
+    pub map_name: Option<String>,
     pub draw_text: bool,
     pub job_id: Option<String>,
     pub guild_id: i64,
@@ -97,10 +105,90 @@ pub struct NewJob {
     pub job_name: String,
     pub schedule: String,
     pub webhook_url: String,
-    pub map_name: String,
+    pub map_name: Option<String>,
     pub draw_text: bool,
     pub job_id: String,
 }
+
+/// Where a full-map schedule request stands. Mirrors the `status` CHECK in
+/// `migrations/0003_full_map_gate.sql`; the two have to be changed together.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestStatus {
+    Pending,
+    Approved,
+    Denied,
+    Withdrawn,
+}
+
+impl RequestStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RequestStatus::Pending => "pending",
+            RequestStatus::Approved => "approved",
+            RequestStatus::Denied => "denied",
+            RequestStatus::Withdrawn => "withdrawn",
+        }
+    }
+}
+
+/// One row of the application queue, with the applying guild's Discord snowflake
+/// joined on — a reviewer sitting in the support server has no other way to tell
+/// which guild `guild = 4` is.
+///
+/// Timestamps come back as epoch seconds rather than as a date type: it keeps
+/// `sqlx` off a datetime feature, and Discord's own `<t:…:R>` markup wants
+/// exactly this, so the reviewer's list renders "2 hours ago" in their locale
+/// without the bot formatting anything.
+#[derive(Debug, Clone, FromRow)]
+pub struct FullMapRequest {
+    pub id: i64,
+    /// `guilds.id` (the surrogate row id), like `cronjobs.guild`.
+    pub guild: i64,
+    /// The applying guild's Discord snowflake, joined from `guilds`.
+    pub guild_id: i64,
+    pub requested_by: i64,
+    /// Snapshot taken when the form was filed. Review context only — nothing
+    /// reads it to decide anything (`specs/active/premium-full-map.md`).
+    pub member_count: Option<i32>,
+    pub cadence: String,
+    pub channel_id: i64,
+    pub use_case: Option<String>,
+    pub audience: Option<String>,
+    pub contact: Option<String>,
+    pub status: String,
+    pub reviewed_by: Option<i64>,
+    pub created_at: i64,
+}
+
+impl FullMapRequest {
+    pub fn is_pending(&self) -> bool {
+        self.status == RequestStatus::Pending.as_str()
+    }
+}
+
+/// The answers from the application modal, plus what the bot fills in itself.
+#[derive(Debug, Clone)]
+pub struct NewFullMapRequest {
+    /// `guilds.id`, not the Discord snowflake.
+    pub guild: i64,
+    pub requested_by: i64,
+    pub member_count: Option<i32>,
+    pub cadence: String,
+    pub channel_id: i64,
+    pub use_case: Option<String>,
+    pub audience: Option<String>,
+    pub contact: Option<String>,
+}
+
+/// Every `full_map_requests` read goes through this, so the joined guild
+/// snowflake and the epoch conversion are written once. `{where}` is a literal
+/// in every caller — nothing user-supplied is ever formatted in here.
+const REQUEST_SELECT: &str = "SELECT r.id, r.guild, g.guild_id, r.requested_by, r.member_count, \
+                                     r.cadence, r.channel_id, r.use_case, r.audience, r.contact, \
+                                     r.status, r.reviewed_by, \
+                                     EXTRACT(EPOCH FROM r.created_at)::BIGINT AS created_at \
+                              FROM full_map_requests r \
+                              JOIN guilds g ON g.id = r.guild";
 
 #[derive(Clone)]
 pub struct Database {
@@ -255,6 +343,193 @@ impl Database {
             .bind(id)
             .execute(&self.conn)
             .await?;
+        Ok(())
+    }
+
+    /// Records that this job's channel has been told it went dormant, so the
+    /// next tick doesn't say it again.
+    pub async fn set_dormant_notified(
+        &self,
+        guild: i64,
+        job_name: &str,
+        notified: bool,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE cronjobs SET dormant_notified = $3 WHERE guild = $1 AND job_name = $2")
+            .bind(guild)
+            .bind(job_name)
+            .bind(notified)
+            .execute(&self.conn)
+            .await?;
+        Ok(())
+    }
+
+    // -- full-map schedule requests -------------------------------------------
+
+    /// Files an application. The partial unique index rejects a second pending
+    /// row for the same guild as a unique violation — callers check first for a
+    /// civil message, but the index is what actually holds the rule.
+    pub async fn create_full_map_request(
+        &self,
+        req: &NewFullMapRequest,
+    ) -> Result<FullMapRequest, sqlx::Error> {
+        let id: (i64,) = sqlx::query_as(
+            "INSERT INTO full_map_requests \
+                 (guild, requested_by, member_count, cadence, channel_id, use_case, audience, contact) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+        )
+        .bind(req.guild)
+        .bind(req.requested_by)
+        .bind(req.member_count)
+        .bind(&req.cadence)
+        .bind(req.channel_id)
+        .bind(&req.use_case)
+        .bind(&req.audience)
+        .bind(&req.contact)
+        .fetch_one(&self.conn)
+        .await?;
+
+        // Read back rather than RETURNING *: the row a reviewer sees carries the
+        // guild's snowflake, which lives in the other table.
+        self.get_full_map_request(id.0)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)
+    }
+
+    pub async fn get_full_map_request(
+        &self,
+        id: i64,
+    ) -> Result<Option<FullMapRequest>, sqlx::Error> {
+        sqlx::query_as(&format!("{REQUEST_SELECT} WHERE r.id = $1"))
+            .bind(id)
+            .fetch_optional(&self.conn)
+            .await
+    }
+
+    /// The guild's open application, if it has one.
+    pub async fn pending_request_for_guild(
+        &self,
+        guild: i64,
+    ) -> Result<Option<FullMapRequest>, sqlx::Error> {
+        sqlx::query_as(&format!(
+            "{REQUEST_SELECT} WHERE r.guild = $1 AND r.status = 'pending'"
+        ))
+        .bind(guild)
+        .fetch_optional(&self.conn)
+        .await
+    }
+
+    /// The reviewer's queue, oldest first — whoever has been waiting longest is
+    /// the one to answer next.
+    pub async fn pending_full_map_requests(&self) -> Result<Vec<FullMapRequest>, sqlx::Error> {
+        sqlx::query_as(&format!(
+            "{REQUEST_SELECT} WHERE r.status = 'pending' ORDER BY r.created_at"
+        ))
+        .fetch_all(&self.conn)
+        .await
+    }
+
+    /// Records a decision, and for an approval flips the guild's flag in the
+    /// same transaction.
+    ///
+    /// `WHERE status = 'pending'` is the whole concurrency story: the channel
+    /// post's buttons and `/full-map-requests` drive this one statement, so a
+    /// second reviewer clicking Deny on an already-approved request updates no
+    /// rows and gets `None` back rather than quietly overturning the first
+    /// decision. An approval that can't reach the guild row leaves the request
+    /// pending too — the flag and the row can't disagree.
+    pub async fn review_full_map_request(
+        &self,
+        id: i64,
+        status: RequestStatus,
+        reviewed_by: i64,
+    ) -> Result<Option<FullMapRequest>, sqlx::Error> {
+        let mut tx = self.conn.begin().await?;
+
+        let reviewed: Option<(i64,)> = sqlx::query_as(
+            "UPDATE full_map_requests \
+             SET status = $2, reviewed_by = $3, reviewed_at = now() \
+             WHERE id = $1 AND status = 'pending' \
+             RETURNING guild",
+        )
+        .bind(id)
+        .bind(status.as_str())
+        .bind(reviewed_by)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some((guild,)) = reviewed else {
+            tx.rollback().await?;
+            return Ok(None);
+        };
+
+        if status == RequestStatus::Approved {
+            sqlx::query(
+                "UPDATE guilds SET full_map_approved = TRUE, full_map_approved_at = now() \
+                 WHERE id = $1",
+            )
+            .bind(guild)
+            .execute(&mut *tx)
+            .await?;
+
+            // A guild that was revoked and is now approved again gets to hear
+            // about it if it is ever revoked a second time.
+            sqlx::query("UPDATE cronjobs SET dormant_notified = FALSE WHERE guild = $1")
+                .bind(guild)
+                .execute(&mut *tx)
+                .await?;
+        }
+
+        tx.commit().await?;
+
+        self.get_full_map_request(id).await
+    }
+
+    /// Deletes requests that were turned down or taken back over 90 days ago.
+    ///
+    /// The window is stated in `docs/privacy.md`, so this is not housekeeping we
+    /// can quietly skip — it is the retention policy, and the only thing that
+    /// makes the sentence in the docs true. Approved requests are kept: they are
+    /// the record of what the standing approval was granted for.
+    pub async fn purge_stale_full_map_requests(&self) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            "DELETE FROM full_map_requests \
+             WHERE status IN ('denied', 'withdrawn') \
+               AND COALESCE(reviewed_at, created_at) < now() - INTERVAL '90 days'",
+        )
+        .execute(&self.conn)
+        .await?;
+
+        Ok(result.rows_affected())
+    }
+
+    /// Grants or revokes approval directly, by `guilds.id`.
+    ///
+    /// Revoking does **not** delete the guild's schedules: the tick re-checks
+    /// this flag and goes dormant, so re-approving resumes the job the guild
+    /// already set up (`specs/active/premium-full-map.md`).
+    pub async fn set_full_map_approved(
+        &self,
+        guild: i64,
+        approved: bool,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "UPDATE guilds \
+             SET full_map_approved = $2, \
+                 full_map_approved_at = CASE WHEN $2 THEN now() ELSE NULL END \
+             WHERE id = $1",
+        )
+        .bind(guild)
+        .bind(approved)
+        .execute(&self.conn)
+        .await?;
+
+        if approved {
+            sqlx::query("UPDATE cronjobs SET dormant_notified = FALSE WHERE guild = $1")
+                .bind(guild)
+                .execute(&self.conn)
+                .await?;
+        }
+
         Ok(())
     }
 }
