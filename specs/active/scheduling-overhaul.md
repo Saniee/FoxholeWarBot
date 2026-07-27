@@ -64,6 +64,11 @@ UNIQUE (guild, job_name)
 - A non-privileged member cannot create or remove schedules.
 - No scheduling code path can leave a deferred interaction without a final reply.
 
+## Related
+- **Premium gating** — scheduling a *full-map* report is entitlement-gated (on-demand full-map
+  renders stay free). The full-map job type carries an `is_full_map` marker so the tick applies
+  the gate. See `specs/active/premium-full-map.md`.
+
 ## Out of scope (future)
 - Listing schedules (`/list-reports`) — currently only removable via autocomplete.
 - Editing an existing schedule in place (today: remove + recreate).
