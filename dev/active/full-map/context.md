@@ -28,7 +28,8 @@ Nothing started. Core rewrite, specs reconciliation and the docs overhaul have a
 
 ## Decisions already settled (in the specs — don't re-litigate)
 - Dedicated `/full-map` command, not a flag on `/get-map`.
-- Threshold 50 members; on-demand always free; only *scheduled* full maps for large guilds gate.
+- On-demand `/full-map` always free; **every** scheduled full map needs an approved request,
+  whatever the guild's size. The old 50-member free tier is gone (user's call, this session).
 - In-Discord modal for the form; review via both `REQUESTS_CHANNEL_ID` buttons and
   `/full-map-requests`.
 - No monetization ships. Faction tint off by default; per-hex name labels are v2.
@@ -40,11 +41,12 @@ Nothing started. Core rewrite, specs reconciliation and the docs overhaul have a
   check the seams before trusting the 10240 × 6216 canvas.
 - **63.6 MP canvas.** RGBA at full size is ~254 MB before downscale. Watch the container's memory
   ceiling; consider compositing per-column or downscaling regions before overlay if it bites.
-- **`member_count` has nowhere to land at join time.** The rewrite deliberately creates *no*
-  guild row on `guild_create` — an admin runs `/set-guild-settings` first. So the cached count
-  can't simply be written on join; it has to be written on setup and refreshed on
-  `guild_create`/update **only when a row already exists**. Don't reintroduce join-time row
-  creation to solve this.
+- ~~`member_count` has nowhere to land at join time.~~ **Dissolved** by dropping the size
+  exemption. Nothing decides anything from member count now, so there's no cached column to keep
+  fresh, no refresh-on-`guild_create` path, and no conflict with "no guild row is created on
+  join". The count is read live when a request is filed and snapshotted onto the request row as
+  review context. Worth remembering if a size rule ever comes back: the reason it was awkward is
+  that the entitlement check ran at command time, when a guild might have no row at all.
 - **Docs ship with the migration, not after.** `specs/docs-site.md`'s invariant is that the
   stored-data list matches the schema; `premium-full-map.md` → "Docs impact" lists exactly what
   to add. Same commit as `0002`.

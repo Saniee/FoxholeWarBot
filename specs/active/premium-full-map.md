@@ -6,27 +6,32 @@ Status: **proposed.** Primary mechanism (approval form) is ToS-clean and buildab
 ## Gating model (locked)
 The **full-map renderer** (all 53 hex regions stitched together — see
 `specs/active/full-map-renderer.md`, built on `specs/rendering-placement.md`) is gated
-**only when scheduled**, and even then only for **larger guilds**:
+**whenever it is scheduled** — for every guild, regardless of size:
 
 | Path | Gated? |
 |---|---|
 | On-demand full-map render (one-off "dry run") | **Free for everyone** |
-| Scheduled full-map report — small guild (< threshold) | **Free** |
-| Scheduled full-map report — large guild (≥ threshold) | **Requires approval** (form) |
+| Scheduled full-map report — **any** guild | **Requires approval** (form) |
 | Single-hex commands & scheduled *hex* reports | **Free, unchanged** |
 
 Rationale: the on-demand render costs the user one explicit request; a *scheduled* full render
-costs the bot's infra repeatedly and forever. Large guilds concentrate that recurring cost and
-reach, so they go through a lightweight approval gate — **not** a paywall.
+costs the bot's infra repeatedly and forever, and that is true of a 5-member guild as much as a
+500-member one — 53 regions fetched and composited on a timer is the same load either way. The
+gate is a lightweight approval so the owner knows what recurring work has been signed up for —
+**not** a paywall.
 
-### "Larger guild" threshold
-- A configurable member-count threshold, `FULL_MAP_FREE_MEMBER_THRESHOLD` = **50** (Foxhole
-  guilds above ~200 are rare, so a higher value would gate almost nobody; 50 is where the gate
-  actually bites — tune down further if needed). Below it: schedule full-map reports freely.
-  At/above it: approval required.
-- Member count comes from the gateway `guild_create` payload (`Guild.member_count`, available
-  under the `GUILDS` intent); store it on the `guilds` row and refresh on `guild_create`/updates
-  so the check works at command time without an extra fetch.
+### No size exemption
+There is **no free tier by member count.** An earlier draft let guilds under a
+`FULL_MAP_FREE_MEMBER_THRESHOLD` (50) schedule full maps without asking; that is gone. Every
+scheduled full-map report is approved individually, so total recurring load stays a number the
+owner has actually seen rather than an emergent property of how many small guilds found the
+feature.
+
+Member count is still **recorded** — it's useful context when reviewing a request — but it is
+**not** an entitlement input. Nothing decides anything from it. Because of that it's read from
+the guild at request time and snapshotted onto the request row; it does **not** need to be
+cached on `guilds` or kept fresh (which also means the gate doesn't care that no guild row
+exists until `/set-guild-settings` runs).
 
 ## Why not a paywall / vote-wall (ToS findings)
 Searched the actual terms (2026-07):
@@ -56,8 +61,9 @@ The form is driven by commands on both sides (a Discord modal can only be opened
 interaction, so a command has to trigger it regardless):
 
 - **Applicant:** `/request-full-map-schedule` — opens the application modal and records a pending
-  request. `/schedule-report`, when a large guild targets the full map, does **not** hard-refuse:
-  it points the user at this command (and can open the modal itself). Available to members who
+  request. `/schedule-report`, when a guild targets the full map without approval, does **not**
+  hard-refuse: it points the user at this command (and can open the modal itself). Available to
+  members who
   can create schedules (same permission gate as `/schedule-report`, per the scheduling overhaul).
 - **Reviewer (bot owner / designated admin):** `/full-map-requests` with subcommands:
   - `list` — show pending requests (id, guild, size, cadence, use case).
@@ -79,7 +85,8 @@ fallback/scriptable path over the same actions (both write the same `full_map_re
 - Button interactions are owner/admin-gated so only reviewers can approve/deny.
 
 ### Flow
-1. Large guild → `/request-full-map-schedule` → modal → a `pending` row in `full_map_requests`.
+1. Any guild wanting a scheduled full map → `/request-full-map-schedule` → modal → a `pending`
+   row in `full_map_requests`.
 2. The request is posted to `REQUESTS_CHANNEL_ID` (embed + Approve/Deny buttons) and is visible
    via `/full-map-requests list`.
 3. **Approve** (button or command) → `full_map_approved = true`, requester notified, guild creates
@@ -95,7 +102,7 @@ Form delivery (pick at build time):
 ### Form fields
 Auto-filled by the bot (not asked):
 - Guild name + guild ID
-- Guild member count (for the threshold record)
+- Guild member count — **review context only**, snapshotted at request time; it grants nothing
 - Requesting user (ID + guild roles, to confirm they can speak for the guild)
 
 Asked of the requester:
@@ -117,9 +124,9 @@ Asked of the requester:
 
 ## Data model (folds into `specs/postgres.md`)
 ```sql
--- guilds: approval state + cached size for the threshold
-ALTER TABLE guilds ADD COLUMN member_count       INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE guilds ADD COLUMN full_map_approved   BOOLEAN NOT NULL DEFAULT FALSE;
+-- guilds: approval state only. No cached member_count column: nothing decides
+-- anything from member count any more, so there is nothing to keep fresh.
+ALTER TABLE guilds ADD COLUMN full_map_approved    BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE guilds ADD COLUMN full_map_approved_at TIMESTAMPTZ;
 
 -- pending/approved/denied application queue
@@ -127,6 +134,7 @@ CREATE TABLE full_map_requests (
     id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     guild         BIGINT NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
     requested_by  BIGINT NOT NULL,              -- Discord user id
+    member_count  INTEGER,                      -- snapshot, review context only
     map_target    TEXT   NOT NULL,              -- "full-map"
     cadence       TEXT   NOT NULL,              -- requested schedule phrase
     channel_id    BIGINT NOT NULL,
@@ -151,18 +159,22 @@ trait FullMapScheduling {
     /// May this guild run a *scheduled* full-map report right now?
     async fn is_allowed(&self, guild: &GuildData) -> bool;
 }
-// Default impl: small guild (member_count < threshold) => true;
-//               large guild => guild.full_map_approved.
+// Default impl: guild.full_map_approved. That's the whole rule — no size branch,
+// no threshold constant, nothing to configure.
 ```
-1. **At schedule creation** (`/schedule-report`, full-map target, large guild, not approved) →
-   start the application flow instead of scheduling.
+1. **At schedule creation** (`/schedule-report`, full-map target, not approved) → start the
+   application flow instead of scheduling.
 2. **At tick time** (ties into `specs/scheduling.md`, `is_full_map` job marker):
-   re-check `is_allowed`. If a large guild's approval was revoked, the job goes **dormant**
-   (skips rendering, posts a one-time heads-up) rather than silently burning infra. Re-approval
-   reactivates it.
+   re-check `is_allowed`. If approval was revoked, the job goes **dormant** (skips rendering,
+   posts a one-time heads-up) rather than silently burning infra. Re-approval reactivates it.
+
+The trait stays even though its default impl is now a single field read: it's the seam that keeps
+a future entitlement source (sponsor role, donation tier) out of the command bodies.
 
 ## Decisions (settled)
-- **Threshold:** `FULL_MAP_FREE_MEMBER_THRESHOLD = 50` (configurable; tune from real guild sizes).
+- **No size exemption.** Every scheduled full-map report needs approval, whatever the guild's
+  size. Supersedes the earlier `FULL_MAP_FREE_MEMBER_THRESHOLD = 50` free tier, which is gone;
+  member count is recorded for the reviewer and grants nothing.
 - **Form delivery: in-Discord modal.** Lowest friction, and answers land straight in
   `full_map_requests` with no external hosting or webhook round-trip. No web form.
 - **Review surface: both.** The `REQUESTS_CHANNEL_ID` channel post with Approve/Deny buttons is
@@ -182,26 +194,29 @@ The docs site was brought in line with the shipped schema ahead of this feature
 doesn't yet store would have broken that spec's central invariant. Ship these **in the same
 commit** as the schema change:
 
-- **`tos.md` / `privacy.md` — extend the stored-data list** with the new `guilds` columns (cached
-  member count, approval flag) and the `full_map_requests` row: requesting user's Discord ID,
-  guild ID / name / member count, requested cadence and channel, and the free-text answers.
+- **`tos.md` / `privacy.md` — extend the stored-data list** with the new `guilds` columns
+  (approval flag and its timestamp) and the `full_map_requests` row: requesting user's Discord ID,
+  guild ID / name, a member-count snapshot, requested cadence and channel, and the free-text
+  answers.
   The free-text answers are the first genuinely *new* data the bot stores, and the first data
   tied to an individual user rather than a server — say so plainly.
 - **Retention.** Guild rows and schedules cascade on leave; request rows are kept for review
   history. Pick and state a window — suggested: purge denied/withdrawn requests after 90 days.
 - **A new docs section for the form**, in user-facing terms: the full map is free to render on
-  demand for everyone; *scheduled* full-map reports are free under the member threshold; larger
-  guilds submit a short request because each scheduled render is a recurring cost on the host;
-  answers are reviewed by the bot owner in the support server; approval may be revoked, which
-  makes the schedule dormant rather than deleted. **No payment is involved at any point** — state
-  it, since an approval flow is exactly the shape users expect a paywall to take.
+  demand for everyone; *scheduling* one requires a short request, from every server regardless of
+  size, because each scheduled render is a recurring cost on the host; answers are reviewed by the
+  bot owner in the support server; approval may be revoked, which makes the schedule dormant
+  rather than deleted. **No payment is involved at any point** — state it plainly and early, since
+  "apply for access" is exactly the shape users expect a paywall to take, and a gate with no free
+  tier at all invites that reading more than the old one did.
 
 ## Acceptance criteria
-- On-demand full-map render works for everyone; small guilds can schedule full-map reports
-  without any gate.
-- A large guild scheduling a full-map report is routed into the application flow; a schedule is
+- On-demand full-map render works for everyone, with no request and no approval.
+- **No guild, of any size, can create a scheduled full-map report without an approved request.**
+- A guild scheduling a full-map report is routed into the application flow; the schedule is
   created only after approval.
-- A tick for a large guild whose approval was revoked goes dormant (not deleted) and can resume
-  on re-approval.
+- A tick for a guild whose approval was revoked goes dormant (not deleted) and resumes on
+  re-approval.
+- Member count appears in the request embed and nowhere in any decision path.
 - No money changes hands anywhere in the shipped feature; single-hex commands and hex scheduling
   are unaffected.
