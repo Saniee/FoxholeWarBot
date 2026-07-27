@@ -64,10 +64,8 @@ schema change. Documenting data the bot doesn't yet store is exactly the failure
 was fixing.
 
 ## What's next
-Nothing is in flight — working tree clean, everything pushed to `feat/rewrite-overhaul` (PR #1).
-Deferred specs, in priority order:
-1. `specs/active/full-map-renderer.md` (depends on `rendering-placement.md`, which landed)
-2. `specs/active/premium-full-map.md`
+Both remaining specs — `full-map-renderer.md` and `premium-full-map.md` — are now being taken on
+together as one task: **`dev/active/full-map/`**. Read that instead; this file is history.
 
 **Gotcha for whoever starts premium-full-map:** its spec describes adding columns to `guilds`
 (cached member count, approval flag) and a `full_map_requests` table. The schema is now live, so
