@@ -1,0 +1,18 @@
+-- Remembers which message in REQUESTS_CHANNEL_ID is a request's review post.
+--
+-- Without it, only the surface that made a decision could show it. Approving
+-- from the post edited the post; approving from `/full-map-requests`, or an
+-- applicant withdrawing from their own ephemeral reply, left the post sitting
+-- there reading "pending" with live buttons — a record that lies, and the one
+-- thing a review queue cannot afford.
+--
+-- Nullable, and it stays nullable. REQUESTS_CHANNEL_ID is optional, the post is
+-- best-effort (a request is committed before it is announced, and a failed
+-- announcement must never lose the request), and requests filed before this
+-- migration have no post to point at. NULL means "no post to keep in step",
+-- which every caller has to handle anyway.
+--
+-- The channel id is deliberately not stored beside it: the post lives wherever
+-- REQUESTS_CHANNEL_ID points now, and a stale copy of that in every row would
+-- be one more thing that can disagree with the truth.
+ALTER TABLE full_map_requests ADD COLUMN message_id BIGINT;

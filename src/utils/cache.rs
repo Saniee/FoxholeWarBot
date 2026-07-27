@@ -1,120 +1,155 @@
+//! On-disk JSON cache for Foxhole War API responses, under `./cache/`.
+//!
+//! Nothing here is durable state — it exists to serve `304 Not Modified`
+//! revalidation (the War API's one explicit rule is to respect its cache
+//! headers). Every failure is therefore recoverable: a cache miss just means a
+//! full fetch, so I/O errors are logged and folded into `None` rather than
+//! propagated (QA L-7 — the old code panicked on a cold cache).
+
 use reqwest::StatusCode;
 
 use super::api_definitions::foxhole::{DynamicMapData, Maps, StaticMapData, WarReport};
 use super::db::Shard;
+use super::http;
+
+const CACHE_DIRS: [&str; 5] = [
+    "./cache",
+    "./cache/map_choices",
+    "./cache/static",
+    "./cache/dynamic",
+    "./cache/war_reports",
+];
 
 async fn create_cache_dirs() {
-    let cache_dir = std::path::Path::new("./cache");
-    let map_cache_dir = std::path::Path::new("./cache/map_choices");
-    let static_cache_dir = std::path::Path::new("./cache/static");
-    let dynamic_cache_dir = std::path::Path::new("./cache/dynamic");
-    let war_report_dir = std::path::Path::new("./cache/war_reports");
-
-    if !cache_dir.exists() {
-        tokio::fs::create_dir(cache_dir).await.unwrap();
-    }
-    if !map_cache_dir.exists() {
-        tokio::fs::create_dir(map_cache_dir).await.unwrap();
-    }
-    if !static_cache_dir.exists() {
-        tokio::fs::create_dir(static_cache_dir).await.unwrap();
-    }
-    if !dynamic_cache_dir.exists() {
-        tokio::fs::create_dir(dynamic_cache_dir).await.unwrap();
-    }
-    if !war_report_dir.exists() {
-        tokio::fs::create_dir(war_report_dir).await.unwrap();
+    for dir in CACHE_DIRS {
+        if let Err(err) = tokio::fs::create_dir_all(dir).await {
+            log::warn!("could not create the cache directory {dir}: {err}");
+        }
     }
 }
 
+async fn write_json<T: serde::Serialize>(path: String, value: &T, what: &str) {
+    let encoded = match serde_json::to_string(value) {
+        Ok(s) => s,
+        Err(err) => return log::warn!("could not encode {what} for the cache: {err}"),
+    };
+
+    if let Err(err) = tokio::fs::write(&path, encoded).await {
+        log::warn!("could not write {what} to {path}: {err}");
+    }
+}
+
+async fn read_json<T: serde::de::DeserializeOwned>(path: String) -> Option<T> {
+    let raw = tokio::fs::read_to_string(&path).await.ok()?;
+
+    match serde_json::from_str(&raw) {
+        Ok(value) => Some(value),
+        Err(err) => {
+            // A corrupt cache file should not be fatal; drop it and refetch.
+            log::warn!("cache file {path} is unreadable ({err}), ignoring it");
+            None
+        }
+    }
+}
+
+/// Refreshes the per-shard map list used by every autocomplete.
 pub async fn save_maps_cache() {
     create_cache_dirs().await;
 
-    let client = reqwest::Client::new();
-    let servers = Shard::list_all();
+    let client = http::client().clone();
 
-    for server in servers {
-        let api_url = server.api_url();
-        let shard = server.as_str();
-        let resp = client.get(format!("{api_url}/worldconquest/maps")).send().await.unwrap();
-        let maps = match resp.status() {
-            StatusCode::OK => {
-                resp.json::<Maps>().await.unwrap()
-            }
-            StatusCode::SERVICE_UNAVAILABLE => {
-                continue;
-            }
-            _ => {
-                println!("{:?}", resp.status());
+    for shard in Shard::list_all() {
+        let api_url = shard.api_url();
+        let shard_name = shard.as_str();
+
+        let resp = match client
+            .get(format!("{api_url}/worldconquest/maps"))
+            .send()
+            .await
+        {
+            Ok(resp) => resp,
+            Err(err) => {
+                log::warn!("could not reach shard {shard_name} for the map list: {err}");
                 continue;
             }
         };
 
-        let path_str = format!("./cache/map_choices/maps-{shard}.json");
-        let path = std::path::Path::new(&path_str);
+        if resp.status() != StatusCode::OK {
+            log::warn!("shard {shard_name} returned {} for the map list", resp.status());
+            continue;
+        }
 
-        tokio::fs::write(path, serde_json::to_string(&maps).unwrap()).await.unwrap();
+        let maps = match resp.json::<Maps>().await {
+            Ok(maps) => maps,
+            Err(err) => {
+                log::warn!("could not decode the map list for shard {shard_name}: {err}");
+                continue;
+            }
+        };
+
+        write_json(
+            format!("./cache/map_choices/maps-{shard_name}.json"),
+            &maps,
+            "the map list",
+        )
+        .await;
     }
 }
 
+/// Returns an empty list rather than panicking when the cache has not been
+/// written yet — autocomplete fires before the first map refresh on a cold start.
 pub async fn load_maps(shard: Shard) -> Maps {
     let shard_name = shard.as_str();
-    let path_str = format!("./cache/map_choices/maps-{shard_name}.json");
-    let path = std::path::Path::new(&path_str);
 
-    let data = tokio::fs::read_to_string(path).await.unwrap();
-
-    serde_json::from_str(&data).unwrap()
+    read_json(format!("./cache/map_choices/maps-{shard_name}.json"))
+        .await
+        .unwrap_or_default()
 }
 
-pub async fn save_map_cache(dynamic_data: DynamicMapData, static_data: StaticMapData, map_name: &str, shard: &str) {
-    create_cache_dirs().await;
-    
-    match tokio::fs::write(format!("./cache/dynamic/Dynamic_{map_name}-{shard}.json"), serde_json::to_string(&dynamic_data).unwrap()).await {
-        Ok(()) => {},
-        Err(msg) => {
-            println!("Error at writing dynamic data for {map_name}. Error: {msg}")
-        }
-    }
-    match tokio::fs::write(format!("./cache/static/Static_{map_name}-{shard}.json"), serde_json::to_string(&static_data).unwrap()).await {
-        Ok(()) => {},
-        Err(msg) => {
-            println!("Error at writing static data for {map_name}. Error: {msg}")
-        },
-    };
-}
-
-pub async fn save_war_report(war_report: WarReport, map_name: &str, shard: &str) {
+pub async fn save_map_cache(
+    dynamic_data: &DynamicMapData,
+    static_data: &StaticMapData,
+    map_name: &str,
+    shard: &str,
+) {
     create_cache_dirs().await;
 
-    match tokio::fs::write(format!("./cache/war_reports/Report_{map_name}-{shard}.json"), serde_json::to_string(&war_report).unwrap()).await {
-        Ok(()) => {},
-        Err(msg) => {
-            println!("Error at writing war report data for {map_name}. Error: {msg}")
-        }
-    }
+    write_json(
+        format!("./cache/dynamic/Dynamic_{map_name}-{shard}.json"),
+        dynamic_data,
+        &format!("dynamic data for {map_name}"),
+    )
+    .await;
+    write_json(
+        format!("./cache/static/Static_{map_name}-{shard}.json"),
+        static_data,
+        &format!("static data for {map_name}"),
+    )
+    .await;
 }
 
-pub async fn load_map_cache(map_name: &str, shard: &str) -> Option<(DynamicMapData, StaticMapData)> {
-    let dynamic_data_str = (tokio::fs::read_to_string(format!("./cache/dynamic/Dynamic_{map_name}-{shard}.json")).await).ok();
+pub async fn save_war_report(war_report: &WarReport, map_name: &str, shard: &str) {
+    create_cache_dirs().await;
 
-    let static_data_str = (tokio::fs::read_to_string(format!("./cache/static/Static_{map_name}-{shard}.json")).await).ok();
+    write_json(
+        format!("./cache/war_reports/Report_{map_name}-{shard}.json"),
+        war_report,
+        &format!("war report for {map_name}"),
+    )
+    .await;
+}
 
-    if dynamic_data_str.is_some() && static_data_str.is_some() {
-        let dynamic_data = serde_json::from_str(&dynamic_data_str.unwrap()).unwrap();
-        let static_data = serde_json::from_str(&static_data_str.unwrap()).unwrap();
-        Some((dynamic_data, static_data))
-    } else {
-        None
-    }
-    
+/// The dynamic and static halves are returned independently so each can be
+/// revalidated with its own ETag. The old combined `Option<(dynamic, static)>`
+/// is what made the mismatched-304 path unwrap an absent cache (QA C-2).
+pub async fn load_dynamic_cache(map_name: &str, shard: &str) -> Option<DynamicMapData> {
+    read_json(format!("./cache/dynamic/Dynamic_{map_name}-{shard}.json")).await
+}
+
+pub async fn load_static_cache(map_name: &str, shard: &str) -> Option<StaticMapData> {
+    read_json(format!("./cache/static/Static_{map_name}-{shard}.json")).await
 }
 
 pub async fn load_war_report(map_name: &str, shard: &str) -> Option<WarReport> {
-    match tokio::fs::read_to_string(format!("./cache/war_reports/Report_{map_name}-{shard}.json")).await {
-        Ok(data) => serde_json::from_str(&data).unwrap(),
-        Err(_) => {
-            None
-        }
-    }
+    read_json(format!("./cache/war_reports/Report_{map_name}-{shard}.json")).await
 }

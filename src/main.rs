@@ -1,244 +1,282 @@
+mod args;
+mod commands;
+mod utils;
+
 use args::Args;
 use clap::Parser;
+use poise::serenity_prelude as serenity;
 
-use serenity::all::{ActivityData, Command, Guild, UnavailableGuild};
-use serenity::async_trait;
-use serenity::builder::{CreateInteractionResponse, CreateInteractionResponseMessage};
-use serenity::model::application::Interaction;
-use serenity::model::gateway::Ready;
-use serenity::model::id::GuildId;
-use serenity::prelude::*;
-use sqlx::Executor;
 use utils::cache::save_maps_cache;
-use utils::db::Database;
 use utils::cron::CronHandler;
+use utils::db::Database;
 
-mod utils;
-mod commands;
-mod args;
-
-#[derive(Clone)]
-struct Handler {
-    db: Database,
-    local: bool,
-    cron_handler: CronHandler
+/// Shared state, reachable from any command via `ctx.data()`.
+pub struct Data {
+    pub db: Database,
+    pub cron: CronHandler,
+    pub local: bool,
 }
 
-#[derive(Clone, Default)]
-struct HandlerData {
-    cron_jobs_restarted: bool
-}
-
-#[async_trait]
-impl EventHandler for Handler {
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        if let Interaction::Command(command) = &interaction {
-            // println!("Received command interaction!");
-
-            let content = match command.data.name.as_str() {
-                commands::get_map::NAME => {
-                    commands::get_map::run(&ctx, command, self.db.clone()).await.unwrap();
-                    None
-                },
-                commands::war_report::NAME => {
-                    commands::war_report::run(&ctx, command, self.db.clone()).await.unwrap();
-                    None
-                },
-                commands::war_state::NAME => {
-                    commands::war_state::run(&ctx, command, self.db.clone()).await.unwrap();
-                    None
-                },
-                commands::set_guild_settings::NAME => {
-                    commands::set_guild_settings::run(&ctx, command, self.db.clone()).await.unwrap();
-                    None
-                },
-                commands::schedule_report::NAME => {
-                    commands::schedule_report::run(&ctx, command, self.db.clone(), &mut self.cron_handler.clone()).await.unwrap();
-                    None
-                },
-                commands::remove_report::NAME => {
-                    commands::remove_report::run(&ctx, command, self.db.clone(), &mut self.cron_handler.clone()).await.unwrap();
-                    None
-                },
-                commands::schedule_help::NAME => {
-                    commands::schedule_help::run(&ctx, command, self.db.clone()).await.unwrap();
-                    None
-                }
-                _ => Some("not implemented :(".to_string()),
-            };
-
-            if let Some(content) = content {
-                let data = CreateInteractionResponseMessage::new().content(content);
-                let builder = CreateInteractionResponse::Message(data);
-                if let Err(why) = command.create_response(&ctx.http, builder).await {
-                    println!("Cannot respond to slash command: {why}");
-                }
-            }
-        }
-        if let Interaction::Autocomplete(command) = &interaction {
-            // println!("Recieved Autocomplete Interaction");
-
-            match command.data.name.as_str() {
-                commands::get_map::NAME => {
-                    commands::get_map::autocomplete(&ctx, command, self.db.clone()).await.unwrap();
-                },
-                commands::war_report::NAME => {
-                    commands::war_report::autocomplete(&ctx, command, self.db.clone()).await.unwrap();
-                },
-                commands::set_guild_settings::NAME => {
-                    commands::set_guild_settings::autocomplete(&ctx, command).await.unwrap();
-                },
-                commands::schedule_report::NAME => {
-                    commands::schedule_report::autocomplete(&ctx, command, self.db.clone()).await.unwrap();
-                },
-                commands::remove_report::NAME => {
-                    commands::remove_report::autocomplete(&ctx, command, self.db.clone()).await.unwrap();
-                }
-                _ => return
-            }
-        }
-    }
-    
-    async fn guild_create(&self, _ctx: Context, guild: Guild, is_new: Option<bool>) {
-        let new = match is_new {
-            Some(new) => new,
-            None => return
-        };
-
-        if new {
-            println!("Joined {}. Now in {} Guilds!", guild.name, _ctx.cache.guilds().len());
-            self.db.create_guild(i64::try_from(guild.id.get()).unwrap(), None).await;
-        }
-    }
-
-    async fn guild_delete(&self, _ctx: Context, incomplete: UnavailableGuild, full: Option<Guild>) {
-        if full.is_some() {
-            if !incomplete.unavailable {
-                println!("Left {}. Now in {} Guilds!", full.clone().unwrap().name, _ctx.cache.guilds().len());
-                self.db.delete_guild(i64::try_from(full.clone().unwrap().id.get()).unwrap()).await;
-            }
-        } else if !incomplete.unavailable {
-            println!("Left {} (Incomplete Data). Now in {} Guilds!", incomplete.id, _ctx.cache.guilds().len());
-            self.db.delete_guild(i64::try_from(incomplete.id.get()).unwrap()).await;
-        }
-    }
-    
-    async fn ready(&self, ctx: Context, ready: Ready) {
-        let mut data = HandlerData::default();
-
-        println!("{} is connected!\nIn {} guild/s!", ready.user.name, ready.guilds.len());
-
-        ctx.set_activity(Some(ActivityData::watching("Foxhole Wars")));
-        ctx.idle();
-
-        save_maps_cache().await;
-
-        let guild_id = GuildId::new(
-            dotenv::var("GUILD_ID")
-                .expect("Expected GUILD_ID in environment")
-                .parse()
-                .expect("GUILD_ID must be an integer"),
-        );
-
-        if !&self.local {
-            let _ = Command::set_global_commands(&ctx.http, vec![
-                commands::get_map::register(),
-                commands::war_report::register(),
-                commands::war_state::register(),
-                commands::schedule_report::register(),
-                commands::schedule_help::register(),
-                commands::remove_report::register(),
-                commands::set_guild_settings::register(),
-            ]).await.unwrap();
-        } else {
-            let _ = guild_id.set_commands(&ctx.http, vec![
-                commands::get_map::register(),
-                commands::war_report::register(),
-                commands::war_state::register(),
-                commands::schedule_report::register(),
-                commands::schedule_help::register(),
-                commands::remove_report::register(),
-                commands::set_guild_settings::register(),
-            ])
-            .await.unwrap();
-        }
-
-        if !data.cron_jobs_restarted {
-            self.cron_handler.start_map_update_job().await;
-            self.cron_handler.clone().restart_report_jobs(&ctx, self.db.clone()).await;
-            
-            data.cron_jobs_restarted = true;
-        }
-    }
-}
+pub type Error = Box<dyn std::error::Error + Send + Sync>;
+pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Error> {
+    // `tracing::span=off` silences serenity's gateway internals. They arrive as
+    // `log` records because `tracing` bridges span lifecycles across, and every
+    // heartbeat and received frame produces one — `recv;`, `do_heartbeat;`,
+    // `recv_event;`, a few per second, forever, with no content. Serenity's own
+    // messages have their own targets and are untouched.
+    //
+    // `RUST_LOG` still overrides all of this when something needs watching.
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info,tracing::span=off"),
+    )
+    .init();
+
     let args = Args::parse();
-    let local = args.local;
-    let cron_handler = CronHandler::new().await.unwrap();
 
-    // Clear All Commands on App
     if args.clear_commands {
-        let token = dotenv::var("TOKEN").expect("No token string found in .env!");
-        let app_id = dotenv::var("APP_ID").expect("No app id found in .env!").parse().unwrap();
+        return clear_commands().await;
+    }
 
-        let client = Client::builder(token, GatewayIntents::empty()).application_id(app_id)
-            .await
-            .expect("Error creating client");
+    let token = dotenv::var("TOKEN").expect("No TOKEN found in .env!");
+    let database_url = dotenv::var("DATABASE_URL").expect("No DATABASE_URL found in .env!");
 
-        let g_commands = Command::get_global_commands(&client.http).await.unwrap();
-        for command in g_commands {
-            Command::delete_global_command(&client.http, command.id).await.unwrap();
-        }
+    let db = Database::connect(&database_url).await?;
+    let cron = CronHandler::new().await?;
+    let local = args.local;
 
-        let guild_id = GuildId::new(
-            dotenv::var("GUILD_ID")
-                .expect("Expected GUILD_ID in environment")
-                .parse()
-                .expect("GUILD_ID must be an integer"),
-        );
-        let commands = guild_id.get_commands(&client.http).await.unwrap();
-        for command in commands {
-            guild_id.delete_command(&client.http, command.id).await.unwrap();
-        }
+    let framework = poise::Framework::builder()
+        .options(poise::FrameworkOptions {
+            commands: commands::all(),
+            on_error: |error| Box::pin(on_error(error)),
+            event_handler: |ctx, event, framework, data| {
+                Box::pin(event_handler(ctx, event, framework, data))
+            },
+            ..Default::default()
+        })
+        // Runs exactly once per process. The old code kept the "already
+        // restarted?" flag in a local it re-created on every `ready`, so every
+        // gateway reconnect scheduled a second copy of every job (QA C-6).
+        .setup(move |ctx, ready, framework| {
+            Box::pin(async move {
+                log::info!(
+                    "{} is connected, in {} guild(s)",
+                    ready.user.name,
+                    ready.guilds.len()
+                );
+
+                ctx.set_activity(Some(serenity::ActivityData::watching("Foxhole Wars")));
+                ctx.idle();
+
+                save_maps_cache().await;
+                register_commands(ctx, framework, local).await?;
+
+                // Parsed here so an empty or malformed REVIEWER_IDS is warned
+                // about at boot, rather than the first time somebody tries to
+                // act on a request nobody can act on.
+                utils::review::reviewers();
+
+                cron.start_map_update_job().await?;
+                cron.start_request_purge_job(db.clone()).await?;
+                cron.restore_jobs(ctx.http.clone(), &db).await;
+                // After the restore, so the nightly rebuild is registered
+                // against the same jobs it will later replace.
+                cron.start_job_rebuild_job(ctx.http.clone(), db.clone())
+                    .await?;
+
+                Ok(Data { db, cron, local })
+            })
+        })
+        .build();
+
+    let mut client = serenity::ClientBuilder::new(token, serenity::GatewayIntents::GUILDS)
+        .framework(framework)
+        .await?;
+
+    client.start().await?;
+
+    Ok(())
+}
+
+async fn register_commands(
+    ctx: &serenity::Context,
+    framework: &poise::Framework<Data, Error>,
+    local: bool,
+) -> Result<(), Error> {
+    let commands = &framework.options().commands;
+
+    if local {
+        let guild_id = dev_guild_id()?;
+        poise::builtins::register_in_guild(ctx, commands, guild_id).await?;
+        log::info!("registered {} commands in the dev guild", commands.len());
+    } else {
+        poise::builtins::register_globally(ctx, commands).await?;
+        log::info!("registered {} commands globally", commands.len());
+        clear_dev_guild_commands(ctx).await;
+    }
+
+    Ok(())
+}
+
+/// Deletes any guild-scoped commands left in the dev guild by a `--local` run.
+///
+/// Those registrations outlive the process that made them — Discord keeps them
+/// until something deletes them — so a dev guild ends up showing two of every
+/// command once the real bot is deployed. The duplicate is worse than untidy:
+/// a leftover whose name or options no longer match a registered command
+/// arrives as an interaction poise has no handler for, so nothing ever
+/// acknowledges it and Discord spins until it gives up with "application did
+/// not respond".
+///
+/// Best-effort by design. This runs inside `setup`, where returning an error
+/// aborts the whole startup, and failing to tidy the dev guild is never a
+/// reason to refuse to run in production.
+async fn clear_dev_guild_commands(ctx: &serenity::Context) {
+    // No GUILD_ID set means there is no dev guild to clean up, which is the
+    // normal case for anyone self-hosting.
+    let Ok(guild_id) = dev_guild_id() else {
         return;
-    }
+    };
 
-    let token = dotenv::var("TOKEN").expect("No token string found in .env!");
-
-    let db = Database::connect().await;
-
-    let _ = db.conn.execute("
-        CREATE TABLE IF NOT EXISTS guilds (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        guild_id INTEGER,
-        shard TEXT,
-        shard_name TEXT,
-        show_command_output INTEGER CHECK (show_command_output IN (0,1)) )").await.unwrap();
-
-    let _ = db.conn.execute("
-        CREATE TABLE IF NOT EXISTS cronjobs (
-        guild INTEGER REFERENCES guilds(id),
-        job_name TEXT UNIQUE,
-        schedule TEXT,
-        webhook_url TEXT,
-        map_name TEXT,
-        draw_text INTEGER CHECK (draw_text IN (0,1)),
-        job_id TEXT UNIQUE )").await.unwrap();
-
-    let intents = GatewayIntents::GUILDS;
-
-    db.migrate().await;
-
-    let mut client = Client::builder(token, intents)
-        .event_handler(Handler { db, local, cron_handler })
+    match guild_id
+        .set_commands(ctx, Vec::<serenity::CreateCommand>::new())
         .await
-        .expect("Error creating client");
+    {
+        Ok(_) => log::info!("cleared any leftover dev-guild commands in {guild_id}"),
+        Err(err) => log::warn!("could not clear dev-guild commands in {guild_id}: {err}"),
+    }
+}
 
-    if let Err(why) = client.start().await {
-        println!("Client error: {why:?}");
+fn dev_guild_id() -> Result<serenity::GuildId, Error> {
+    let raw = dotenv::var("GUILD_ID").map_err(|_| "GUILD_ID is not set in .env")?;
+    let id: u64 = raw.parse().map_err(|_| "GUILD_ID must be an integer")?;
+
+    Ok(serenity::GuildId::new(id))
+}
+
+/// Deletes every registered command, global and dev-guild.
+///
+/// Talks to the REST API directly instead of building a gateway client it never
+/// connects (QA B-4).
+async fn clear_commands() -> Result<(), Error> {
+    let token = dotenv::var("TOKEN").expect("No TOKEN found in .env!");
+    let app_id: u64 = dotenv::var("APP_ID")
+        .expect("No APP_ID found in .env!")
+        .parse()
+        .map_err(|_| "APP_ID must be an integer")?;
+
+    let http = serenity::Http::new(&token);
+    http.set_application_id(serenity::ApplicationId::new(app_id));
+
+    serenity::Command::set_global_commands(&http, Vec::<serenity::CreateCommand>::new()).await?;
+    log::info!("cleared global commands");
+
+    match dev_guild_id() {
+        Ok(guild_id) => {
+            guild_id
+                .set_commands(&http, Vec::<serenity::CreateCommand>::new())
+                .await?;
+            log::info!("cleared commands in guild {guild_id}");
+        }
+        Err(err) => log::info!("skipping guild commands: {err}"),
     }
 
-    // self.cron_handler.clone().restart_report_jobs(&ctx, self.db.clone()).await;
+    Ok(())
+}
+
+async fn event_handler(
+    ctx: &serenity::Context,
+    event: &serenity::FullEvent,
+    _framework: poise::FrameworkContext<'_, Data, Error>,
+    data: &Data,
+) -> Result<(), Error> {
+    match event {
+        serenity::FullEvent::GuildCreate { guild, is_new } => {
+            if is_new.unwrap_or(false) {
+                log::info!(
+                    "joined {}, now in {} guild(s)",
+                    guild.name,
+                    ctx.cache.guilds().len()
+                );
+            }
+        }
+        serenity::FullEvent::GuildDelete { incomplete, full } => {
+            // `unavailable` means an outage, not a removal — don't delete
+            // settings for a guild that's merely offline.
+            if incomplete.unavailable {
+                return Ok(());
+            }
+
+            let name = full
+                .as_ref()
+                .map(|g| g.name.clone())
+                .unwrap_or_else(|| incomplete.id.to_string());
+
+            log::info!("left {name}, now in {} guild(s)", ctx.cache.guilds().len());
+
+            // Cascades to this guild's scheduled reports via the FK.
+            if let Err(err) = data.db.delete_guild(incomplete.id.get() as i64).await {
+                log::warn!("could not clean up settings for {name}: {err}");
+            }
+        }
+        // Poise routes slash commands and modals for us, but not message
+        // components — the Approve/Deny buttons on a review post arrive here.
+        serenity::FullEvent::InteractionCreate {
+            interaction: serenity::Interaction::Component(component),
+        } => {
+            // `Ok(false)` means the component wasn't ours, and silence is the
+            // right answer — acknowledging an unknown component would claim an
+            // interaction something else may own.
+            match utils::review::handle_button(ctx, &data.db, component).await {
+                Ok(_) => {}
+                Err(err) => log::warn!(
+                    "could not handle the '{}' button: {err}",
+                    component.data.custom_id
+                ),
+            }
+        }
+        _ => {}
+    }
+
+    Ok(())
+}
+
+/// Anything a command returns as an error lands here.
+///
+/// Always producing a reply is what keeps a deferred interaction from hanging on
+/// its spinner forever (QA C-12).
+async fn on_error(error: poise::FrameworkError<'_, Data, Error>) {
+    match error {
+        poise::FrameworkError::Command { ref error, ctx, .. } => {
+            log::error!("command /{} failed: {error}", ctx.command().name);
+
+            let _ = ctx
+                .send(
+                    poise::CreateReply::default()
+                        .content(format!(
+                            "Something went wrong running that command. \
+                             If it keeps happening, please report it: {}",
+                            commands::common::SUPPORT_INVITE
+                        ))
+                        .ephemeral(true),
+                )
+                .await;
+        }
+        poise::FrameworkError::GuildOnly { ctx, .. } => {
+            let _ = ctx
+                .send(
+                    poise::CreateReply::default()
+                        .content("This command only works inside a server.")
+                        .ephemeral(true),
+                )
+                .await;
+        }
+        other => {
+            if let Err(err) = poise::builtins::on_error(other).await {
+                log::error!("error while handling a framework error: {err}");
+            }
+        }
+    }
 }
