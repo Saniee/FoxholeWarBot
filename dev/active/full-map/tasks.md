@@ -25,7 +25,9 @@
       exactly one file per table region plus three non-conquest assets
 - [x] Faction tint behind `RenderConfig::faction_tint`, off by default, opt-in per guild via
       `/set_guild_settings faction_tint:true`. Full map only; control = town + relic bases by
-      majority; ties untinted. Strength 0.5 (user's pick). **Unverified — needs a build**
+      majority. Strength 0.5 (user's pick). **Seen working at full-map scale**
+- [x] Tint tiebreak — one hex came back untinted because its bases were split evenly. A tie on
+      bases now falls through to all other faction-held structures. **Unverified — needs a build**
 - [x] `scripts/update_assets.py` — pull art from a local warapi clone, renaming to the table's
       spelling; `--audit` cross-checks `assets/Maps/` against `regions.rs`
 - [x] Clear the dev guild's commands on a global registration — stale guild-scoped registrations

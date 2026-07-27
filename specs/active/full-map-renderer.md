@@ -238,9 +238,13 @@ This is 53× the work of a single hex — the reason scheduled full-map renders 
     nowhere else, so `/get-map` cannot pick it up by accident.
   - **Control = town bases + relic bases, by majority** (`CONTROL_ICON_TYPES`: 45, 46, 47, 56, 57,
     58). Those are the structures that actually flip a region. Counting every faction-owned
-    structure instead would tint a hex for whoever built more sheds in it. A tie, or a hex with no
-    control structures, is left untinted — so the front line reads as a seam of plain terrain
-    rather than being assigned to whichever faction sorts first.
+    structure as equal instead would tint a hex for whoever built more sheds in it.
+    - **A tie on bases falls through to every other structure the two sides hold there.** Ties are
+      not rare — one base each is the ordinary shape of a contested hex — and the first live render
+      with the tint on came back with exactly one untinted hex in the middle of the front, which
+      reads as a rendering fault, not as "contested". The tiebreak asks the same question at finer
+      resolution: whoever has more built in a hex is the one sitting in it. Untinted now means
+      equal on *both* counts, which in practice is an empty hex or one the API didn't report.
   - **The wash is applied to the background before the icons**, and scaled by each pixel's alpha.
     Both matter: tinting after would wash the already-faction-coloured icons in the same colour,
     and tinting flat would paint the hex's transparent corners — which carry real RGB under

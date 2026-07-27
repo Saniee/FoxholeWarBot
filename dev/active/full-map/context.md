@@ -20,9 +20,10 @@ the asset script, `a685033` **the user's own 66-file icon update** (ran the scri
 `a9ca90d` faction tint, `7991e6c` hand-sourced icon split, `e4f4d19` description-length fix,
 `d1a09f8` dev-guild command clearing, `5c3898b` HTTP timeouts.
 
-**Unverified, needs a build:** the faction tint render. `faction_tint_strength` went 0.3 → **0.5**,
-the user's pick off a single-hex preview grid, not yet seen at full-map scale. Everything else in
-Phase 1 has been seen working.
+The tint has now been seen at full-map scale at strength **0.5** and reads correctly. One hex came
+back untinted — an even split of bases, which `controlling_team` scored as a tie. Fixed by falling
+through to all other faction-held structures; **that tiebreak is unverified, needs a build.**
+Everything else in Phase 1 has been seen working.
 
 Art is now maintained by `scripts/update_assets.py` against a local `clapfoot/warapi` clone. The
 user ran it and it updated 66 icons, including 70/71/72 and 88–92 which had no art at all and

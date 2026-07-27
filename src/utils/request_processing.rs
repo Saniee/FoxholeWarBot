@@ -308,29 +308,50 @@ where
 /// ids from <https://github.com/clapfoot/warapi> (MapIconType).
 const CONTROL_ICON_TYPES: &[i64] = &[45, 46, 47, 56, 57, 58];
 
+/// A per-faction count of what a region holds: bases first, everything else as
+/// the tiebreak.
+#[derive(Default)]
+struct Holdings {
+    bases: usize,
+    structures: usize,
+}
+
 /// Which faction holds a region, by majority of its control structures.
 ///
-/// `None` when the hex has no control structures at all (open country, or a
-/// region the API didn't report) or when the two sides hold an equal number —
-/// a contested hex is left untinted rather than assigned to whoever happens to
-/// sort first, so the front line shows up as a seam of plain terrain.
+/// An even split of bases is common — a hex with one base each is the normal
+/// shape of a contested front — and leaving those untinted put a plain hole in
+/// the middle of an otherwise tinted map, which reads as a rendering fault
+/// rather than as "contested". So a tie on bases falls through to every other
+/// structure the two sides hold there, which is the same question asked with
+/// finer resolution: whoever has more built in a hex is the one actually
+/// sitting in it.
+///
+/// `None` only when the two are equal on *both* counts — in practice a hex with
+/// nothing in it at all, or one the API didn't report, where there is genuinely
+/// nothing to colour it by.
 fn controlling_team(dynamic_data: &DynamicMapData) -> Option<TeamId> {
-    let mut colonial = 0usize;
-    let mut warden = 0usize;
+    let mut colonial = Holdings::default();
+    let mut warden = Holdings::default();
 
     for item in &dynamic_data.map_items {
-        if !CONTROL_ICON_TYPES.contains(&item.icon_type) {
-            continue;
-        }
+        let side = match item.team_id {
+            TeamId::Colonials => &mut colonial,
+            TeamId::Wardens => &mut warden,
+            TeamId::None => continue,
+        };
 
-        match item.team_id {
-            TeamId::Colonials => colonial += 1,
-            TeamId::Wardens => warden += 1,
-            TeamId::None => {}
+        if CONTROL_ICON_TYPES.contains(&item.icon_type) {
+            side.bases += 1;
+        } else {
+            side.structures += 1;
         }
     }
 
-    match colonial.cmp(&warden) {
+    match colonial
+        .bases
+        .cmp(&warden.bases)
+        .then(colonial.structures.cmp(&warden.structures))
+    {
         std::cmp::Ordering::Greater => Some(TeamId::Colonials),
         std::cmp::Ordering::Less => Some(TeamId::Wardens),
         std::cmp::Ordering::Equal => None,
