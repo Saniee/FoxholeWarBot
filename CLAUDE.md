@@ -41,6 +41,8 @@ recurring scheduled map reports via webhooks.
 - `GUILD_ID` — dev guild id, used by `--local` and `--clear-commands`
 - `DATABASE_URL` — Postgres connection string (rewrite target; replaces the SQLite file)
 - `POSTGRES_PASSWORD` — password for the docker-compose `db` service
+- `REQUESTS_CHANNEL_ID` — support-server channel for full-map schedule requests (optional;
+  see `specs/active/premium-full-map.md`)
 
 ## Conventions
 - Each command module exports a `#[poise::command(slash_command)]` async fn (typed params for

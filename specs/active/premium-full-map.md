@@ -65,15 +65,25 @@ interaction, so a command has to trigger it regardless):
     requester; the guild can then create the schedule.
   - `deny <id> [reason]` — mark denied, notify the requester with the reason.
 
-  This command is the reliable path; a review channel with Approve/Deny **buttons** is an optional
-  convenience layer over the same actions.
+### Dedicated requests channel (support Discord)
+Every submitted request is also **posted to a dedicated channel on the bot's support Discord** —
+its id comes from config, `REQUESTS_CHANNEL_ID` (see Config below). The post is an embed with the
+request fields plus **Approve/Deny buttons**, so the owner reviews in one place without polling
+the command. The channel is the **primary** review surface; `/full-map-requests` is the reliable
+fallback/scriptable path over the same actions (both write the same `full_map_requests` rows and
+`full_map_approved` flag, so they never diverge).
+
+- Requires the bot to be in the support guild and able to post there; if `REQUESTS_CHANNEL_ID` is
+  unset or unreachable, fall back to command-only review and log a warning (don't drop the
+  request).
+- Button interactions are owner/admin-gated so only reviewers can approve/deny.
 
 ### Flow
 1. Large guild → `/request-full-map-schedule` → modal → a `pending` row in `full_map_requests`.
-2. The request surfaces to the owner via `/full-map-requests list` (and/or a review-channel post
-   with buttons).
-3. **Approve** → `full_map_approved = true`, requester notified, guild creates the schedule.
-   **Deny** → requester notified with reason; no schedule.
+2. The request is posted to `REQUESTS_CHANNEL_ID` (embed + Approve/Deny buttons) and is visible
+   via `/full-map-requests list`.
+3. **Approve** (button or command) → `full_map_approved = true`, requester notified, guild creates
+   the schedule. **Deny** → requester notified with reason; no schedule.
 4. The gate is re-checked at tick time (below), so approval can be revoked later.
 
 Form delivery (pick at build time):
@@ -99,6 +109,11 @@ Asked of the requester:
    - Understands this is a free community tool with no uptime guarantee.
    - Understands renders may be rate-limited or paused to protect infra.
    - Understands approval can be revoked.
+
+## Config
+- `REQUESTS_CHANNEL_ID` — channel id on the support Discord where full-map requests are posted
+  for review. Optional: unset ⇒ command-only review (`/full-map-requests`). Read via `dotenv::var`
+  like the other ids.
 
 ## Data model (folds into `specs/active/postgres-migration.md`)
 ```sql
@@ -149,7 +164,8 @@ trait FullMapScheduling {
 ## Open decisions
 - Threshold value (set to 50; tune down further from real guild sizes if needed).
 - Form delivery: in-Discord modal (recommended) vs external web form.
-- Review surface: `/full-map-requests` command (baseline) plus optional review-channel buttons.
+- Review surface: dedicated `REQUESTS_CHANNEL_ID` channel with Approve/Deny buttons (primary)
+  plus the `/full-map-requests` command (fallback/scriptable).
 - Command names: `/request-full-map-schedule` and `/full-map-requests` (bikeshed as desired).
 - Whether to post in Siege Camp's `code-talk` before any donation framing (recommended: yes).
 
