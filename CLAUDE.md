@@ -1,30 +1,37 @@
 # Project: FoxholeWarBot
 
-A Discord bot (Rust / Serenity) that surfaces live [Foxhole](https://www.foxholegame.com/)
+A Discord bot (Rust / poise + Serenity) that surfaces live [Foxhole](https://www.foxholegame.com/)
 world-conquest data — rendered hex maps, war reports, global war state — and posts
 recurring scheduled map reports via webhooks.
 
 ## Stack
 - Rust 2021 (`cargo`)
-- [poise](https://crates.io/crates/poise) `0.6` — slash-command framework (rewrite target;
-  see `specs/architecture.md` → Command framework), built on
+- [poise](https://crates.io/crates/poise) `0.6` — slash-command framework
+  (see `specs/architecture.md` → Command framework), built on
   [serenity](https://crates.io/crates/serenity) `0.12` — Discord gateway
-- [sqlx](https://crates.io/crates/sqlx) `0.8` — guild settings + scheduled jobs (rewrite target:
-  self-hosted **Postgres** via docker-compose; see `specs/active/postgres-migration.md`)
+- [sqlx](https://crates.io/crates/sqlx) `0.8` — guild settings + scheduled jobs, on self-hosted
+  **Postgres** via docker-compose (see `specs/active/postgres-migration.md`)
 - [tokio-cron-scheduler](https://crates.io/crates/tokio-cron-scheduler) `0.13` — scheduled reports
 - [image](https://crates.io/crates/image) / [imageproc](https://crates.io/crates/imageproc) / [ab_glyph](https://crates.io/crates/ab_glyph) — map rendering
 - [reqwest](https://crates.io/crates/reqwest) `0.12` — Foxhole War API client
 
 ## Layout
-- `src/main.rs` — client bootstrap, `EventHandler`, DB table creation
+- `src/main.rs` — `Data`/`Context`/`Error` types, poise framework bootstrap, run-once `setup`,
+  gateway event handler, `on_error`
 - `src/args.rs` — CLI args (`--local`, `--clear-commands`)
-- `src/commands/` — one module per slash command (`run`, `autocomplete`, `register`)
-- `src/utils/db.rs` — SQLite access + `Shard` enum (shard → API URL)
+- `src/commands/` — one module per slash command; `mod.rs::all()` is the registration list
+- `src/commands/common.rs` — guild lookup, visibility-aware deferral, map autocomplete
+- `src/utils/db.rs` — Postgres access + `Shard` enum (shard → API URL)
 - `src/utils/cache.rs` — on-disk JSON cache under `./cache/`
+- `src/utils/map_render.rs` — fetch + ETag revalidate + render one region (shared by `/get-map`
+  and the scheduled tick)
 - `src/utils/cron.rs` — `CronHandler`, scheduled report jobs
-- `src/utils/request_processing.rs` — map image compositing
+- `src/utils/request_processing.rs` — `RenderConfig` + per-region compositing
+- `src/utils/regions.rs` — API region id → display name table
 - `src/utils/api_definitions/foxhole.rs` — Foxhole War API response types
+- `migrations/` — schema, embedded and applied at startup via `sqlx::migrate!`
 - `assets/Maps/` — per-hex background TGA images; `assets/MapIcons/` — icon PNGs
+- `Dockerfile` / `compose.yaml` — self-hosted deployment (bot + Postgres on a named volume)
 - `specs/` — feature specifications (see below)
 
 ## Commands
@@ -34,12 +41,13 @@ recurring scheduled map reports via webhooks.
 - Run (global commands): `cargo run`
 - Run (guild-scoped commands, fast iteration): `cargo run -- --local`
 - Clear all registered commands: `cargo run -- --clear-commands`
+- Deploy: `docker compose up -d --build` (never `docker compose down -v` — it wipes the DB)
 
 ## Runtime config (`.env`)
 - `TOKEN` — Discord bot token (required)
 - `APP_ID` — Discord application id (required for `--clear-commands`)
 - `GUILD_ID` — dev guild id, used by `--local` and `--clear-commands`
-- `DATABASE_URL` — Postgres connection string (rewrite target; replaces the SQLite file)
+- `DATABASE_URL` — Postgres connection string (required)
 - `POSTGRES_PASSWORD` — password for the docker-compose `db` service
 - `REQUESTS_CHANNEL_ID` — support-server channel for full-map schedule requests (optional;
   see `specs/active/premium-full-map.md`)
@@ -51,10 +59,15 @@ recurring scheduled map reports via webhooks.
 - Guild-scoped settings (shard + output visibility) live in the `guilds` table; a guild
   with no row is treated as "not set up" and prompts the user to run `/set-guild-settings`.
 - Foxhole API responses are cached to disk and revalidated with `If-None-Match` ETags
-  (the API's `version` field); a `304 Not Modified` serves the cached copy.
+  (the API's `version` field); a `304 Not Modified` serves the cached copy. The dynamic and
+  static halves revalidate independently — never assume they agree.
+- Placement/sizing constants belong in `RenderConfig` as ratios of the region footprint, not as
+  literals in the compositing code.
+- Region display names come from `utils::regions::display_name`, never from string surgery on
+  the API id.
 
 ## Don't
-- Don't commit `.env`, `database.db`, or the `cache/` directory.
+- Don't commit `.env` or the `cache/` directory.
 - Don't hardcode secrets; read them via `dotenv::var`.
 
 ## Specs

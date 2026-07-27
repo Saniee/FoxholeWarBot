@@ -6,41 +6,48 @@ Specs (the plan — do not duplicate here):
 - `specs/active/postgres-migration.md` — SQLite → Postgres
 - `specs/active/scheduling-overhaul.md` — cron lifecycle fixes
 - `specs/active/rendering-placement.md` — de-magic RenderConfig
-- `specs/*.md` — per-command 1:1 behavior specs (get-map, war-report, war-state,
-  set-guild-settings, schedule-report, remove-report, schedule-help)
+- `specs/*.md` — per-command 1:1 behavior specs
 
 Deferred, NOT in this pass: `specs/active/full-map-renderer.md`,
 `specs/active/premium-full-map.md`, `specs/active/docs-legal-overhaul.md`.
 
 ## Current state
-Branch `feat/rewrite-overhaul` → PR #1. 9 commits, all specs/scaffolding; `src/` still
-untouched and is the original raw-serenity + SQLite code. Starting the Core rewrite now.
+Branch `feat/rewrite-overhaul` → PR #1. **The core rewrite is written** (commits `dbab23a`
+data layer, `5638ac4` poise + QA fixes). All 7 sections of `tasks.md` are done.
+
+**It has never been compiled** — the user abstained from `cargo` for this pass and verifies
+at home. Expect ordinary type/API mismatches against poise 0.6 / serenity 0.12 / sqlx 0.8;
+the logic is the deliverable, the build is the user's next step.
 
 ## Ground rules for this run
-- **Do NOT run `cargo build` / `check` / `run`** — user explicitly abstained for this first
-  pass; they compile and verify at home. Write code, don't verify by compiling.
-- **Ask, don't assume** on unspecced decisions (user is responsive, answering quickly).
+- **Do NOT run `cargo build` / `check` / `run`** — user explicitly abstained for this pass.
+- **Ask, don't assume** on unspecced decisions (user is responsive).
 - Commit + push incrementally to `feat/rewrite-overhaul` (updates PR #1). Never push elsewhere.
 - Attribution footer required on any GitHub comment.
 
-## Key files (current, pre-rewrite)
-- `src/main.rs` — Handler/EventHandler, interaction_create match, inline CREATE TABLE
-- `src/commands/*.rs` — 7 modules, each `NAME` + `run` + `register` (+ `autocomplete`)
-- `src/utils/db.rs` — `Database`, `GuildData`, `JobData`, `Shard` enum
-- `src/utils/cron.rs` — `CronHandler`, report job ticks
-- `src/utils/cache.rs` — on-disk JSON cache + ETag versions
-- `src/utils/request_processing.rs` — `place_image_info` (magic numbers live here)
-- `src/utils/api_definitions/foxhole.rs` — API types (unchanged by the rewrite)
+## Decisions made
+- poise 0.6, shared `Data { db, cron, local }` via `ctx.data()`; run-once `setup` closure
+- Postgres, fresh start; `sqlx::migrate!` + `migrations/`; BIGINT snowflakes, native BOOLEAN
+- `Anchor::Center` default, `Anchor::TopLeft` kept as A/B escape hatch
+- `MANAGE_WEBHOOKS` gates both scheduling commands
+- **New (this run):** no guild row is created on join — a new server is prompted to run
+  `/set-guild-settings` instead of silently defaulting to shard Able (user chose this)
+- **New:** `set-guild-settings` shard is a Discord choice list, not free-text autocomplete
+- **New:** `env_logger` added — the `log::` calls previously had no consumer
+- **New:** `OriginHex` is no longer excluded from autocomplete (per full-map spec)
+- **New:** `schedule-help` is ungated and lists phrases inline (the prnt.sc link is gone)
+- **New:** `Cargo.lock` is still gitignored; Dockerfile globs `Cargo.*` so it builds either way
 
-## Decisions made (all settled in specs — see "Decisions" sections there)
-- poise 0.6 over raw serenity; shared `Data { db, cron, local }` via `ctx.data()`
-- Postgres, fresh start (no SQLite data migration); `sqlx::migrate!` + `migrations/`
-- BIGINT for snowflakes, BOOLEAN for the 0/1 flags, `$1` placeholders
-- `Anchor::Center` default; TopLeft kept as A/B escape hatch
-- `MANAGE_WEBHOOKS` gates the scheduling commands
-- Fix order: C-1/C-3/C-4/C-12 first, then C-6/C-7, then C-10/B-1/B-2, then S-4
+## Known gaps / what to verify at home
+1. `cargo check` — first compile of the rewrite; expect API-signature fixups.
+2. `docker compose up` — confirm migrations apply and the bot connects.
+3. Visual check of a `/get-map` render: `Anchor::Center` intentionally shifts markers up-left
+   by half an icon vs. the old output. Flip to `Anchor::TopLeft` in `RenderConfig::default()`
+   to A/B it.
+4. sqlx has no TLS feature enabled — fine for local compose, needs `tls-rustls` if the DB ever
+   moves to a remote host requiring SSL.
+5. Consider committing `Cargo.lock` once a build succeeds (whitelist it in `.gitignore`).
 
 ## Next steps
-Start with Cargo.toml (poise + sqlx postgres) and the data layer (`db.rs` → Postgres,
-`migrations/0001_init.sql`), then the poise framework scaffold in `main.rs`, then port
-commands one at a time.
+Compile and iterate. After that, the deferred specs in priority order: docs & legal overhaul,
+then full-map renderer, then the premium/form gating.

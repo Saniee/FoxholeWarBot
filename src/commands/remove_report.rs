@@ -93,7 +93,7 @@ async fn autocomplete_schedule(
     if jobs.is_empty() {
         return vec![serenity::AutocompleteChoice::new(
             "This server has no scheduled reports.",
-            "",
+            "-",
         )];
     }
 

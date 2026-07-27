@@ -68,9 +68,11 @@ pub async fn autocomplete_map(
     };
 
     let Some(guild) = guild else {
+        // Discord rejects an empty choice value, so the placeholder has to be
+        // non-empty even though picking it can only fail.
         return vec![serenity::AutocompleteChoice::new(
             "Run /set-guild-settings first for this to work!",
-            "",
+            "-",
         )];
     };
 
