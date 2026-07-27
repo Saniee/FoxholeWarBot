@@ -38,21 +38,37 @@
 - [ ] Promote the spec out of `specs/active/`, reconcile it to shipped behavior
 
 ## Phase 2 — gate (`specs/active/premium-full-map.md`)
-- [ ] `migrations/0003_*.sql` — `guilds.full_map_approved` + `full_map_approved_at`;
-      `full_map_requests` table (incl. `member_count` snapshot); full-map marker on `cronjobs`.
-      **0002 is taken** by the faction tint column
-- [ ] `FullMapScheduling` trait + default impl (`guild.full_map_approved`, no size branch)
+- [x] `migrations/0003_full_map_gate.sql` — `guilds.full_map_approved` + `full_map_approved_at`;
+      `full_map_requests` table (incl. `member_count` snapshot); `cronjobs.dormant_notified`;
+      `cronjobs.map_name` nullable, NULL = the full map (no `is_full_map` flag beside it)
+- [x] `db.rs` access layer — `FullMapRequest`/`NewFullMapRequest`/`RequestStatus`, the queue
+      reads, `review_full_map_request` (one transaction, `WHERE status = 'pending'`),
+      `set_full_map_approved`, `purge_stale_full_map_requests`
+- [x] `FullMapScheduling` trait + default impl (`guild.full_map_approved`, no size branch)
 - [ ] `/schedule-report`: full-map target + unapproved ⇒ route into the form, don't hard-refuse
 - [ ] `/request-full-map-schedule` — modal, writes a `pending` row
 - [ ] Post the request to `REQUESTS_CHANNEL_ID` (embed + Approve/Deny buttons); unset or
       unreachable ⇒ command-only review + warn, never drop the request
 - [ ] Owner/admin gate on the button interactions
 - [ ] `/full-map-requests list|approve|deny` over the same rows and flag
-- [ ] Tick-time re-check: revoked approval ⇒ job goes **dormant** with a one-time heads-up,
-      not deleted; re-approval resumes it
+- [x] Tick-time re-check: revoked approval ⇒ job goes **dormant** with a one-time heads-up,
+      not deleted; re-approval resumes it (`go_dormant`, `dormant_notified`)
+- [x] 90-day purge of denied/withdrawn requests, as a daily job — `docs/` states the window, so
+      it has to be enforced somewhere
 - [ ] Make sure the "no payment involved" wording is prominent — with no free tier at all, an
       approval gate reads even more like a paywall than it did
-- [ ] **Docs, in the same commit as the migration** — `tos.md`/`privacy.md` stored-data list,
-      retention window (suggest 90 days for denied/withdrawn), the user-facing form section
-      stating plainly that no payment is involved
+- [x] **Docs, in the same commit as the migration** — `tos.md`/`privacy.md` stored-data list,
+      90-day retention for denied/withdrawn, the user-facing form section stating plainly that no
+      payment is involved
 - [ ] Promote the spec out of `specs/active/`, reconcile to shipped behavior
+
+## Next up (`specs/active/schedule-input.md`) — proposed, nothing built
+Raised by the user this session: people can't get a phrase past the free-text `schedule` box, and
+nothing captures a timezone, so "18:00" means 18:00 UTC. Spec written, four open questions in it.
+- [ ] Decide the open questions (frequency list vs free integer, weekly in v1, minimum interval,
+      what to do with existing schedules)
+- [ ] `migrations/0004_*.sql` — `guilds.timezone`, `cronjobs.timezone`, `cronjobs.schedule_label`
+- [ ] Structured `frequency` + `at_time` + autocompleted `timezone`; bot generates the cron
+- [ ] **Nightly job rebuild** — `Job::new_async_tz` snapshots a fixed offset at construction, so
+      DST is otherwise only applied on restart
+- [ ] Embed shows `<t:epoch:F>`/`<t:epoch:R>` so each reader sees their own timezone

@@ -118,6 +118,15 @@ and the logs decide between them:
 Ask for `docker compose logs bot` around the invocation. `on_error` logs `command /… failed: …`
 for any command error, so its presence or absence splits the two cleanly.
 
+## Adjacent work raised this session
+`specs/active/schedule-input.md` — **proposed, nothing built.** The free-text schedule phrase is
+failing users, and no timezone is captured anywhere, so every schedule is UTC. Written up with
+four open questions. Two findings in it worth not re-deriving:
+- `Job::new_async_tz` snapshots a **fixed offset** at construction and never re-reads the
+  timezone, so DST is applied on restart and not before. A nightly job rebuild is the fix.
+- "every 6 hours" becomes `0 0 */6 * * *` — absolute clock times, not six hours from now. Some of
+  the "fires at the wrong time" reports are probably this rather than timezones.
+
 ## Next steps
 Build, then `/full-map` with the tint on to see `faction_tint_strength: 0.5` at real scale — the
 only Phase 1 thing never seen working. If the answer to the hang question above arrives with it,
