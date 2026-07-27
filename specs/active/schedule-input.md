@@ -36,12 +36,13 @@ Replace the `schedule` option on `/schedule-report` with:
 
 | Option | Type | Notes |
 |---|---|---|
-| `frequency` | choice, required | Fixed list, below. No parsing. |
+| `frequency` | choice, required | Fixed list, below, plus `Custom…`. No parsing in the common path. |
 | `at_time` | string, optional | `HH:MM`. The anchor — what the cadence lines up with. |
 | `timezone` | string, optional, autocompleted | IANA name. Defaults to the guild's. |
+| `custom` | string, optional | Only read when `frequency` is `Custom…`. See below. |
 
 **Frequency choices:** every 15 minutes, every 30 minutes, hourly, every 2 / 3 / 4 / 6 / 8 / 12
-hours, daily, weekly (with a `day` option, or drop weekly from v1).
+hours, daily, weekly (with a `day` option, or drop weekly from v1), and `Custom…`.
 
 `at_time` anchors the cadence rather than only applying to `daily`. "Every 6 hours at 03:30"
 means 03:30, 09:30, 15:30, 21:30 — which is what people mean, and it's the piece the current
@@ -51,6 +52,27 @@ only the minutes are used.
 Generating the cron from `(frequency, at_time)` is a small total function with no failure mode:
 every input is one of nine choices plus an `HH:MM` that either parses or is rejected with an
 example. The only user-facing error left is a malformed `at_time`.
+
+### The `Custom…` escape hatch (decided: keep power users, don't cost anyone else)
+The list is what a non-technical user picks from; `Custom…` is the door for someone who knows
+exactly what they want and finds nine choices confining. Two rules keep it from re-creating the
+problem this spec exists to solve:
+
+1. **It is never the default and never in the way.** A user who doesn't choose `Custom…` never
+   sees the field, never reads about cron, and cannot fail at it.
+2. **It must prove itself before anything is saved.** A custom expression is parsed at creation
+   and the reply shows **the next three times it will actually fire**, in the chosen timezone,
+   before the schedule is written. Nothing is stored until that is on screen.
+
+That preview is the difference between a free-text box and a safe one. Today's failure isn't only
+that the phrase is rejected — it's that an *accepted* phrase can mean something the user didn't
+intend (`*/6` hours meaning 00:00/06:00/12:00/18:00, or a five-field expression that silently
+shifts because the seconds field is required). Showing three real timestamps catches both, and
+it's worth showing for the choice-list path as well.
+
+Accept both a cron expression and the English phrases the current box takes — `schedule_to_cron`
+already handles both, existing users have working phrases, and there's no reason to take that
+away from the people it works for.
 
 ### Alternative considered: subcommands
 `/schedule-report interval` and `/schedule-report daily`, so no option is ever inert. Cleaner
@@ -123,18 +145,29 @@ schedule. Nobody's report moves because this shipped.
 `docs/tos.md` and `docs/privacy.md` gain the guild timezone, the per-schedule timezone, and the
 cadence label.
 
+## Decisions (settled — user's call, this session)
+- **Timezone: guild default with a per-schedule override.** `/set-guild-settings` sets the
+  server's; `/schedule-report` can override it for one report. The override is resolved at
+  creation and stored on the row, so changing the guild default never silently moves a schedule
+  that already exists.
+- **Frequency: choice list *and* a `Custom…` escape hatch**, per the rules above. The stated goal
+  is that someone non-technical can create a schedule without reading anything, and someone who
+  knows cron isn't forced into nine boxes. The list serves the first, `Custom…` the second, and
+  the fire-time preview is what stops the second from becoming the current problem again.
+- **Existing schedules are left alone.** They keep firing exactly as they do now, in UTC, with
+  their English phrase. Nothing moves because this shipped — which is also why both new timezone
+  columns default to `'UTC'`.
+
 ## Open questions
-1. **Frequency list.** The nine above, or a free `every N minutes` integer with a floor? A choice
-   list can't be typed wrong, which is the entire point; an integer re-opens a smaller version of
-   the same hole. Recommend the list.
-2. **Weekly in v1?** Adds a `day` option that is inert for every other frequency — the one thing
-   the single-command shape doesn't handle cleanly. Suggest deferring it.
-3. **Minimum interval.** 15 minutes is proposed as the floor. A full-map schedule at 15-minute
-   intervals is 53 regions fetched and composited 96 times a day; the gate
-   (`specs/active/premium-full-map.md`) reviews *whether*, not *how often*. Should the floor
-   differ for full-map schedules?
-4. **Migrating existing schedules.** They keep working untouched, but they stay UTC and keep their
-   English phrase. Leave them, or prompt their guilds once?
+1. **Weekly in v1?** Adds a `day` option that is inert for every other frequency — the one thing
+   the single-command shape doesn't handle cleanly. Suggest deferring it; `Custom…` covers it in
+   the meantime for anyone who actually needs it.
+2. **Minimum interval.** 15 minutes for a region schedule. A *full map* at 15-minute intervals is
+   53 regions fetched and composited 96 times a day, and the gate
+   (`specs/active/premium-full-map.md`) reviews *whether* a guild may schedule one, not how often
+   — so the floor is the only thing standing between an approval and that load. Suggest a
+   **one-hour floor for full-map schedules**, enforced for `Custom…` too, since that path is
+   exactly where someone would write `*/5`.
 
 ## Acceptance criteria
 - No command takes a free-text schedule phrase or a cron expression.
@@ -142,4 +175,8 @@ cadence label.
   after a DST transition, without a restart.**
 - Every existing schedule keeps firing exactly when it did before the change.
 - The embed shows the next run in each reader's own timezone, and the cadence in words.
-- An invalid `at_time` is rejected with an example, at creation, and is the only rejection left.
+- An invalid `at_time` is rejected with an example, at creation.
+- A user who never picks `Custom…` never encounters a free-text time field at all.
+- Creating any schedule shows the next three fire times, in the chosen timezone, before it is
+  saved — so an expression that parses but means the wrong thing is caught by the person who
+  wrote it.
