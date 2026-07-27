@@ -24,10 +24,15 @@
 - [x] Deleted the stale `MapMarbanHollow.TGA` and `MapClahstraHexMap.TGA`; `assets/Maps/` is now
       exactly one file per table region plus three non-conquest assets
 - [x] Faction tint behind `RenderConfig::faction_tint`, off by default, opt-in per guild via
-      `/set-guild-settings faction-tint:true`. Full map only; control = town + relic bases by
-      majority; ties untinted. **Unverified — needs a build**
+      `/set_guild_settings faction_tint:true`. Full map only; control = town + relic bases by
+      majority; ties untinted. Strength 0.5 (user's pick). **Unverified — needs a build**
 - [x] `scripts/update_assets.py` — pull art from a local warapi clone, renaming to the table's
       spelling; `--audit` cross-checks `assets/Maps/` against `regions.rs`
+- [x] Clear the dev guild's commands on a global registration — stale guild-scoped registrations
+      from `--local` outlive the process and hang as unhandled interactions
+- [x] One shared HTTP client with timeouts (`utils::http`) — nothing had a request timeout
+- [ ] **Diagnose the `/set_guild_settings` non-reply** — see "Open question" in `context.md`.
+      Needs `docker compose logs bot`; the timeout fix may or may not cover it
 - [ ] Promote the spec out of `specs/active/`, reconcile it to shipped behavior
 
 ## Phase 2 — gate (`specs/active/premium-full-map.md`)

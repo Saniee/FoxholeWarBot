@@ -152,7 +152,7 @@ impl Default for RenderConfig {
             // colour, which is the opposite of what a control wash is for.
             colonial_tint: Rgba([74, 106, 62, 255]),
             warden_tint: Rgba([58, 92, 142, 255]),
-            faction_tint_strength: 0.3,
+            faction_tint_strength: 0.5,
         }
     }
 }

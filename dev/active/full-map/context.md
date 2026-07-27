@@ -8,24 +8,25 @@ the renderer's cost is the gate's entire justification. Build in that order — 
 ungated, then the gate around it.
 
 ## Current state
-**Phase 1 renders.** The user built and ran `/full-map` against live Able: geometry, icons,
-downscale and the Discord upload all worked on the first try. Phase 2 (the gate) is untouched.
+**Phase 1 is functionally complete and rendering correctly.** All 53 hexes, icons legible,
+faction tint in. Phase 2 (the gate) is untouched — not started, no code written.
 
-Commits on `feat/rewrite-overhaul` (PR #1): `5bff8b3` the renderer, `288182f` the identifier
-fixes, `82cf4e0` the log filter.
+Both earlier open loops are closed and confirmed by live renders: the two missing hexes are back,
+and the invisible icons are visible (`full_map_icon_px`, sized backwards from the finished PNG).
 
-The two missing hexes (below) are **fixed and confirmed** — the re-render shows all 53, coastlines
-continuous, no holes.
+Commits on `feat/rewrite-overhaul` (PR #1), most recent last: `5bff8b3` renderer, `288182f`
+identifier fixes, `82cf4e0` log filter, `cf27f29` icon sizing + stale-asset deletion, `081ffea`
+the asset script, `a685033` **the user's own 66-file icon update** (ran the script for real),
+`a9ca90d` faction tint, `7991e6c` hand-sourced icon split, `e4f4d19` description-length fix,
+`d1a09f8` dev-guild command clearing, `5c3898b` HTTP timeouts.
 
-**Open loop:** that same render showed *no icons*. Not a bug in drawing them — 24 px on a 1024 px
-tile is 4.8 px after the 0.2x downscale and about one pixel in a Discord embed. Sized backwards
-from the output instead (`full_map_icon_px`, `for_full_map`); **not yet built or rendered.**
+**Unverified, needs a build:** the faction tint render. `faction_tint_strength` went 0.3 → **0.5**,
+the user's pick off a single-hex preview grid, not yet seen at full-map scale. Everything else in
+Phase 1 has been seen working.
 
-The user pushed new map art mid-work (`b6bcef1`, `307050c`) — same 1024 x 888 32-bit
-uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bold.ttf` into
-`assets/Maps/`, which broke both `include_bytes!` and `Dockerfile:18`; it has been moved back to
-`assets/`. **Icons are the user's next art pass** — the renderer resizes every icon to
-`icon_size_ratio` regardless of source dimensions, so new art needs no code change.
+Art is now maintained by `scripts/update_assets.py` against a local `clapfoot/warapi` clone. The
+user ran it and it updated 66 icons, including 70/71/72 and 88–92 which had no art at all and
+were rendering as `DebugIcon.png`.
 
 ## Key files
 - `src/utils/request_processing.rs` — `RenderConfig` + per-region compositing. The full map is
@@ -39,9 +40,16 @@ uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bol
 - `src/utils/cron.rs` — `ReportJob` gains the full-map marker; `run_report` gains the dormancy
   branch.
 - `src/utils/db.rs` — new columns and the `full_map_requests` table.
-- `src/commands/` — new `full_map.rs`, `request_full_map_schedule.rs`, `full_map_requests.rs`.
-- `migrations/0002_*.sql` — **new file.** `0001_init.sql` has run against real databases and
-  must not be edited.
+- `src/commands/` — `full_map.rs` exists; `request_full_map_schedule.rs` and
+  `full_map_requests.rs` are Phase 2 and do not exist yet.
+- `src/utils/http.rs` — **the** HTTP client. One shared `reqwest::Client` with a 15s request and
+  5s connect timeout. Every outbound call goes through it; `reqwest::Client::new()` must not come
+  back, it has no timeout at all.
+- `scripts/update_assets.py` — art in from a warapi clone, renamed to the table's spelling.
+  `--audit` alone cross-checks `assets/Maps/` and exits non-zero. `HAND_SOURCED` lists the 13
+  icon types warapi doesn't ship, so only a real upstream rename is reported as UNEXPECTED.
+- `migrations/0003_*.sql` — **the Phase 2 file, not yet written.** `0002_faction_tint.sql` is
+  taken. `0001_init.sql` has run against real databases and must not be edited.
 
 ## Decisions already settled (in the specs — don't re-litigate)
 - Dedicated `/full-map` command, not a flag on `/get-map`.
@@ -86,7 +94,12 @@ uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bol
   that the entitlement check ran at command time, when a guild might have no row at all.
 - **Docs ship with the migration, not after.** `specs/docs-site.md`'s invariant is that the
   stored-data list matches the schema; `premium-full-map.md` → "Docs impact" lists exactly what
-  to add. Same commit as `0002`.
+  to add. Same commit as `0003`. (Done correctly for `0002` — copy that pattern.)
+- **Discord caps a slash command description at 100 characters**, and poise checks it at compile
+  time, so an over-long doc comment fails the build outright — and reports it as three bogus
+  "unused import" warnings, because the macro bails before generating the body. Applies to
+  parameter descriptions too. Phase 2 adds three commands and wants long "no payment involved"
+  wording: that text goes in the modal or the reply, never the description.
 - Scheduling paths remain the least-exercised code in the rewrite (see
   `dev/done/core-rewrite/context.md`), and this task adds a second job kind to them.
 - User compiles and runs locally; **don't run `cargo build`/`check`/`run`** unless told otherwise.
@@ -105,6 +118,8 @@ Ask for `docker compose logs bot` around the invocation. `on_error` logs `comman
 for any command error, so its presence or absence splits the two cleanly.
 
 ## Next steps
-Build and re-render once more to judge the icons at `full_map_icon_px: 12` — that constant is the
-only knob to turn, and it means output pixels, so 16 reads as "half again bigger" and nothing else
-moves. Peak memory is still unmeasured. Then Phase 2, starting with `migrations/0002_*.sql`.
+Build, then `/full-map` with the tint on to see `faction_tint_strength: 0.5` at real scale — the
+only Phase 1 thing never seen working. If the answer to the hang question above arrives with it,
+take that first; it is the one open defect. Peak memory is still unmeasured.
+
+Then Phase 2, starting with `migrations/0003_*.sql` and its `docs/` change in the same commit.
