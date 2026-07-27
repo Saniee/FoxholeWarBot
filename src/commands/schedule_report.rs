@@ -1,129 +1,157 @@
-use serenity::all::{AutocompleteChoice, CommandInteraction, Context, CreateAutocompleteResponse, CreateCommand, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage, CreateWebhook, EditInteractionResponse, Webhook};
+use poise::serenity_prelude as serenity;
 use tokio_cron_scheduler::Job;
 
-use crate::utils::{cache::load_maps, cron::{CronHandler}, db::{Database, Shard}};
+use crate::commands::common::{autocomplete_map, defer_for, guild_settings};
+use crate::utils::cron::ReportJob;
+use crate::utils::db::NewJob;
+use crate::{Context, Error};
 
-#[derive(Clone)]
-pub struct ReportJob {
-    pub schedule_name: String,
-    pub schedule: String,
-    pub webhook: Webhook,
-    pub guild_id: i64,
-    pub map_name: String,
-    pub draw_text: i32,
-    pub db: Database,
-}
+const WEBHOOK_NAME: &str = "Scheduled Map Report Webhook";
 
-pub const NAME: &str = "schedule-report";
+/// Creates a recurring scheduled map report in a channel.
+///
+/// Gated on Manage Webhooks: the command creates and deletes webhooks, so that's
+/// the permission that actually matches what it does (QA S-4).
+#[poise::command(
+    slash_command,
+    guild_only,
+    default_member_permissions = "MANAGE_WEBHOOKS"
+)]
+pub async fn schedule_report(
+    ctx: Context<'_>,
+    #[description = "Region to gather data from."]
+    #[autocomplete = "autocomplete_map"]
+    map_name: String,
+    #[description = "Name for this schedule. Must be unique within this server."]
+    schedule_name: String,
+    #[description = "Channel the reports are posted to."] report_channel: serenity::GuildChannel,
+    #[description = "When to post. See /schedule-help for accepted phrases."] schedule: String,
+    #[description = "Draw map labels (city names etc.)."] draw_text: bool,
+) -> Result<(), Error> {
+    let Some(guild) = guild_settings(ctx).await? else {
+        return Ok(());
+    };
 
-pub async fn run(ctx: &Context, interaction: &CommandInteraction, db: Database, cron_handler: &mut CronHandler) -> Result<(), serenity::Error> {
-    let guild_id: i64 = interaction.guild_id.unwrap().get().try_into().unwrap();
-    let data = db.get_guild(guild_id).await;
+    defer_for(ctx, &guild).await?;
 
-    let guild = match data {
-        None => {
-            interaction.create_response(ctx, CreateInteractionResponse::Message(CreateInteractionResponseMessage::new().ephemeral(true).content("No Shard set for the guild. Run the `/set-guild-settings` command to do so."))).await?;
+    let data = ctx.data();
+
+    if Job::schedule_to_cron(&schedule).is_err() {
+        ctx.say(
+            "That schedule isn't a phrase the scheduler understands. \
+             Run `/schedule-help` to see what works.",
+        )
+        .await?;
+        return Ok(());
+    }
+
+    // Names are unique per guild now, so this only rejects a clash inside this
+    // server (QA B-2). The database constraint is still the real guard against a
+    // race; this check just produces a friendlier message.
+    if data
+        .db
+        .get_job_entry(guild.id, &schedule_name)
+        .await?
+        .is_some()
+    {
+        ctx.say(format!(
+            "This server already has a scheduled report named `{schedule_name}`. Pick another name."
+        ))
+        .await?;
+        return Ok(());
+    }
+
+    let webhook = match resolve_webhook(ctx, &report_channel).await {
+        Ok(webhook) => webhook,
+        // Missing Manage Webhooks used to panic here (QA C-11).
+        Err(err) => {
+            log::warn!("could not set up a webhook in {}: {err}", report_channel.id);
+            ctx.say(format!(
+                "I couldn't create a webhook in <#{}>. Make sure I have **Manage Webhooks** there.",
+                report_channel.id
+            ))
+            .await?;
             return Ok(());
         }
-        Some(data) => data
     };
-    let guild_id = guild.guild_id;
 
-    if guild.show_command_output == 1 {
-        interaction.defer(ctx).await?;
-    } else if guild.show_command_output == 0 {
-        interaction.defer_ephemeral(ctx).await?;
-    }
+    let webhook_url = webhook.url()?;
 
-    let map_name = interaction.data.options[0].value.as_str().unwrap().to_owned();
-    let schedule_name = interaction.data.options[1].value.as_str().unwrap().to_owned();
-    let channel = interaction.data.options[2].value.as_channel_id().unwrap();
-    let schedule = interaction.data.options[3].value.as_str().unwrap().to_owned();
+    let job = ReportJob {
+        guild_row_id: guild.id,
+        schedule_name: schedule_name.clone(),
+        schedule: schedule.clone(),
+        webhook_url: webhook_url.clone(),
+        map_name: map_name.clone(),
+        draw_text,
+    };
 
-    match Job::schedule_to_cron(&schedule) {
-        Ok(_) => (),
-        Err(_) => {
-            interaction.edit_response(ctx, EditInteractionResponse::new().content("The provided schedule is not formated acordingly to the rules!")).await?;
+    // Schedule first, persist second: a scheduler rejection must not leave a row
+    // behind that restores into nothing on the next boot (QA B-3).
+    let uuid = match data
+        .cron
+        .schedule(ctx.serenity_context().http.clone(), data.db.clone(), &job)
+        .await
+    {
+        Ok(uuid) => uuid,
+        Err(err) => {
+            log::warn!("could not schedule '{schedule_name}': {err}");
+            ctx.say("The scheduler rejected that schedule. Check `/schedule-help` and try again.")
+                .await?;
             return Ok(());
         }
-    }
-    
-    let draw_text_bool = interaction.data.options[4].value.as_bool().unwrap();
-    #[allow(clippy::needless_late_init)]
-    let draw_text;
-
-    if draw_text_bool {
-        draw_text = 1;
-    } else {
-        draw_text = 0;
-    }
-
-    let webhooks = channel.webhooks(ctx).await.unwrap();
-    let webhook_find = webhooks.iter().find(|webhook| webhook.name == Some("Scheduled Map Report Webhook".to_string()));
-    let webhook: Webhook;
-
-    if webhook_find.is_none() {
-        let create_webhook = channel.create_webhook(ctx, CreateWebhook::new("Scheduled Map Report Webhook")).await;
-        webhook = match create_webhook {
-            Ok(w) => w,
-            Err(e) => {
-                interaction.edit_response(&ctx, EditInteractionResponse::new().content(format!("Error! {e}"))).await?;
-                return Ok(())
-            }
-        };
-    } else {
-        webhook = webhook_find.unwrap().clone();
-    }
-
-    let done = cron_handler.add_report_job(ctx.clone(), db.clone(), ReportJob { schedule_name: schedule_name.clone(), schedule, webhook, db, guild_id, map_name, draw_text }, false).await;
-
-    if done.is_ok() {
-        interaction.edit_response(ctx, EditInteractionResponse::new().content(format!("Your scheduled report with the name: {}, was created! You can look into <#{}> for it working.", schedule_name, channel.get()))).await?;
-    } else {
-        interaction.edit_response(ctx, EditInteractionResponse::new().content("Your report already has a name that's being used. Please choose a different one!")).await?;
     };
-    
+
+    let persisted = data
+        .db
+        .add_job_entry(&NewJob {
+            guild: guild.id,
+            job_name: schedule_name.clone(),
+            schedule,
+            webhook_url,
+            map_name,
+            draw_text,
+            job_id: uuid.to_string(),
+        })
+        .await;
+
+    if let Err(err) = persisted {
+        // Roll the scheduler back so we don't post reports nothing knows about.
+        data.cron.unschedule(Some(&uuid.to_string())).await;
+        log::warn!("could not persist '{schedule_name}': {err}");
+        ctx.say("Couldn't save that schedule. Nothing was changed — please try again.")
+            .await?;
+        return Ok(());
+    }
+
+    ctx.say(format!(
+        "Scheduled report `{schedule_name}` created. Reports will appear in <#{}>.",
+        report_channel.id
+    ))
+    .await?;
+
     Ok(())
 }
 
-pub async fn autocomplete(ctx: &Context, interaction: &CommandInteraction, db: Database) -> Result<(), serenity::Error> {
-    let guild_id = interaction.guild_id.unwrap().get().try_into().unwrap();
-    let data = db.get_guild(guild_id).await;
+/// Reuses the bot's existing report webhook in a channel, or creates one.
+async fn resolve_webhook(
+    ctx: Context<'_>,
+    channel: &serenity::GuildChannel,
+) -> Result<serenity::Webhook, serenity::Error> {
+    let http = ctx.serenity_context().http.clone();
 
-    let mut choices: Vec<AutocompleteChoice> = vec![];
+    let existing = channel
+        .webhooks(http.clone())
+        .await?
+        .into_iter()
+        .find(|webhook| webhook.name.as_deref() == Some(WEBHOOK_NAME));
 
-    let guild = match data {
+    match existing {
+        Some(webhook) => Ok(webhook),
         None => {
-            choices.push(AutocompleteChoice::new("Please Run the /set-guild-settings command for this to work!", ""));
-            interaction.create_response(&ctx.http, CreateInteractionResponse::Autocomplete(CreateAutocompleteResponse::new().set_choices(choices))).await?;
-            return Ok(());
-        },
-        Some(guild) => guild
-    };
-    
-    let maps = load_maps(Shard::from_str(&guild.shard_name)).await;
-
-    let filter = interaction.data.options[0].value.as_str().unwrap_or("").trim().to_lowercase();
-    
-    for str in maps {
-        if str == "OriginHex" {
-            continue;
-        }
-        if str.trim().to_lowercase().contains(&filter) && choices.len() < 25 {
-            choices.push(AutocompleteChoice::new(str.replace("Hex", "").as_str(), str));
+            channel
+                .create_webhook(http, serenity::CreateWebhook::new(WEBHOOK_NAME))
+                .await
         }
     }
-    let response = CreateInteractionResponse::Autocomplete(CreateAutocompleteResponse::new().set_choices(choices));
-
-    interaction.create_response(&ctx.http, response).await?;
-    Ok(())
-}
-
-pub fn register() -> CreateCommand {
-    CreateCommand::new(NAME).description("Creates a recurring scheduled report for a specified map!")
-    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "map-name", "Map name from which to gather data.").required(true).set_autocomplete(true))
-    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "schedule-name", "The name of the scheduled report. !!! NEEDS TO BE UNIQUE !!!").required(true))
-    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::Channel, "report-channel", "The channel where the bot will send the reports.").required(true))
-    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::String, "schedule", "The schedule. Phrases which work: every x seconds, at xx:xx am/pm, On [day] at xx:xx.").required(true))
-    .add_option(CreateCommandOption::new(serenity::all::CommandOptionType::Boolean, "draw-text", "Draw optional text or not. (City names etc.)").required(true))
 }

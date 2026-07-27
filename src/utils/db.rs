@@ -68,9 +68,12 @@ pub struct JobData {
     pub job_id: Option<String>,
 }
 
-/// One `cronjobs` row joined onto its owning `guilds` row. Columns are aliased in
-/// the query because both tables have an `id`. Flat rather than nested: sqlx's
-/// `FromRow` maps columns, not sub-structs.
+/// One `cronjobs` row plus the Discord id of the guild that owns it. Columns are
+/// aliased in the query because both tables have an `id`; flat rather than
+/// nested because sqlx's `FromRow` maps columns, not sub-structs.
+///
+/// Only the id is carried over from `guilds` — each tick re-reads the guild's
+/// settings anyway, so a shard change takes effect without a restart.
 #[derive(Debug, Clone, FromRow)]
 pub struct JobWithGuild {
     pub job_row_id: i64,
@@ -82,34 +85,6 @@ pub struct JobWithGuild {
     pub draw_text: bool,
     pub job_id: Option<String>,
     pub guild_id: i64,
-    pub shard: String,
-    pub shard_name: String,
-    pub show_command_output: bool,
-}
-
-impl JobWithGuild {
-    pub fn job(&self) -> JobData {
-        JobData {
-            id: self.job_row_id,
-            guild: self.guild_row_id,
-            job_name: self.job_name.clone(),
-            schedule: self.schedule.clone(),
-            webhook_url: self.webhook_url.clone(),
-            map_name: self.map_name.clone(),
-            draw_text: self.draw_text,
-            job_id: self.job_id.clone(),
-        }
-    }
-
-    pub fn guild(&self) -> GuildData {
-        GuildData {
-            id: self.guild_row_id,
-            guild_id: self.guild_id,
-            shard: self.shard.clone(),
-            shard_name: self.shard_name.clone(),
-            show_command_output: self.show_command_output,
-        }
-    }
 }
 
 /// Everything needed to persist a schedule. The scheduler UUID is included
@@ -153,6 +128,14 @@ impl Database {
     pub async fn get_guild(&self, guild_id: i64) -> Result<Option<GuildData>, sqlx::Error> {
         sqlx::query_as("SELECT * FROM guilds WHERE guild_id = $1")
             .bind(guild_id)
+            .fetch_optional(&self.conn)
+            .await
+    }
+
+    /// Lookup by the surrogate row id, which is what `cronjobs.guild` stores.
+    pub async fn get_guild_by_row(&self, id: i64) -> Result<Option<GuildData>, sqlx::Error> {
+        sqlx::query_as("SELECT * FROM guilds WHERE id = $1")
+            .bind(id)
             .fetch_optional(&self.conn)
             .await
     }
@@ -221,8 +204,7 @@ impl Database {
     pub async fn all_jobs_with_guilds(&self) -> Result<Vec<JobWithGuild>, sqlx::Error> {
         sqlx::query_as(
             "SELECT c.id AS job_row_id, c.guild AS guild_row_id, c.job_name, c.schedule, \
-                    c.webhook_url, c.map_name, c.draw_text, c.job_id, \
-                    g.guild_id, g.shard, g.shard_name, g.show_command_output \
+                    c.webhook_url, c.map_name, c.draw_text, c.job_id, g.guild_id \
              FROM cronjobs c \
              JOIN guilds g ON g.id = c.guild",
         )

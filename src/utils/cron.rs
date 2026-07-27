@@ -1,228 +1,229 @@
+//! Scheduled map reports. See `specs/active/scheduling-overhaul.md`.
+
+use std::sync::Arc;
 use std::str::FromStr;
 
-use reqwest::StatusCode;
-use serenity::all::{Context, CreateAttachment, CreateEmbed, CreateEmbedFooter, ExecuteWebhook, Webhook};
+use poise::serenity_prelude as serenity;
+use thiserror::Error;
 use tokio_cron_scheduler::{Job, JobScheduler, JobSchedulerError};
 use uuid::Uuid;
-use thiserror::Error;
-use crate::commands::schedule_report::ReportJob;
 
-use super::{api_definitions::foxhole::{DynamicMapData, StaticMapData}, cache::{load_map_cache, save_map_cache, save_maps_cache}, db::{Database, GuildData, JobData}, request_processing::place_image_info};
+use super::cache::save_maps_cache;
+use super::db::Database;
+use super::format_timestamp;
+use super::map_render::render_region;
+use super::request_processing::RenderConfig;
+use super::regions::display_name;
 
-#[derive(Error, Debug)]
+#[derive(Debug, Error)]
 pub enum CronError {
-    #[error("No Job found for the given job name [{0}]!")]
-    NoJobFound(String),
-    #[error("No jobs found for the guild [{0}]!")]
-    JobListEmpty(i64),
-    #[error("Couldn't add a job to the database.")]
-    ErrorAddingJob(),
-    #[error("Couldn't update a job's UUID!")]
-    ErrorUpdatingUuid {
-        scheduler_error: JobSchedulerError
-    }
+    #[error("the schedule '{0}' isn't a phrase the scheduler understands")]
+    BadSchedule(String),
+    #[error("the scheduler rejected the job: {0}")]
+    Scheduler(#[from] JobSchedulerError),
+}
+
+/// Everything a tick needs. Carries the owning guild explicitly so a job can
+/// never render another guild's shard (QA C-7).
+#[derive(Debug, Clone)]
+pub struct ReportJob {
+    /// `guilds.id`, the surrogate row id.
+    pub guild_row_id: i64,
+    pub schedule_name: String,
+    /// The user's original phrase, stored as-is so it stays readable.
+    pub schedule: String,
+    pub webhook_url: String,
+    pub map_name: String,
+    pub draw_text: bool,
 }
 
 #[derive(Clone)]
 pub struct CronHandler {
-    scheduler: JobScheduler
+    scheduler: JobScheduler,
 }
 
 impl CronHandler {
     pub async fn new() -> Result<Self, JobSchedulerError> {
-        let sched = JobScheduler::new().await?;
-        sched.start().await?;
+        let scheduler = JobScheduler::new().await?;
+        scheduler.start().await?;
 
-        Ok(
-            CronHandler { scheduler: sched}
-        )
+        Ok(CronHandler { scheduler })
     }
 
-    pub async fn start_map_update_job(&self) {
-        println!("Starting map updating job!");
-        self.scheduler.add(Job::new_async("0 0 0 * * *", |_uuid, mut _l| {
-            Box::pin({
-                async move {
-                    save_maps_cache().await;
-                    println!("Map List Updated!");
+    /// Refreshes the cached per-shard region lists once a day.
+    pub async fn start_map_update_job(&self) -> Result<(), JobSchedulerError> {
+        let job = Job::new_async("0 0 0 * * *", |_uuid, _lock| {
+            Box::pin(async move {
+                save_maps_cache().await;
+                log::info!("refreshed the cached region lists");
+            })
+        })?;
+
+        self.scheduler.add(job).await?;
+        log::info!("started the region-list refresh job");
+
+        Ok(())
+    }
+
+    /// Re-registers every stored schedule at startup.
+    ///
+    /// Each row is joined to its own guild, and a row that can't be restored is
+    /// skipped rather than aborting the rest (QA C-7, C-8).
+    pub async fn restore_jobs(&self, http: Arc<serenity::Http>, db: &Database) {
+        let rows = match db.all_jobs_with_guilds().await {
+            Ok(rows) => rows,
+            Err(err) => return log::error!("could not read scheduled reports: {err}"),
+        };
+
+        if rows.is_empty() {
+            return log::info!("no scheduled reports to restore");
+        }
+
+        let total = rows.len();
+        let mut restored = 0;
+
+        for row in rows {
+            let job = ReportJob {
+                guild_row_id: row.guild_row_id,
+                schedule_name: row.job_name.clone(),
+                schedule: row.schedule.clone(),
+                webhook_url: row.webhook_url.clone(),
+                map_name: row.map_name.clone(),
+                draw_text: row.draw_text,
+            };
+
+            match self.schedule(http.clone(), db.clone(), &job).await {
+                Ok(uuid) => {
+                    // The scheduler hands out a fresh UUID each process, so the
+                    // stored one is only ever valid for the current run.
+                    if let Err(err) = db.update_job_uuid(row.job_row_id, &uuid.to_string()).await {
+                        log::warn!(
+                            "restored '{}' but could not store its new id: {err}",
+                            row.job_name
+                        );
+                    }
+                    restored += 1;
+                }
+                Err(err) => log::warn!(
+                    "skipping scheduled report '{}' in guild {}: {err}",
+                    row.job_name,
+                    row.guild_id
+                ),
+            }
+        }
+
+        log::info!("restored {restored}/{total} scheduled reports");
+    }
+
+    /// Registers a job with the scheduler. Does **not** touch the database —
+    /// callers persist only after this succeeds, so a rejected schedule can't
+    /// leave an orphan row behind (QA B-3).
+    pub async fn schedule(
+        &self,
+        http: Arc<serenity::Http>,
+        db: Database,
+        job: &ReportJob,
+    ) -> Result<Uuid, CronError> {
+        let cron = Job::schedule_to_cron(&job.schedule)
+            .map_err(|_| CronError::BadSchedule(job.schedule.clone()))?;
+
+        let job = job.clone();
+        let scheduled = Job::new_async(cron.as_str(), move |uuid, mut scheduler| {
+            let http = http.clone();
+            let db = db.clone();
+            let job = job.clone();
+
+            Box::pin(async move {
+                let next_tick = scheduler.next_tick_for_job(uuid).await.ok().flatten();
+
+                if let Err(err) = run_report(http, db, &job, next_tick).await {
+                    // A failed tick must never take the scheduler down with it.
+                    log::warn!(
+                        "scheduled report '{}' failed this tick: {err}",
+                        job.schedule_name
+                    );
                 }
             })
-        }).unwrap()).await.unwrap();
+        })?;
+
+        Ok(self.scheduler.add(scheduled).await?)
     }
 
-    pub async fn restart_report_jobs(&mut self, ctx: &Context, db: Database) {
-        println!("Restarting scheduled report jobs from the database!");
-        let jobs_f = sqlx::query_as("SELECT * FROM cronjobs").fetch_all(&db.conn).await;
-        let jobs: Vec<JobData> = match jobs_f {
-            Ok(jobs) => jobs,
-            Err(_) => return println!("Error getting jobs from database!")
+    /// Removes a job from the scheduler. An id we no longer recognize is not an
+    /// error — the job is gone either way.
+    pub async fn unschedule(&self, job_id: Option<&str>) {
+        let Some(uuid) = job_id.and_then(|id| Uuid::from_str(id).ok()) else {
+            return;
         };
 
-        if jobs.is_empty() {
-            return println!("Report Jobs Database is Empty.");
-        }
-
-        let guild: GuildData = sqlx::query_as("SELECT * FROM guilds WHERE id == ?1").bind(jobs[0].guild).fetch_one(&db.conn).await.unwrap();
-        
-        for job in jobs {
-            match Job::schedule_to_cron(&job.schedule) {
-                Ok(schedule) => {
-                    let report_job = ReportJob {
-                        schedule_name: job.job_name,
-                        schedule,
-                        webhook: serenity::all::Webhook::from_url(&ctx, &job.webhook_url.to_owned()).await.unwrap(),
-                        guild_id: guild.guild_id,
-                        map_name: job.map_name,
-                        draw_text: job.draw_text,
-                        db: db.clone(),
-                    };
-                    let _ = self.add_report_job(ctx.clone(), db.clone(), report_job, true).await;
-                }
-                Err(_) => {
-                    println!("Job '{}' has an improper schedule!", job.job_name);
-                    continue;
-                }
-            }
+        if let Err(err) = self.scheduler.remove(&uuid).await {
+            log::warn!("could not remove job {uuid} from the scheduler: {err}");
         }
     }
+}
 
-    pub async fn add_report_job(&mut self, ctx: Context, db: Database,  report_job: ReportJob, from_db: bool) -> Result<(), CronError> {
-        let job = report_job.clone();
+type TickError = Box<dyn std::error::Error + Send + Sync>;
 
-        if !from_db {
-            let success = report_job.db.add_job_entry(report_job.guild_id, report_job.clone()).await;
+async fn run_report(
+    http: Arc<serenity::Http>,
+    db: Database,
+    job: &ReportJob,
+    next_tick: Option<chrono::DateTime<chrono::Utc>>,
+) -> Result<(), TickError> {
+    // Re-read the guild every tick so a shard or visibility change is picked up
+    // without a restart.
+    let Some(guild) = db.get_guild_by_row(job.guild_row_id).await? else {
+        log::warn!(
+            "scheduled report '{}' has no owning guild any more, skipping",
+            job.schedule_name
+        );
+        return Ok(());
+    };
 
-            match success {
-                Some(_) => {},
-                None => return Err(CronError::ErrorAddingJob())
-            }
-        }
-        
-        let uuid = self.scheduler.add(Job::new_async(job.schedule, move |uuid, mut l| {
-            Box::pin(
-                {
-                    {
-                    let http = ctx.clone();
-                    let url = job.webhook.url().unwrap().clone();
-                    let db = job.db.clone();
-                    let map_name = job.map_name.clone();
-                    let job_name = job.schedule_name.clone();
-                    async move {
-                        let next_tick_q = l.next_tick_for_job(uuid).await;
-                        let next_tick = match next_tick_q {
-                            Ok(Some(ts)) => Some(ts),
-                            _ => None,
-                        };
+    let webhook = serenity::Webhook::from_url(http.clone(), &job.webhook_url).await?;
 
-                        let webhook = Webhook::from_url(http.clone(), &url).await.unwrap();
-                        let guild_data = db.get_guild(job.guild_id).await;
-                        let guild = match guild_data {
-                            Some(data) => data,
-                            None => return,
-                        };
-                        let api_url = guild.shard;
+    let rendered = render_region(
+        &guild.shard,
+        &guild.shard_name,
+        &job.map_name,
+        job.draw_text,
+        RenderConfig::default(),
+    )
+    .await?;
 
-                        let request_client = reqwest::Client::new();
+    let file_name = format!("{}.png", job.map_name);
+    let mut description = format!(
+        "Region: {}\nLast API Update: {}",
+        display_name(&job.map_name),
+        format_timestamp(rendered.last_updated)
+    );
 
-                        let draw_text_i = job.draw_text;
-                        let draw_text = draw_text_i == 1;
-
-                        let cache_data = match load_map_cache(&map_name, &guild.shard_name).await {
-                            Some(data) => Some(data),
-                            None => {
-                                println!("No cached data found... Creating...");
-                                None
-                            },
-                        };
-
-                        let dynamic_response;
-                        let static_response;
-                        let last_updated;
-
-                        if cache_data.is_none() {
-                            dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/dynamic/public")).header("If-None-Match", "\"0\"").send().await.unwrap();
-                            
-                            static_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/static")).header("If-None-Match", "\"0\"").send().await.unwrap();
-                    
-                            //println!("{} | {}", dynamic_response.status(), static_response.status());
-                        } else {
-                            dynamic_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/dynamic/public")).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().0.version)).send().await.unwrap();
-                            
-                            static_response = request_client.get(format!("{api_url}/worldconquest/maps/{map_name}/static")).header("If-None-Match", format!("\"{}\"", cache_data.clone().unwrap().1.version)).send().await.unwrap();
-                        }
-
-                        if dynamic_response.status() == StatusCode::INTERNAL_SERVER_ERROR && static_response.status() == StatusCode::INTERNAL_SERVER_ERROR {
-                            return;
-                        }
-
-                        if dynamic_response.status() != StatusCode::NOT_MODIFIED && static_response.status() != StatusCode::NOT_MODIFIED {
-                            let dynamic_data = dynamic_response.json::<DynamicMapData>().await.unwrap();
-                            last_updated = dynamic_data.last_updated;
-                    
-                            let static_data = static_response.json::<StaticMapData>().await.unwrap();
-                    
-                            let img = match place_image_info(&dynamic_data, &static_data, draw_text, &format!("./assets/Maps/Map{map_name}.TGA")) {
-                                Some(i) => i,
-                                None => {
-                                    return;
-                                }
-                            };
-                        
-                            let _ = img.save("render.png");
-                            save_map_cache(dynamic_data, static_data, &map_name, &guild.shard_name).await;
-                        } else {
-                            last_updated = cache_data.clone().unwrap().0.last_updated;
-                            let img = match place_image_info(&cache_data.clone().unwrap().0, &cache_data.clone().unwrap().1, draw_text, &format!("./assets/Maps/Map{map_name}.TGA")) {
-                                Some(i) => i,
-                                None => {
-                                    return;
-                                }
-                            };
-                        
-                            let _ = img.save("render.png");
-                        }
-
-                        let mut e = CreateEmbed::new().title(format!("Scheduled Report: {job_name}")).color((0, 255, 0)).attachment("attachment://render.png").image("attachment://render.png").footer(CreateEmbedFooter::new("Requested at")).timestamp(chrono::Local::now());
-
-                        if next_tick.is_some() {
-                            e = e.description(format!("Last API Update: {}\nNext Scheduled Update: {}", chrono::DateTime::from_timestamp_millis(last_updated).unwrap().format("%Y %m %d %H:%M:%S"), next_tick.unwrap().format("%Y %m %d %H:%M:%S")));
-                        } else {
-                            e = e.description(format!("Last API Update: {}", chrono::DateTime::from_timestamp_millis(last_updated).unwrap().format("%Y %m %d %H:%M:%S")));
-                        }
-
-                        let builder = ExecuteWebhook::new().add_file(CreateAttachment::path("render.png").await.unwrap()).embed(e);
-                        
-                        webhook.execute(http, false, builder).await.unwrap();
-                    }
-                    }
-                }
-            )
-        }).expect("Error adding a job!")).await;
-
-        match uuid {
-            Ok(id) => {
-                db.update_job_uuid(report_job.schedule_name, id.to_string()).await;
-            },
-            Err(err) => return Err(CronError::ErrorUpdatingUuid { scheduler_error: err })
-        };
-
-        Ok(())
+    // Scheduler ticks are UTC, so the embed says so rather than rendering them
+    // in the host's local time (QA L-2).
+    if let Some(next) = next_tick {
+        description.push_str(&format!(
+            "\nNext Scheduled Update: {} UTC",
+            next.format("%Y %m %d %H:%M:%S")
+        ));
     }
 
-    pub async fn remove_report_job(&mut self, ctx: &Context, db: Database, job_name: String, guild_data: GuildData) -> Result<(), CronError> {
-        let job = match db.get_job_entry(&job_name).await {
-            Some(job) => job,
-            None => return Err(CronError::NoJobFound(job_name))
-        };
-        let jobs = db.get_jobs_for_guild(guild_data.clone()).await;
-        if jobs.len() == 1 {
-            let webhook = Webhook::from_url(&ctx, &job.webhook_url).await.unwrap();
-            webhook.delete(ctx).await.unwrap();
-        } else if jobs.is_empty() {
-            return Err(CronError::JobListEmpty(guild_data.id))
-        };
-        let _ = self.scheduler.remove(&Uuid::from_str(&job.job_id).unwrap()).await;
-        db.remove_job_entry(job_name).await;
-        Ok(())
-    }
+    let embed = serenity::CreateEmbed::new()
+        .title(format!("Scheduled Report: {}", job.schedule_name))
+        .color((0, 255, 0))
+        .description(description)
+        .image(format!("attachment://{file_name}"))
+        .footer(serenity::CreateEmbedFooter::new("Rendered at"))
+        .timestamp(serenity::Timestamp::now());
+
+    webhook
+        .execute(
+            http.clone(),
+            false,
+            serenity::ExecuteWebhook::new()
+                .add_file(serenity::CreateAttachment::bytes(rendered.png, file_name))
+                .embed(embed),
+        )
+        .await?;
+
+    Ok(())
 }
