@@ -151,6 +151,14 @@ treated as "give up silently".
 
 ## Database schema (SQLite, `database.db`)
 
+> **Rewrite decision:** the store moves from SQLite to a self-hosted **Postgres** (docker-compose,
+> persistent volume) — SQLite's single local file has been wiped by accident more than once. The
+> rewrite starts with a **fresh** schema (no data carried over), retires the legacy
+> `foxholewarbot` migration, and manages schema via `sqlx::migrate!`. Placeholders become `$1`,
+> id columns become `BIGINT` (Discord snowflakes don't fit Postgres `INTEGER`), and the `0/1`
+> flags become `BOOLEAN`. Full detail, constraints, and the compose sketch:
+> `specs/active/postgres-migration.md`. The **current** SQLite schema is documented below.
+
 ```sql
 CREATE TABLE guilds (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,

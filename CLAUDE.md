@@ -9,7 +9,8 @@ recurring scheduled map reports via webhooks.
 - [poise](https://crates.io/crates/poise) `0.6` — slash-command framework (rewrite target;
   see `specs/architecture.md` → Command framework), built on
   [serenity](https://crates.io/crates/serenity) `0.12` — Discord gateway
-- [sqlx](https://crates.io/crates/sqlx) `0.8` (SQLite) — guild settings + scheduled jobs
+- [sqlx](https://crates.io/crates/sqlx) `0.8` — guild settings + scheduled jobs (rewrite target:
+  self-hosted **Postgres** via docker-compose; see `specs/active/postgres-migration.md`)
 - [tokio-cron-scheduler](https://crates.io/crates/tokio-cron-scheduler) `0.13` — scheduled reports
 - [image](https://crates.io/crates/image) / [imageproc](https://crates.io/crates/imageproc) / [ab_glyph](https://crates.io/crates/ab_glyph) — map rendering
 - [reqwest](https://crates.io/crates/reqwest) `0.12` — Foxhole War API client
@@ -38,6 +39,8 @@ recurring scheduled map reports via webhooks.
 - `TOKEN` — Discord bot token (required)
 - `APP_ID` — Discord application id (required for `--clear-commands`)
 - `GUILD_ID` — dev guild id, used by `--local` and `--clear-commands`
+- `DATABASE_URL` — Postgres connection string (rewrite target; replaces the SQLite file)
+- `POSTGRES_PASSWORD` — password for the docker-compose `db` service
 
 ## Conventions
 - Each command module exports a `#[poise::command(slash_command)]` async fn (typed params for
