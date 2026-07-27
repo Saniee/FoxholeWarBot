@@ -60,6 +60,10 @@ background and a clean `git status`.
 `--audit` cross-checks `assets/Maps/` against the 53-region table and exits non-zero on a missing,
 misnamed, or leftover file. Worth running after any art drop.
 
+Some icons aren't in warapi at all and are sourced by hand — the script lists those as expected
+and never touches them. If it reports an **UNEXPECTED** icon type instead, upstream renamed the
+file: add the new name to `ICON_SOURCES` rather than renaming anything by hand.
+
 ---
 
 Foxhole is a registered trademark of Siege Camp. This is an unofficial, free, fan-made tool, not

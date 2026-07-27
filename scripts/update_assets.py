@@ -114,6 +114,29 @@ ICON_SOURCES: dict[int, tuple[str, ...]] = {
     92: ("AircraftRunwayT2",),
 }
 
+# Icon types upstream simply doesn't ship art for. They are sourced by hand and
+# live in assets/MapIcons already; the script never touches them.
+#
+# Listed so that "not found upstream" can mean two different things. Everything
+# here is expected and reported as a one-liner. Anything *not* here that goes
+# missing is a real signal -- Foxhole renamed a file -- and gets shouted about,
+# which only works if the expected misses aren't drowning it out.
+HAND_SOURCED = {
+    11,  # Hospital
+    12,  # Vehicle Factory
+    13,  # Armory
+    14,  # Supply Station
+    16,  # Manufacturing Plant
+    17,  # Refinery
+    24,  # World Map Tent
+    25,  # Travel Tent
+    26,  # Training Area
+    35,  # Garrison Station
+    46,  # Relic Base 2 -- retired in Update 52
+    47,  # Relic Base 3 -- retired in Update 52
+    62,  # Oil Field
+}
+
 # Our filename suffix -> upstream's. Upstream is singular and drops the suffix
 # entirely for neutral structures.
 TEAMS = {"None": "", "Colonials": "Colonial", "Wardens": "Warden"}
@@ -307,17 +330,26 @@ def update_icons(source: Path, dry_run: bool) -> int:
             unmatched += 1
             unmatched_ids.append(icon_type)
 
-    print(f"\nicons: {written} updated, {unmatched} icon types unmatched")
+    by_hand = [i for i in unmatched_ids if i in HAND_SOURCED]
+    unexpected = [i for i in unmatched_ids if i not in HAND_SOURCED]
 
-    if unmatched_ids:
+    print(f"\nicons: {written} updated, {unmatched} icon types not found upstream")
+
+    if by_hand:
+        print(f"  hand-sourced, as expected ({len(by_hand)}): " + ", ".join(map(str, by_hand)))
+
+    if unexpected:
         print(
-            "  no upstream file for: "
-            + ", ".join(str(i) for i in unmatched_ids)
-            + "\n  Either Foxhole retired them or the filename changed. If it changed,"
-            "\n  add the new name to ICON_SOURCES rather than renaming files by hand."
+            "\n  UNEXPECTED -- upstream has no file for: "
+            + ", ".join(map(str, unexpected))
+            + "\n  These are not on the hand-sourced list, so either Foxhole renamed the art or"
+            "\n  it is newly retired. If renamed, add the new name to ICON_SOURCES; if you have"
+            "\n  been supplying it by hand all along, add the id to HAND_SOURCED."
         )
 
-    return 0  # an unmatched icon is a warning, not a failure -- many are retired
+    # Neither case fails the run: a retired icon is normal, and the icons on disk
+    # are still fine. The audit's exit code is about maps, which do break renders.
+    return 0
 
 
 # --- audit ------------------------------------------------------------------
