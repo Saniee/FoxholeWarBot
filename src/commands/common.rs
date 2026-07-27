@@ -11,7 +11,10 @@ use crate::{Context, Error};
 pub const NEEDS_SETUP: &str =
     "No shard is set for this server. Run `/set-guild-settings` to choose one.";
 
-pub const SUPPORT_INVITE: &str = "https://discord.com/invite/9wzppSgXdQ";
+/// The one place the invite is written down in the bot. Keep it in the
+/// `discord.gg` form the docs site uses, so the link users see in Discord and
+/// the link on the Pages site are visibly the same.
+pub const SUPPORT_INVITE: &str = "https://discord.gg/9wzppSgXdQ";
 
 /// Discord rejects an autocomplete response with more than 25 choices.
 const MAX_CHOICES: usize = 25;

@@ -49,12 +49,25 @@ Key commits: `dbab23a` data layer, `5638ac4` poise + QA fixes, `c3288e5` Docker 
 `qa-report.md` kept and marked resolved with an index (its IDs are cited from commits and code
 comments, so they must stay resolvable). `specs/active/` now holds only pending work.
 
+## Follow-on: docs & legal overhaul (done)
+`docs/` now matches the code. Removed three false claims (owner ID stored, bot DMs owners about
+errors, Add Reactions / Send Messages in Threads required); the stored-data list is now the
+`guilds` + `cronjobs` schema in prose; Siege Camp attribution added to `index`, `tos` and the
+README; `faq.md` finally has `layout: default` (it had been rendering unthemed); the support
+invite is the `discord.gg` form in docs, README and `SUPPORT_INVITE` alike; README rewritten
+(it still advertised `/set-shard` and `/set-visibility`, which the rewrite replaced).
+
+`specs/active/docs-legal-overhaul.md` is gone: what shipped is described by `specs/docs-site.md`,
+and the parts that couldn't ship — the request-form docs and the data it collects — moved into
+`specs/active/premium-full-map.md` → "Docs impact", to be written **in the same commit** as the
+schema change. Documenting data the bot doesn't yet store is exactly the failure the overhaul
+was fixing.
+
 ## What's next
 Nothing is in flight — working tree clean, everything pushed to `feat/rewrite-overhaul` (PR #1).
 Deferred specs, in priority order:
-1. `specs/active/docs-legal-overhaul.md`
-2. `specs/active/full-map-renderer.md` (depends on `rendering-placement.md`, which landed)
-3. `specs/active/premium-full-map.md`
+1. `specs/active/full-map-renderer.md` (depends on `rendering-placement.md`, which landed)
+2. `specs/active/premium-full-map.md`
 
 **Gotcha for whoever starts premium-full-map:** its spec describes adding columns to `guilds`
 (cached member count, approval flag) and a `full_map_requests` table. The schema is now live, so

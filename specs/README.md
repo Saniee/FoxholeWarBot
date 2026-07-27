@@ -15,6 +15,8 @@ shipped bot rather than the thing being replaced.
   database schema, rendering pipeline, scheduler, command framework).
 - `specs/postgres.md`, `specs/rendering-placement.md`, `specs/scheduling.md` — cross-cutting
   subsystem specs, each shipped.
+- `specs/docs-site.md` — the GitHub Pages site (ToS, Privacy, FAQ). Its stored-data list is the
+  database schema in prose, so a `migrations/` change is also a `docs/` change.
 - `specs/qa-report.md` — the QA sweep of the pre-rewrite code. All findings are resolved; it's
   kept because its IDs (C-1, B-2, S-4 …) are cited from commits, specs, and code comments.
 

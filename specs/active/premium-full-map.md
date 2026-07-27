@@ -176,6 +176,26 @@ trait FullMapScheduling {
   from the gate and follow a `code-talk` post to Siege Camp first (**recommended regardless**, as
   a courtesy heads-up about the tool).
 
+## Docs impact (carried over from the docs overhaul)
+The docs site was brought in line with the shipped schema ahead of this feature
+(`specs/docs-site.md`), which deliberately left out everything below — documenting data the bot
+doesn't yet store would have broken that spec's central invariant. Ship these **in the same
+commit** as the schema change:
+
+- **`tos.md` / `privacy.md` — extend the stored-data list** with the new `guilds` columns (cached
+  member count, approval flag) and the `full_map_requests` row: requesting user's Discord ID,
+  guild ID / name / member count, requested cadence and channel, and the free-text answers.
+  The free-text answers are the first genuinely *new* data the bot stores, and the first data
+  tied to an individual user rather than a server — say so plainly.
+- **Retention.** Guild rows and schedules cascade on leave; request rows are kept for review
+  history. Pick and state a window — suggested: purge denied/withdrawn requests after 90 days.
+- **A new docs section for the form**, in user-facing terms: the full map is free to render on
+  demand for everyone; *scheduled* full-map reports are free under the member threshold; larger
+  guilds submit a short request because each scheduled render is a recurring cost on the host;
+  answers are reviewed by the bot owner in the support server; approval may be revoked, which
+  makes the schedule dormant rather than deleted. **No payment is involved at any point** — state
+  it, since an approval flow is exactly the shape users expect a paywall to take.
+
 ## Acceptance criteria
 - On-demand full-map render works for everyone; small guilds can schedule full-map reports
   without any gate.

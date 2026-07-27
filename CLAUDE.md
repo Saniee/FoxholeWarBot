@@ -32,6 +32,7 @@ recurring scheduled map reports via webhooks.
 - `migrations/` — schema, embedded and applied at startup via `sqlx::migrate!`
 - `assets/Maps/` — per-hex background TGA images; `assets/MapIcons/` — icon PNGs
 - `Dockerfile` / `compose.yaml` — self-hosted deployment (bot + Postgres on a named volume)
+- `docs/` — the GitHub Pages site (ToS, Privacy, FAQ), deployed by `.github/workflows/pages.yml`
 - `specs/` — feature specifications (see below)
 
 ## Commands
@@ -65,6 +66,9 @@ recurring scheduled map reports via webhooks.
   literals in the compositing code.
 - Region display names come from `utils::regions::display_name`, never from string surgery on
   the API id.
+- The stored-data list in `docs/tos.md` and `docs/privacy.md` is the database schema in prose:
+  a change under `migrations/` is also a `docs/` change, in the same commit
+  (see `specs/docs-site.md`).
 
 ## Don't
 - Don't commit `.env` or the `cache/` directory.
