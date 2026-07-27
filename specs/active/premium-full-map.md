@@ -51,21 +51,36 @@ against putting their copyrighted map art behind a paid tier. Therefore:
 
 ## The approval form (full-map schedule request)
 
+### Command surface
+The form is driven by commands on both sides (a Discord modal can only be opened from an
+interaction, so a command has to trigger it regardless):
+
+- **Applicant:** `/request-full-map-schedule` — opens the application modal and records a pending
+  request. `/schedule-report`, when a large guild targets the full map, does **not** hard-refuse:
+  it points the user at this command (and can open the modal itself). Available to members who
+  can create schedules (same permission gate as `/schedule-report`, per the scheduling overhaul).
+- **Reviewer (bot owner / designated admin):** `/full-map-requests` with subcommands:
+  - `list` — show pending requests (id, guild, size, cadence, use case).
+  - `approve <id>` — set the guild's `full_map_approved`, mark the request approved, notify the
+    requester; the guild can then create the schedule.
+  - `deny <id> [reason]` — mark denied, notify the requester with the reason.
+
+  This command is the reliable path; a review channel with Approve/Deny **buttons** is an optional
+  convenience layer over the same actions.
+
 ### Flow
-1. A large guild runs `/schedule-report` targeting the full map. Instead of a hard refusal, the
-   bot **starts an application**: it presents the form and records a pending request.
-2. The request lands in a review queue the bot owner sees (a designated review channel with
-   Approve/Deny buttons, and/or an owner-only `/review-requests` command).
-3. On **approve**: the guild's `full_map_approved` flag is set; the pending schedule is created
-   (or the guild may re-run `/schedule-report`). On **deny**: the requester is notified with the
-   reason; no schedule is created.
+1. Large guild → `/request-full-map-schedule` → modal → a `pending` row in `full_map_requests`.
+2. The request surfaces to the owner via `/full-map-requests list` (and/or a review-channel post
+   with buttons).
+3. **Approve** → `full_map_approved = true`, requester notified, guild creates the schedule.
+   **Deny** → requester notified with reason; no schedule.
 4. The gate is re-checked at tick time (below), so approval can be revoked later.
 
-Implementation options for the form itself (pick at build time):
-- **In-Discord modal** (poise/serenity modal) — lowest friction, data flows straight into the
-  requests table. Recommended.
-- **External form** (e.g. a linked web form) — simpler to host, but needs a manual/webhook step
-  to get the answers back to the bot. Fallback.
+Form delivery (pick at build time):
+- **In-Discord modal** (poise/serenity modal, opened by the applicant command) — lowest friction,
+  data flows straight into the requests table. Recommended.
+- **External form** (e.g. a linked web form) — simpler to host, but needs a manual/webhook step to
+  get the answers back to the bot. Fallback.
 
 ### Form fields
 Auto-filled by the bot (not asked):
@@ -134,7 +149,8 @@ trait FullMapScheduling {
 ## Open decisions
 - Threshold value (set to 50; tune down further from real guild sizes if needed).
 - Form delivery: in-Discord modal (recommended) vs external web form.
-- Review surface: dedicated review channel with buttons vs owner-only command (could do both).
+- Review surface: `/full-map-requests` command (baseline) plus optional review-channel buttons.
+- Command names: `/request-full-map-schedule` and `/full-map-requests` (bikeshed as desired).
 - Whether to post in Siege Camp's `code-talk` before any donation framing (recommended: yes).
 
 ## Acceptance criteria
