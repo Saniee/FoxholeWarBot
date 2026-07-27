@@ -4,9 +4,9 @@ Status: **proposed.** Primary mechanism (approval form) is ToS-clean and buildab
 **paid/donation** tier is deferred pending Siege Camp confirmation (see ToS findings).
 
 ## Gating model (locked)
-The **full-map renderer** (all hex regions stitched together — see
-`specs/active/rendering-placement.md`) is gated **only when scheduled**, and even then only for
-**larger guilds**:
+The **full-map renderer** (all 53 hex regions stitched together — see
+`specs/active/full-map-renderer.md`, built on `specs/active/rendering-placement.md`) is gated
+**only when scheduled**, and even then only for **larger guilds**:
 
 | Path | Gated? |
 |---|---|

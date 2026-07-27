@@ -98,9 +98,9 @@ today's flat black vanishes on dark hexes. Off by default to preserve current lo
 ## Non-goals (this spec)
 - The full-map renderer itself (stitching hex regions onto their hex-grid positions, the
   region→grid-position layout, and the total canvas size). This spec only makes the **per-region
-  placement primitive** clean and parameterized so the full renderer can reuse it unchanged. That
-  renderer gets its own spec, informed by the forthcoming home-view screenshot and a
-  region-layout source.
+  placement primitive** clean and parameterized so the full renderer can reuse it unchanged.
+  That renderer is specced in **`specs/active/full-map-renderer.md`** (layout table derived and
+  verified against the assets), and it depends on this spec landing first.
 - Caching, ETag, and the `render.png` output-path race (tracked separately: QA C-1).
 
 ## Acceptance criteria
