@@ -2,6 +2,7 @@
 /*
 /assets/TGA
 !/Cargo.toml
+!/Cargo.lock
 !/src
 !/assets
 !/.env.example
