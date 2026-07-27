@@ -12,6 +12,11 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs \
     && cargo build --release \
     && rm -rf src
 
+# The label font is include_bytes!'d, so it has to exist at *compile* time, not
+# just in the runtime image. Only the font — the map and icon art is read from
+# disk at runtime and has no business in the builder layer.
+COPY assets/Inter-Bold.ttf ./assets/Inter-Bold.ttf
+
 COPY src ./src
 # Migrations are embedded by sqlx::migrate! at compile time — no live database
 # is needed to build the image.
@@ -21,8 +26,10 @@ RUN touch src/main.rs && cargo build --release
 # --- runtime ----------------------------------------------------------------
 FROM debian:bookworm-slim
 
+# libssl3: reqwest's default TLS backend links OpenSSL dynamically, so the
+# runtime image needs it even though nothing here compiles.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates libssl3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
