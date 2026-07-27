@@ -11,6 +11,7 @@ through webhooks.
 ## Commands
 
 - `/get-map` — render one region, with optional text labels.
+- `/full-map` — render the whole world map: all 53 regions on one hex grid.
 - `/war-report` — casualties, enlistments and day of war for one region.
 - `/war-state` — the global war state for the server's shard.
 - `/set-guild-settings` — set the shard and reply visibility (Administrator).

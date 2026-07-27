@@ -1,19 +1,26 @@
 # Tasks: full-map renderer + scheduling gate
 
 ## Phase 1 — renderer (`specs/active/full-map-renderer.md`)
-- [ ] Add grid coordinates to `regions.rs` (53 entries, `col`/`row`), with a pointer to the spec
-- [ ] Canvas geometry constants in `RenderConfig`: column pitch, row pitch, odd-column offset,
+- [x] Add grid coordinates to `regions.rs` (53 entries, `col`/`row`), with a pointer to the spec
+- [x] Canvas geometry constants in `RenderConfig`: column pitch, row pitch, odd-column offset,
       composite downscale factor (named, not literals)
-- [ ] `map_render::render_full_map` — bounded-concurrency fetch (`buffer_unordered(8)`),
+- [x] `map_render::render_full_map` — bounded-concurrency fetch (`JoinSet` + `Semaphore(8)`),
       ETag-revalidated, reusing `conditional_get`/`resolve`
-- [ ] Composite all 53 hexes at their offsets in `spawn_blocking`; a failing region degrades to
+- [x] Composite all 53 hexes at their offsets in `spawn_blocking`; a failing region degrades to
       background-only, never aborts the map
-- [ ] Downscale the composite to ~2048 px long edge, encode PNG, check the encoded size against
+- [x] Downscale the composite to ~2048 px long edge, encode PNG, check the encoded size against
       Discord's limit
-- [ ] `/full-map` command — ungated, guild-only, visibility-aware deferral
-- [ ] **Verify the seams on a real render** before building on the geometry (pitch 768 is derived)
+- [x] `/full-map` command — ungated, guild-only, visibility-aware deferral
+- [x] **Verify the geometry** — measured off the TGA alpha channel, not guessed: 0 uncovered
+      pixels in the shared band, and a 53-hex composite with continuous coastlines. Still worth a
+      glance at the *real* render (icons on, `image` crate's compositing) when you next build.
 - [ ] Optional faction tint behind a `RenderConfig` flag, OFF by default
 - [ ] Promote the spec out of `specs/active/`, reconcile it to shipped behavior
+
+### Waiting on a build
+Nothing here has been compiled — `cargo build`/`clippy` are yours to run. Most likely to need a
+nudge: the `image` 0.25 generic bounds on `resize`/`write_to`, and peak memory (a 254 MB RGBA
+canvas plus the resize target).
 
 ## Phase 2 — gate (`specs/active/premium-full-map.md`)
 - [ ] `migrations/0002_*.sql` — `guilds.full_map_approved` + `full_map_approved_at`;

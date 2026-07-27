@@ -8,8 +8,14 @@ the renderer's cost is the gate's entire justification. Build in that order — 
 ungated, then the gate around it.
 
 ## Current state
-Nothing started. Core rewrite, specs reconciliation and the docs overhaul have all landed on
-`feat/rewrite-overhaul` (PR #1); working tree was clean at `d494223`.
+**Phase 1 is written, not yet compiled.** `/full-map` renders all 53 hexes: grid table in
+`regions.rs`, geometry in `RenderConfig`, `render_full_map` in `map_render.rs`, command in
+`commands/full_map.rs`. Phase 2 (the gate) is untouched.
+
+The user pushed new map art mid-work (`b6bcef1`, `307050c`) — same 1024 x 888 32-bit
+uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bold.ttf` into
+`assets/Maps/`, which broke both `include_bytes!` and `Dockerfile:18`; it has been moved back to
+`assets/`. Icons are the user's next art pass.
 
 ## Key files
 - `src/utils/request_processing.rs` — `RenderConfig` + per-region compositing. The full map is
@@ -36,9 +42,12 @@ Nothing started. Core rewrite, specs reconciliation and the docs overhaul have a
 - `OriginHex` is already un-excluded (landed in the core rewrite).
 
 ## Risks / gotchas
-- **Column pitch 768 is derived, not measured.** The spec flags it: it comes from the hex aspect
-  ratio and a reference screenshot, not from the TGAs' transparent margins. First real render,
-  check the seams before trusting the 10240 × 6216 canvas.
+- ~~Column pitch 768 is derived, not measured.~~ **Resolved.** Measured off the assets' alpha
+  channel: the art is a true flat-top hexagon with no padding, two neighbours at `(+768, +444)`
+  leave **0 uncovered pixels**, and a 53-hex composite has continuous coastlines across every
+  boundary. The canvas computes to exactly 10240 × 6216 from the table. (Method:
+  `scratchpad/interlock.py` + `composite.py` — a pure-Python TGA compositor, since the Rust side
+  can't be run here. Rewritable in ten minutes if it's ever needed again.)
 - **63.6 MP canvas.** RGBA at full size is ~254 MB before downscale. Watch the container's memory
   ceiling; consider compositing per-column or downscaling regions before overlay if it bites.
 - ~~`member_count` has nowhere to land at join time.~~ **Dissolved** by dropping the size
@@ -55,6 +64,6 @@ Nothing started. Core rewrite, specs reconciliation and the docs overhaul have a
 - User compiles and runs locally; **don't run `cargo build`/`check`/`run`** unless told otherwise.
 
 ## Next steps
-Start with the grid table + canvas geometry in `regions.rs`, then `render_full_map` in
-`map_render.rs`. Get one real render out and check the seams before building anything on top of
-the geometry.
+Build and run `/full-map` once. Two things to look at in the output: whether the icons are still
+legible at the 0.2x downscale (the knob is `icon_size_ratio`, not the downscale — see the spec),
+and peak memory during the composite. Then Phase 2, starting with `migrations/0002_*.sql`.

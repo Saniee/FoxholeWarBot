@@ -25,6 +25,8 @@ should be public or private. Until that's done, the other commands will just poi
 # [](#header-3)Commands:
 
 - `/get-map` — render one region, with optional text labels.
+- `/full-map` — render the whole world map, all 53 regions on one image. Free for everyone; it
+  takes a few seconds, so the reply arrives after a short wait.
 - `/war-report` — casualties, enlistments and day of war for one region.
 - `/war-state` — the global war state for the server's shard.
 - `/set-guild-settings` — set the shard and reply visibility (needs Administrator).

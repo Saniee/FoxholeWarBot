@@ -1,4 +1,5 @@
 pub mod common;
+pub mod full_map;
 pub mod get_map;
 pub mod remove_report;
 pub mod schedule_help;
@@ -14,6 +15,7 @@ use crate::{Data, Error};
 pub fn all() -> Vec<poise::Command<Data, Error>> {
     vec![
         get_map::get_map(),
+        full_map::full_map(),
         war_report::war_report(),
         war_state::war_state(),
         set_guild_settings::set_guild_settings(),

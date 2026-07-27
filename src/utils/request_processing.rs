@@ -80,6 +80,35 @@ pub struct RenderConfig {
     pub text_outline: Option<Rgba<u8>>,
     pub resample: FilterType,
     pub anchor: Anchor,
+
+    // --- full-map grid geometry -------------------------------------------
+    // Ratios of the region footprint, not pixel literals, for the same reason
+    // the sizes above are: the numbers only mean anything relative to a hex.
+    // See `specs/active/full-map-renderer.md` for the derivation.
+    /// Horizontal distance between adjacent columns, as a fraction of
+    /// [`REGION_WIDTH`]. 3/4 is the flat-top hex packing: neighbouring columns
+    /// overlap by a quarter of a hex, and the assets' transparent corners make
+    /// the seam invisible.
+    ///
+    /// Measured, not guessed: the art's opaque footprint is a true flat-top
+    /// hexagon with no padding, and two neighbours placed at this pitch cover
+    /// their shared band with zero uncovered pixels.
+    pub column_pitch_ratio: f32,
+    /// Vertical distance between rows within a column, as a fraction of
+    /// [`REGION_HEIGHT`]. Hexes in the same column stack edge to edge.
+    pub row_pitch_ratio: f32,
+    /// How far odd columns hang below even ones, as a fraction of
+    /// [`REGION_HEIGHT`].
+    pub odd_column_offset_ratio: f32,
+    /// Long edge of the finished full-map PNG. The composite is ~63.6 MP, far
+    /// past what Discord accepts as a PNG, so it is scaled uniformly — the
+    /// per-region ratios above are never touched, or a hex would stop looking
+    /// like its standalone render.
+    pub full_map_long_edge: u32,
+    /// Resampling for that one downscale. Deliberately cheaper than
+    /// [`RenderConfig::resample`]: Lanczos3 over 63.6 MP costs seconds of CPU,
+    /// and at 0.2x the difference from a triangle filter is not visible.
+    pub full_map_resample: FilterType,
 }
 
 impl Default for RenderConfig {
@@ -92,6 +121,11 @@ impl Default for RenderConfig {
             text_outline: None,
             resample: FilterType::Lanczos3,
             anchor: Anchor::Center,
+            column_pitch_ratio: 3.0 / 4.0,
+            row_pitch_ratio: 1.0,
+            odd_column_offset_ratio: 1.0 / 2.0,
+            full_map_long_edge: 2048,
+            full_map_resample: FilterType::Triangle,
         }
     }
 }
@@ -100,6 +134,29 @@ impl RenderConfig {
     /// Icon edge length in pixels for a canvas of the given width.
     pub fn icon_size(&self, canvas_width: u32) -> u32 {
         ((canvas_width as f32 * self.icon_size_ratio).round() as u32).max(1)
+    }
+
+    /// Top-left pixel of the hex at grid `(col, row)` on the full-map canvas.
+    ///
+    /// Odd columns are pushed down half a hex — that half-step is what makes a
+    /// rectangular `(col, row)` table describe a hex grid.
+    pub fn grid_offset(&self, col: u32, row: u32) -> (u32, u32) {
+        let x = col as f32 * REGION_WIDTH as f32 * self.column_pitch_ratio;
+        let mut y = row as f32 * REGION_HEIGHT as f32 * self.row_pitch_ratio;
+
+        if col % 2 == 1 {
+            y += REGION_HEIGHT as f32 * self.odd_column_offset_ratio;
+        }
+
+        (x.round() as u32, y.round() as u32)
+    }
+
+    /// Scale factor that fits a canvas of `width` x `height` inside
+    /// [`RenderConfig::full_map_long_edge`]. Never upscales.
+    pub fn full_map_scale(&self, width: u32, height: u32) -> f32 {
+        let long_edge = width.max(height) as f32;
+
+        (self.full_map_long_edge as f32 / long_edge).min(1.0)
     }
 
     pub fn text_size(&self, canvas_height: u32, marker: &MapMarkerType) -> f32 {
@@ -159,13 +216,7 @@ pub fn place_image_info<P>(
 where
     P: AsRef<std::path::Path>,
 {
-    let path_display = background_img_path.as_ref().display().to_string();
-    let mut bg_img = image::open(background_img_path)
-        .map_err(|source| RenderError::Background {
-            path: path_display,
-            source,
-        })?
-        .to_rgba8();
+    let mut bg_img = load_background(background_img_path)?;
 
     let canvas_w = bg_img.width();
     let canvas_h = bg_img.height();
@@ -263,6 +314,22 @@ fn draw_labels(
     }
 
     Ok(())
+}
+
+/// Loads a region's background TGA on its own.
+///
+/// The full map calls this directly for a region whose data didn't arrive: the
+/// hex is drawn as bare terrain rather than left as a hole in the grid.
+pub fn load_background<P>(path: &P) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, RenderError>
+where
+    P: AsRef<std::path::Path> + ?Sized,
+{
+    image::open(path)
+        .map(|img| img.to_rgba8())
+        .map_err(|source| RenderError::Background {
+            path: path.as_ref().display().to_string(),
+            source,
+        })
 }
 
 pub fn load_img<P>(path: &P) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, RenderError>

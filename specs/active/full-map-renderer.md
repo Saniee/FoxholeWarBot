@@ -37,10 +37,20 @@ transparent hex corners, so alpha compositing produces clean seams.
 **Canvas:** columns 0–12 ⇒ width `12 × 768 + 1024 = 10240`. Tallest even column is col 6
 (rows 0–6) ⇒ `6 × 888 + 888 = 6216`. Full canvas **10240 × 6216** (~63.6 MP).
 
-> ⚠️ **Verify before trusting:** the 3/4-width packing is derived from the reference screenshot
-> plus the assets' hex aspect ratio, **not** measured from the TGAs' transparent margins. On the
-> first real render, confirm the seams align; if the art carries extra padding, adjust the column
-> pitch and re-derive the canvas. This is the one number most likely to need a nudge.
+> ✅ **Measured, no longer derived.** The 3/4-width packing was originally inferred from the
+> reference screenshot plus the hex aspect ratio. It has since been checked against the alpha
+> channel of the actual TGAs:
+>
+> - The opaque footprint is a true flat-top hexagon with vertices at `(0, 444)`, `(256, 0)`,
+>   `(768, 0)`, `(1023, 444)`, `(768, 887)`, `(256, 887)` — the flat top edge measures
+>   `x = 254..769` against a theoretical `256..768`, the two-pixel spill being edge antialiasing.
+>   There is **no** transparent padding to correct for.
+> - Placing two neighbours at `(+768, +444)` covers their 256 × 444 shared band completely:
+>   **0 uncovered pixels.** 1,690 pixels (1.5%) are painted by both, a ~3 px antialiased overlap
+>   along the shared edge — an invisible double-draw, not a gap.
+> - Compositing all 53 backgrounds at these offsets produces a continuous world map: coastlines
+>   and rivers run unbroken across every hex boundary, and the canvas comes out at exactly
+>   **10240 × 6216** when computed from the table rather than hardcoded.
 
 ## Region layout (53 regions)
 
@@ -107,9 +117,13 @@ lower). API/asset name is the `*Hex` identifier; the display name is what the ga
 unplaced, no entry without an asset.
 
 ### Storage
-A static table in code (`&[(&str, u8, u8)]` or a `const` map), **not** config — the layout only
-changes when Siege Camp ships/removes a region, which is a code change anyway (new art asset
-needed regardless). Keep it beside the renderer with a comment pointing at this spec.
+A static table in code, **not** config — the layout only changes when Siege Camp ships/removes a
+region, which is a code change anyway (new art asset needed regardless).
+
+Shipped as `utils::regions::REGIONS`, a `&[Region]` where `Region` carries `api_name`,
+`display_name`, `col` and `row`. It lives in `regions.rs` rather than beside the renderer so a new
+region is **one** edit: the display-name table and the grid table are the same table. Every
+`api_name` in it has been confirmed to resolve to an existing `assets/Maps/Map*.TGA`.
 
 ### Display-name mapping (gotcha)
 Several API names differ from displayed names — the renderer must not assume they match:
@@ -162,9 +176,11 @@ over changing the downscale.
 ### Performance
 This is 53× the work of a single hex — the reason scheduled full-map renders are gated
 (`specs/active/premium-full-map.md`):
-- Fetch the 53 regions **concurrently** (bounded, e.g. `buffer_unordered(8)`) and **respect the
-  API's cache headers/ETags** — the one explicit rule in the War API terms. The existing on-disk
-  cache makes most ticks 304s.
+- Fetch the 53 regions **concurrently but bounded at 8**, and **respect the API's cache
+  headers/ETags** — the one explicit rule in the War API terms. The existing on-disk cache makes
+  most ticks 304s. Implemented with `JoinSet` + a `Semaphore(8)` rather than
+  `StreamExt::buffer_unordered`: identical bound, and it avoids pulling the `futures` crate in as
+  a direct dependency for one combinator.
 - Run the CPU-bound compositing in `spawn_blocking` so the async runtime isn't stalled
   (QA **L-8**, which matters far more at this scale).
 - A partial failure (one region 500s or its asset is missing) should render that hex as
