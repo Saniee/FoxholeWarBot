@@ -201,6 +201,12 @@ Created lazily under `./cache/`:
 
 ## Map rendering (`src/utils/request_processing.rs::place_image_info`)
 
+> **Rewrite decision:** the placement math is being de-magicked before the full-world renderer
+> lands. The literal `0.5` icon scale (really a fixed 24 px), the `25.0` font size, and the
+> implicit top-left anchoring move into a documented, canvas-relative `RenderConfig`, and
+> `MapMarkerType` (currently parsed but unused) starts sizing Major vs Minor labels. Detail and
+> the anchoring decision: `specs/active/rendering-placement.md`. Current behavior below.
+
 Inputs: `DynamicMapData`, `StaticMapData`, `draw_text: bool`, background image path.
 1. Open `assets/Maps/Map<name>.TGA` as RGBA; return `None` if it can't be opened.
 2. For each dynamic `map_item`: load `assets/MapIcons/<icon_type><TeamId>.png`
