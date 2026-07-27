@@ -23,6 +23,8 @@ Date is a placeholder until it actually ships.
 - **The next three run times are shown before the schedule is saved**, on your own clock. If they aren't what you meant, nothing has been created yet.
 - Reports post at most every 30 minutes, or every hour for the world map. Anything faster is just spam in a channel, and `/get-map` is still instant and unlimited.
 - Creating a schedule does not post a report immediately. The first one arrives at the first time listed in the reply, and the reply now says so.
+- Reports no longer appear out of nowhere. The bot posts a "fetching the war data" message first and then edits that same message into the finished report, so it's one message per run and you can see it working. The world map says it'll take a few seconds, because it does.
+- If a report fails to render, that message says so instead of leaving you wondering. The schedule keeps running.
 - The report embed shows when the next update is due, in your timezone.
 - `/schedule-help` rewritten to explain what the options do, since there is no longer a syntax to get wrong.
 

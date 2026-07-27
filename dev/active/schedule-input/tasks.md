@@ -17,6 +17,8 @@ Spec: `specs/active/schedule-input.md`
       `Every 15 minutes` dropped from the list rather than offered and then refused
 - [x] "Nothing posts right now" in the creation reply, next to the first fire time — the
       "I made a schedule and nothing happened" report
+- [x] Per-tick placeholder, **edited into** the finished report (one message per run), with a
+      failure notice if the render fails and a post-fresh fallback if the edit fails
 - [x] `/set-guild-settings timezone`, validated before storing, "leave it alone" when omitted
 - [x] Nightly job rebuild (04:20 UTC) — the fix for `new_async_tz`'s snapshotted fixed offset
 - [x] `<t:epoch:F>` + `<t:epoch:R>` in the report embed, and the cadence in words

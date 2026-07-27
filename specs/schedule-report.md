@@ -66,11 +66,26 @@ parser reads a step.
 1. Re-read the owning guild's settings, so a shard or visibility change takes effect without a
    restart. A job whose guild is gone logs and skips.
 2. Resolve the webhook from its stored URL.
-3. `render_region` — the same pipeline `/get-map` uses, ETag-revalidated.
-4. `webhook.execute` an embed titled "Scheduled Report: `<name>`" with the region display name,
-   the cadence in words and its timezone, "Last API Update", and — when a next tick is known —
-   "Next Scheduled Update" as `<t:epoch:F> (<t:epoch:R>)`, so every reader sees it on their own
-   clock rather than in UTC.
+3. Re-check the full-map gate, **before** anything is posted, so a dormant schedule posts the
+   withdrawal notice and nothing else.
+4. **Post a placeholder** — a grey embed naming the schedule and saying the data is being
+   fetched, with `wait = true` so its message id comes back. A full map is 53 fetches and a
+   composite; without this the channel sees nothing at the time it was promised a report.
+   Best-effort: if it fails to post, the tick carries on and posts the report normally.
+5. `render_region` / `render_full_map` — the same pipeline `/get-map` and `/full-map` use,
+   ETag-revalidated.
+6. **Edit the placeholder into the report.** One run is one message — the notice and the report
+   are the same message, never two. The embed is titled "Scheduled Report: `<name>`" and carries
+   the region display name, the cadence in words and its timezone, "Last API Update", and — when
+   a next tick is known — "Next Scheduled Update" as `<t:epoch:F> (<t:epoch:R>)`, so every reader
+   sees it on their own clock rather than in UTC.
+   - Edit fails (message deleted, token rotated) → post fresh and delete the placeholder. A
+     rendered report is not dropped because an edit failed, and no orphan "fetching" line is left
+     above it.
+   - No placeholder was posted → post fresh, as before.
+   - **Render fails** → the placeholder is edited into a failure notice saying the next run will
+     try again, and the error still propagates so the tick is logged as failed. A "fetching…"
+     line must never sit in a channel until the next tick.
 
 A failing tick logs and returns. It never panics, and never takes the scheduler with it.
 
@@ -95,6 +110,9 @@ The scheduler issues fresh UUIDs each process, so the stored id is rewritten on 
 - No schedule can be created with gaps shorter than 30 minutes, and no full-map schedule with
   gaps shorter than an hour, by any path — including `Custom…`.
 - The creation reply states that nothing posts until the first listed run time.
+- Every successful tick produces **exactly one** message in the channel: the placeholder is
+  edited into the report, never left beside it.
+- A tick whose render fails leaves a failure notice, not a placeholder still saying "fetching".
 - A duplicate name **in the same guild** is rejected; two different guilds can each have a
   schedule named "daily".
 - Reconnecting the gateway does not increase the number of scheduled ticks or duplicate posts.

@@ -64,6 +64,12 @@ wrong answer for a bot whose complaint of record is "it fires at the wrong time"
 ### Per-tick execution (fixes C-1, C-3, C-5)
 - Renders to an in-memory attachment; no file is written, so ticks and interactive
   commands cannot collide.
+- **A placeholder is posted before the render and edited into the finished report** — one run is
+  one message. A full map takes seconds; without the placeholder a channel sees nothing at the
+  time it was promised a report, and then a map appearing from nowhere. Best-effort: a
+  placeholder that fails to post doesn't stop the report, and a render that fails turns the
+  placeholder into a failure notice rather than leaving "fetching…" in the channel until the
+  next tick. See `specs/schedule-report.md` → per tick.
 - No `.unwrap()` on `send`/`json`/`webhook.execute`/`from_timestamp_millis`; a failed tick logs
   and returns without panicking.
 - Continue to revalidate via ETag against the owning guild's shard.
@@ -101,8 +107,8 @@ Full schema: `specs/postgres.md`.
   every guild regardless of size; on-demand full-map renders stay free and ungated for all. The
   job carries a **NULL `map_name`** rather than an `is_full_map` flag, so there is one fact and
   not two that can disagree, and the tick re-reads the approval so it can be withdrawn. The
-  approval decides *whether*, not how often: the once-an-hour floor on full-map schedules lives
-  in `/schedule-report`. See `specs/active/premium-full-map.md`.
+  approval decides *whether*, not how often: the floors (30 minutes for any schedule, an hour for
+  a full-map one) live in `/schedule-report`. See `specs/premium-full-map.md`.
 
 ## Out of scope (future)
 - Listing schedules (`/list-reports`) — currently only removable via autocomplete.

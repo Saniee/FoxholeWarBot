@@ -282,28 +282,39 @@ async fn run_report(
 
     let webhook = serenity::Webhook::from_url(http.clone(), &job.webhook_url).await?;
 
-    let (rendered, target) = match &job.map_name {
+    // The gate is re-read every tick, not trusted from when the schedule was
+    // created: an approval that can't be taken back isn't a gate
+    // (`specs/active/premium-full-map.md`). Checked before the placeholder, so a
+    // dormant schedule posts the withdrawal notice and nothing else.
+    if job.map_name.is_none() && !entitlement::scheduling().is_allowed(&guild).await {
+        return go_dormant(http, db, job, &webhook).await;
+    }
+
+    let target = match &job.map_name {
+        Some(map_name) => format!("Region: {}", display_name(map_name)),
+        None => "Region: the whole world map".to_string(),
+    };
+
+    // Something in the channel before the work starts. A full map is 53 fetches
+    // and a composite — long enough that a channel watching for a report sees
+    // nothing at the time it was promised — and even a region report otherwise
+    // just materialises with no warning. This is edited into the finished report
+    // rather than left beside it, so the channel still gets one message per run.
+    let placeholder = post_placeholder(http.clone(), &webhook, job, &target).await;
+
+    let rendered = match &job.map_name {
         Some(map_name) => {
-            let rendered = render_region(
+            render_region(
                 &guild.shard,
                 &guild.shard_name,
                 map_name,
                 job.draw_text,
                 RenderConfig::default(),
             )
-            .await?;
-
-            (rendered, format!("Region: {}", display_name(map_name)))
+            .await
         }
-        // The gate is re-read here, not trusted from when the schedule was
-        // created: an approval that can't be taken back isn't a gate
-        // (`specs/active/premium-full-map.md`).
         None => {
-            if !entitlement::scheduling().is_allowed(&guild).await {
-                return go_dormant(http, db, job, &webhook).await;
-            }
-
-            let rendered = render_full_map(
+            render_full_map(
                 &guild.shard,
                 &guild.shard_name,
                 job.draw_text,
@@ -312,9 +323,20 @@ async fn run_report(
                     ..RenderConfig::default()
                 },
             )
-            .await?;
+            .await
+        }
+    };
 
-            (rendered, "Region: the whole world map".to_string())
+    // A render that failed must not leave "fetching the latest war data" sitting
+    // in the channel until the next tick. The placeholder becomes the failure
+    // notice, and the error still propagates so the tick is logged as failed.
+    let rendered = match rendered {
+        Ok(rendered) => rendered,
+        Err(err) => {
+            if let Some(message) = placeholder {
+                report_failure(http, &webhook, job, message).await;
+            }
+            return Err(err.into());
         }
     };
 
@@ -348,17 +370,145 @@ async fn run_report(
         .footer(serenity::CreateEmbedFooter::new("Rendered at"))
         .timestamp(serenity::Timestamp::now());
 
-    webhook
-        .execute(
-            http.clone(),
-            false,
-            serenity::ExecuteWebhook::new()
-                .add_file(serenity::CreateAttachment::bytes(rendered.png, file_name))
-                .embed(embed),
-        )
-        .await?;
+    let attachment = serenity::CreateAttachment::bytes(rendered.png, file_name);
+
+    match placeholder {
+        // The placeholder becomes the report. One message per run, and the
+        // channel watched it happen instead of waiting on nothing.
+        Some(message) => {
+            let edited = webhook
+                .edit_message(
+                    http.clone(),
+                    message,
+                    serenity::EditWebhookMessage::new()
+                        .new_attachment(attachment.clone())
+                        .embed(embed.clone()),
+                )
+                .await;
+
+            // An edit can fail for reasons the render didn't — the message was
+            // deleted, the token was rotated. Posting fresh is better than
+            // dropping a report that has already been rendered; the stale
+            // placeholder goes with it so the channel isn't left with a
+            // "fetching" line above the finished map.
+            if let Err(err) = edited {
+                log::warn!(
+                    "could not edit the placeholder for '{}', posting fresh: {err}",
+                    job.schedule_name
+                );
+
+                webhook
+                    .execute(
+                        http.clone(),
+                        false,
+                        serenity::ExecuteWebhook::new()
+                            .add_file(attachment)
+                            .embed(embed),
+                    )
+                    .await?;
+
+                let _ = webhook.delete_message(http, None, message).await;
+            }
+        }
+        None => {
+            webhook
+                .execute(
+                    http.clone(),
+                    false,
+                    serenity::ExecuteWebhook::new()
+                        .add_file(attachment)
+                        .embed(embed),
+                )
+                .await?;
+        }
+    }
 
     Ok(())
+}
+
+/// Posts the "working on it" message and returns its id, or `None` if it
+/// couldn't be posted.
+///
+/// Deliberately best-effort: this is a courtesy, and a report that renders fine
+/// must not be lost because the notice ahead of it failed to send. `wait` is
+/// `true` because the id is the whole point — without it there is nothing to
+/// edit into the report.
+async fn post_placeholder(
+    http: Arc<serenity::Http>,
+    webhook: &serenity::Webhook,
+    job: &ReportJob,
+    target: &str,
+) -> Option<serenity::MessageId> {
+    // Named for what is actually slow. A full map is 53 region fetches and a
+    // composite, so it says so — a channel that knows it's waiting on the world
+    // map doesn't read ten seconds as a broken bot.
+    let detail = match &job.map_name {
+        Some(_) => "Fetching the latest war data and rendering the map…",
+        None => "Fetching the latest war data for all 53 regions and building the world map. \
+                 This takes a few seconds…",
+    };
+
+    let embed = serenity::CreateEmbed::new()
+        .title(format!("Scheduled Report: {}", job.schedule_name))
+        // Grey, so the finished report's green is the thing that reads as done.
+        .color((150, 150, 150))
+        .description(format!("{target}\n{detail}"))
+        .footer(serenity::CreateEmbedFooter::new("Started at"))
+        .timestamp(serenity::Timestamp::now());
+
+    let posted = webhook
+        .execute(http, true, serenity::ExecuteWebhook::new().embed(embed))
+        .await;
+
+    match posted {
+        Ok(message) => message.map(|message| message.id),
+        Err(err) => {
+            log::warn!(
+                "could not post the placeholder for '{}': {err}",
+                job.schedule_name
+            );
+            None
+        }
+    }
+}
+
+/// Turns a placeholder into a failure notice.
+///
+/// The alternative is deleting it, which leaves a channel that saw "fetching…"
+/// with no idea what became of it. Naming the schedule and saying it will try
+/// again is the difference between a transient API failure and a bot that looks
+/// like it silently stopped.
+async fn report_failure(
+    http: Arc<serenity::Http>,
+    webhook: &serenity::Webhook,
+    job: &ReportJob,
+    message: serenity::MessageId,
+) {
+    let embed = serenity::CreateEmbed::new()
+        .title(format!("Scheduled Report: {}", job.schedule_name))
+        .color((220, 70, 70))
+        .description(
+            "Couldn't fetch the war data for this report — the Foxhole API didn't answer in \
+             time, or the map couldn't be rendered. The schedule is untouched and the next run \
+             will try again.",
+        )
+        .footer(serenity::CreateEmbedFooter::new("Failed at"))
+        .timestamp(serenity::Timestamp::now());
+
+    let edited = webhook
+        .edit_message(
+            http,
+            message,
+            serenity::EditWebhookMessage::new().embed(embed),
+        )
+        .await;
+
+    if let Err(err) = edited {
+        log::warn!(
+            "could not report the failed tick for '{}': {err}",
+            job.schedule_name
+        );
+    }
 }
 
 /// A full-map schedule whose approval was withdrawn: render nothing, say so
