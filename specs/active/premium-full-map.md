@@ -161,13 +161,20 @@ trait FullMapScheduling {
    (skips rendering, posts a one-time heads-up) rather than silently burning infra. Re-approval
    reactivates it.
 
-## Open decisions
-- Threshold value (set to 50; tune down further from real guild sizes if needed).
-- Form delivery: in-Discord modal (recommended) vs external web form.
-- Review surface: dedicated `REQUESTS_CHANNEL_ID` channel with Approve/Deny buttons (primary)
-  plus the `/full-map-requests` command (fallback/scriptable).
-- Command names: `/request-full-map-schedule` and `/full-map-requests` (bikeshed as desired).
-- Whether to post in Siege Camp's `code-talk` before any donation framing (recommended: yes).
+## Decisions (settled)
+- **Threshold:** `FULL_MAP_FREE_MEMBER_THRESHOLD = 50` (configurable; tune from real guild sizes).
+- **Form delivery: in-Discord modal.** Lowest friction, and answers land straight in
+  `full_map_requests` with no external hosting or webhook round-trip. No web form.
+- **Review surface: both.** The `REQUESTS_CHANNEL_ID` channel post with Approve/Deny buttons is
+  primary; `/full-map-requests list|approve|deny` is the fallback/scriptable path. Both drive the
+  same rows and flag.
+- **Command names:** `/request-full-map-schedule` and `/full-map-requests` as specced.
+- **On-demand render:** a dedicated `/full-map` command (see
+  `specs/active/full-map-renderer.md` → Decisions), free for everyone and ungated.
+- **Monetization: none.** The form gate is the only mechanism. No paid tier, no vote-wall, no
+  donation prompt ships with this feature. If hosting donations are ever added, they stay separate
+  from the gate and follow a `code-talk` post to Siege Camp first (**recommended regardless**, as
+  a courtesy heads-up about the tool).
 
 ## Acceptance criteria
 - On-demand full-map render works for everyone; small guilds can schedule full-map reports

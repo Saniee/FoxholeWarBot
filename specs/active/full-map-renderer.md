@@ -139,8 +139,9 @@ rewrite should use an explicit display-name table (this one) rather than string 
 Current code skips `OriginHex` in every autocomplete (`get_map.rs:128`, `war_report.rs:105`,
 `schedule_report.rs:109`). The reference screenshot shows **Origin as a live region** (col 3,
 row 4) with real activity. The exclusion appears to be legacy (Origin was once a dev/placeholder
-region). The rewrite should include it in both the full map and autocomplete — **flagging for
-confirmation**, since if the API still returns it as a non-playable stub the exclusion should stay.
+region). **Decided: include it** in both the full map and autocomplete. Guard at runtime rather
+than by hardcoded name — if the API omits a region from `/worldconquest/maps`, it simply isn't
+rendered, which handles stubs generically without a special case.
 
 ## Rendering pipeline
 1. Fetch dynamic (+ static if labels are on) data for **all 53 regions** — see Performance.
@@ -171,15 +172,19 @@ This is 53× the work of a single hex — the reason scheduled full-map renders 
 - Consider caching the finished composite keyed by shard + newest `last_updated`, so concurrent
   requests share one render.
 
-## Open decisions
-- **Faction control tint.** The reference tints each hex blue/green by controlling faction (with
-  "darker = more recent change"). Our renderer composites the real map art + icons and currently
-  has no tint. Add one? It carries a lot of at-a-glance information but is a visual departure
-  from the per-hex renders. *Recommend: optional flag, off by default for v1.*
-- **Region name labels** on the full map — the reference labels every hex. Our `draw_text` draws
-  in-region POI labels, which at 0.2× would be unreadable. A separate "region name per hex" label
-  pass may be wanted instead. *Recommend: defer to v2.*
-- Command surface: `/full-map` vs an option on `/get-map` (also open in the gating spec).
+## Decisions (settled)
+- **Faction control tint — implement as an optional flag, OFF by default in v1.** The reference
+  tints each hex blue/green by controlling faction; our renderer composites the real map art, so a
+  tint is a visual departure from the per-hex renders. Build it behind a `RenderConfig` flag
+  (tint colors + alpha as named constants) so it can be switched on after visual review. The
+  "darker = more recent change" recency shading is **not** in scope for v1.
+- **Per-hex region name labels — deferred to v2.** In-region POI labels (`draw_text`) would be
+  unreadable at the 0.2× composite scale, so a full-map render draws no text in v1. A dedicated
+  "region name per hex" pass (drawn *after* downscale, at readable size) is the v2 approach.
+- **Command surface — a dedicated `/full-map` command.** Not an option on `/get-map`: the gating
+  (`specs/active/premium-full-map.md`) applies to the full map only, and `/get-map`'s required
+  `map-name` + autocomplete would have to be made meaningless when a `full:true` flag was set.
+  A separate command keeps both surfaces clean.
 
 ## Acceptance criteria
 - All 53 regions render at their correct grid positions with clean seams (no gaps/overlap

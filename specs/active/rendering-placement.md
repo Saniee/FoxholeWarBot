@@ -76,10 +76,11 @@ fn place(norm_x: f64, norm_y: f64, w: u32, h: u32, cw: u32, ch: u32, anchor: Anc
   marker/label is centered on the API coordinate. This corrects the current down-right offset.
 - `Anchor::TopLeft` (legacy): reproduces current output exactly, for A/B comparison.
 
-> **Decision needed:** switching the default to `Center` is a **visible change** from current
-> renders (markers shift up-left by ~half an icon). Recommended, since the offset is a latent
-> bug the magic numbers were hiding — but it's opt-outable via config if you want byte-identical
-> hex output first.
+> **Decided: `Anchor::Center` is the default.** This is a **visible change** from current renders
+> (markers shift up-left by ~half an icon), accepted because the offset is a latent bug the magic
+> numbers were hiding — icons should sit *on* their coordinate, not down-right of it.
+> `Anchor::TopLeft` is retained in the config purely as an A/B escape hatch for comparing against
+> old renders.
 
 ### 3. Icon sizing derived from the region footprint, not from the icon
 Compute the target edge from `icon_size_ratio * region_width` (1024) and resize to that, instead

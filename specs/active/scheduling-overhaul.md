@@ -28,7 +28,9 @@ one.
   restoration continues.
 
 ### Creating a schedule (`/schedule-report`) (fixes B-2, B-3, S-4)
-- Gate behind `MANAGE_WEBHOOKS` (or `MANAGE_GUILD`) via `default_member_permissions`.
+- Gate behind **`MANAGE_WEBHOOKS`** via `default_member_permissions` (decided — the command
+  creates and deletes webhooks, so it's the permission that actually matches the action; it also
+  guarantees the bot's own webhook calls won't be attempted by someone who lacks the right).
 - Uniqueness is `(guild, job_name)`; a name already used **in this guild** is rejected, but the
   same name in another guild is allowed.
 - Schedule the job first; only persist the row after the scheduler accepts it, then store the
