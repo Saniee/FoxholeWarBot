@@ -29,26 +29,39 @@ should be public or private. Until that's done, the other commands will just poi
   takes a few seconds, so the reply arrives after a short wait.
 - `/war-report` — casualties, enlistments and day of war for one region.
 - `/war-state` — the global war state for the server's shard.
-- `/set-guild-settings` — set the shard and reply visibility (needs Administrator).
+- `/set-guild-settings` — set the shard, reply visibility and the server's timezone (needs
+  Administrator).
 - `/schedule-report` — post a region's map, or the whole world map, to a channel on a recurring
   schedule (needs Manage Webhooks). Scheduling the *world map* needs approval first — see below.
 - `/request-full-map-schedule` — apply to schedule world-map reports (needs Manage Webhooks).
 - `/remove-report` — delete a schedule and its webhook (needs Manage Webhooks).
-- `/schedule-help` — the schedule phrases, in the client.
+- `/schedule-help` — how schedules are timed, in the client.
 
-# [](#header-4)Schedule phrases:
+# [](#header-4)When reports post:
 
-`/schedule-report` accepts plain-English phrases:
+`/schedule-report` asks for a **frequency** from a list — every 15 minutes through weekly — so
+there is no phrase to get right. `at_time` (24-hour `HH:MM`) is what the cadence lines up with,
+and it isn't only for daily reports:
 
-- `every 30 minutes`
-- `every 2 hours`
-- `at 6:30 pm`
-- `every day at 09:00`
-- `on Monday at 5:00 pm`
-- `every Friday at 18:00`
+- `every 6 hours` at `03:30` → 03:30, 09:30, 15:30, 21:30
+- `every 15 minutes` at `00:07` → :07, :22, :37, :52
+- `daily` at `18:00` → 18:00, once a day
 
-A 6-field cron expression (`sec min hour day month weekday`) also works — `0 0 12 * * *` is
-daily at noon. **Times are interpreted in UTC.** Schedule names must be unique within a server.
+Left blank it means the top of the hour. These are **clock times, not "from now"**: `every 6
+hours` created at 09:20 next fires at 12:00, not 15:20.
+
+**Timezones.** `/set-guild-settings` sets your server's default and `/schedule-report` can
+override it for one report — both from an autocomplete of IANA names like `Europe/Berlin`, so
+daylight saving is handled for you. A schedule keeps the timezone it was created with, even if
+you change the server default later.
+
+If the list doesn't cover it, `Custom…` still takes a plain-English phrase or a 6-field cron
+expression (`sec min hour day month weekday`). Either way, the reply shows **the next three
+times it will fire** before anything is saved — if those aren't what you meant, nothing has been
+created yet. Schedule names must be unique within a server.
+
+World-map schedules can't run more often than once an hour; every region is re-rendered each
+time. `/full-map` on demand has no such limit.
 
 # [](#header-5)Scheduling the world map:
 

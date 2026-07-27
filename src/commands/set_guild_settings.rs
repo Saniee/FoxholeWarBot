@@ -1,8 +1,9 @@
 use reqwest::StatusCode;
 
-use crate::commands::common::guild_id;
+use crate::commands::common::{autocomplete_timezone, guild_id};
 use crate::utils::db::Shard;
 use crate::utils::http;
+use crate::utils::schedule;
 use crate::{Context, Error};
 
 /// The three live shards, offered as a Discord choice list.
@@ -26,7 +27,7 @@ impl From<ShardChoice> for Shard {
     }
 }
 
-/// Sets this server's shard, output visibility, and full-map faction tint.
+/// Sets this server's shard, output visibility, timezone, and full-map tint.
 //
 // Kept to one line on purpose: poise hands the doc comment to Discord as the
 // command description, and Discord rejects anything over 100 characters at
@@ -49,6 +50,11 @@ pub async fn set_guild_settings(
     // guild keeps whatever it already chose (see `Database::upsert_guild`).
     #[description = "Shade each hex on /full-map by who controls it. Leave blank to keep current."]
     faction_tint: Option<bool>,
+    // Same "leave it alone" rule, and it matters more here: silently resetting a
+    // server to UTC would move every schedule that inherits from it.
+    #[description = "Default timezone for scheduled reports. Leave blank to keep current."]
+    #[autocomplete = "autocomplete_timezone"]
+    timezone: Option<String>,
 ) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
@@ -82,6 +88,17 @@ pub async fn set_guild_settings(
         }
     }
 
+    // Validated before it is stored, so a typo can't sit in the row until the
+    // next time a schedule tries to use it and quietly falls back to UTC.
+    // The canonical name is what gets stored, whatever case was typed.
+    let timezone = match timezone.as_deref().map(schedule::timezone).transpose() {
+        Ok(zone) => zone.map(|zone| zone.name().to_string()),
+        Err(err) => {
+            ctx.say(err.to_string()).await?;
+            return Ok(());
+        }
+    };
+
     // One upsert for both create and update. The old create path hardcoded the
     // visibility flag off, so `show-messages` was silently ignored the first
     // time a server ran this (QA B-1).
@@ -89,7 +106,13 @@ pub async fn set_guild_settings(
     let guild = ctx
         .data()
         .db
-        .upsert_guild(guild_id, shard, show_messages, faction_tint)
+        .upsert_guild(
+            guild_id,
+            shard,
+            show_messages,
+            faction_tint,
+            timezone.as_deref(),
+        )
         .await?;
 
     let visibility = if show_messages {
@@ -107,9 +130,11 @@ pub async fn set_guild_settings(
     };
 
     ctx.say(format!(
-        "{} — shard **{}**, command output {visibility}, full-map faction tint **{tint}**.",
+        "{} — shard **{}**, command output {visibility}, full-map faction tint **{tint}**, \
+         timezone **{}**.",
         if existed { "Updated" } else { "Created" },
-        shard.as_str()
+        shard.as_str(),
+        guild.timezone
     ))
     .await?;
 

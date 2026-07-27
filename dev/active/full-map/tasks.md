@@ -94,15 +94,6 @@ Untested and low-stakes, worth knowing rather than doing: `REQUESTS_CHANNEL_ID` 
 degrade to command-only review), and a two-reviewer race on one request (should answer "already
 decided by someone else").
 
-## Next up (`specs/active/schedule-input.md`) — specced, nothing built
-Raised by the user this session: people can't get a phrase past the free-text `schedule` box, and
-nothing captures a timezone, so "18:00" means 18:00 UTC. Shape is settled (guild timezone default
-+ per-schedule override; choice list + `Custom…`; existing schedules untouched). Two open
-questions left: weekly in v1, and the minimum interval for full-map schedules.
-- [ ] `migrations/0004_*.sql` — `guilds.timezone`, `cronjobs.timezone`, `cronjobs.schedule_label`
-- [ ] Structured `frequency` + `at_time` + autocompleted `timezone`; bot generates the cron
-- [ ] `Custom…` escape hatch — never in the way, and **must show the next three fire times before
-      anything is saved**. Show that preview on the choice-list path too
-- [ ] **Nightly job rebuild** — `Job::new_async_tz` snapshots a fixed offset at construction, so
-      DST is otherwise only applied on restart
-- [ ] Embed shows `<t:epoch:F>`/`<t:epoch:R>` so each reader sees their own timezone
+## Next up (`specs/active/schedule-input.md`) — moved out
+Picked up as its own task: `dev/active/schedule-input/`. It took migration `0005`, so the next
+free number here is **0006**.

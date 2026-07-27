@@ -81,6 +81,10 @@ async fn main() -> Result<(), Error> {
                 cron.start_map_update_job().await?;
                 cron.start_request_purge_job(db.clone()).await?;
                 cron.restore_jobs(ctx.http.clone(), &db).await;
+                // After the restore, so the nightly rebuild is registered
+                // against the same jobs it will later replace.
+                cron.start_job_rebuild_job(ctx.http.clone(), db.clone())
+                    .await?;
 
                 Ok(Data { db, cron, local })
             })

@@ -25,7 +25,8 @@ recurring scheduled map reports via webhooks.
 - `src/utils/cache.rs` — on-disk JSON cache under `./cache/`
 - `src/utils/map_render.rs` — fetch + ETag revalidate + render one region (shared by `/get-map`
   and the scheduled tick)
-- `src/utils/cron.rs` — `CronHandler`, scheduled report jobs
+- `src/utils/cron.rs` — `CronHandler`, scheduled report jobs, the nightly DST rebuild
+- `src/utils/schedule.rs` — frequency choices → cron, IANA timezones, fire-time previews
 - `src/utils/request_processing.rs` — `RenderConfig` + per-region compositing
 - `src/utils/regions.rs` — API region id → display name table
 - `src/utils/api_definitions/foxhole.rs` — Foxhole War API response types

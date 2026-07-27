@@ -48,6 +48,9 @@ pub struct GuildData {
     pub shard_name: String,
     pub show_command_output: bool,
     pub full_map_faction_tint: bool,
+    /// This server's default timezone, as an IANA name. Every new schedule
+    /// starts from it; `/schedule-report` can override it for one report.
+    pub timezone: String,
     /// May this guild put a full-map report on a timer? Rendering one on demand
     /// never consults this. See `specs/active/premium-full-map.md`.
     pub full_map_approved: bool,
@@ -65,7 +68,15 @@ pub struct JobData {
     /// `guilds.id` (the surrogate row id), *not* the Discord snowflake.
     pub guild: i64,
     pub job_name: String,
+    /// A string the scheduler accepts. Generated from the user's choices now;
+    /// older rows hold whatever phrase was typed, and both still parse.
     pub schedule: String,
+    /// The cadence in words, for embeds and listings. `None` for rows created
+    /// before `migrations/0005_schedule_input.sql`.
+    pub schedule_label: Option<String>,
+    /// IANA name, resolved when the schedule was created and stored here so a
+    /// later change to the guild's default can't silently move this report.
+    pub timezone: String,
     pub webhook_url: String,
     /// The region this job renders, or `None` for a full-map job. See
     /// `migrations/0003_full_map_gate.sql` for why the absence *is* the marker.
@@ -89,6 +100,8 @@ pub struct JobWithGuild {
     pub guild_row_id: i64,
     pub job_name: String,
     pub schedule: String,
+    pub schedule_label: Option<String>,
+    pub timezone: String,
     pub webhook_url: String,
     pub map_name: Option<String>,
     pub draw_text: bool,
@@ -104,6 +117,8 @@ pub struct NewJob {
     pub guild: i64,
     pub job_name: String,
     pub schedule: String,
+    pub schedule_label: Option<String>,
+    pub timezone: String,
     pub webhook_url: String,
     pub map_name: Option<String>,
     pub draw_text: bool,
@@ -265,21 +280,27 @@ impl Database {
     /// changing shards would silently lose its tint setting if an absent option
     /// meant `FALSE`. `None` keeps whatever is already there, and only an insert
     /// falls back to off.
+    /// `timezone` is optional in the same "leave it alone" sense as `tint`, and
+    /// for the same reason: a server changing shards must not have its clock
+    /// quietly reset to UTC underneath its existing schedules.
     pub async fn upsert_guild(
         &self,
         guild_id: i64,
         shard: Shard,
         show: bool,
         tint: Option<bool>,
+        timezone: Option<&str>,
     ) -> Result<GuildData, sqlx::Error> {
         sqlx::query_as(
-            "INSERT INTO guilds (guild_id, shard, shard_name, show_command_output, full_map_faction_tint) \
-             VALUES ($1, $2, $3, $4, COALESCE($5::BOOLEAN, FALSE)) \
+            "INSERT INTO guilds \
+                 (guild_id, shard, shard_name, show_command_output, full_map_faction_tint, timezone) \
+             VALUES ($1, $2, $3, $4, COALESCE($5::BOOLEAN, FALSE), COALESCE($6::TEXT, 'UTC')) \
              ON CONFLICT (guild_id) DO UPDATE \
              SET shard = EXCLUDED.shard, \
                  shard_name = EXCLUDED.shard_name, \
                  show_command_output = EXCLUDED.show_command_output, \
-                 full_map_faction_tint = COALESCE($5::BOOLEAN, guilds.full_map_faction_tint) \
+                 full_map_faction_tint = COALESCE($5::BOOLEAN, guilds.full_map_faction_tint), \
+                 timezone = COALESCE($6::TEXT, guilds.timezone) \
              RETURNING *",
         )
         .bind(guild_id)
@@ -287,6 +308,7 @@ impl Database {
         .bind(shard.as_str())
         .bind(show)
         .bind(tint)
+        .bind(timezone)
         .fetch_one(&self.conn)
         .await
     }
@@ -328,6 +350,7 @@ impl Database {
     pub async fn all_jobs_with_guilds(&self) -> Result<Vec<JobWithGuild>, sqlx::Error> {
         sqlx::query_as(
             "SELECT c.id AS job_row_id, c.guild AS guild_row_id, c.job_name, c.schedule, \
+                    c.schedule_label, c.timezone, \
                     c.webhook_url, c.map_name, c.draw_text, c.job_id, g.guild_id \
              FROM cronjobs c \
              JOIN guilds g ON g.id = c.guild",
@@ -340,8 +363,10 @@ impl Database {
     /// A duplicate `(guild, job_name)` surfaces as a unique-violation error.
     pub async fn add_job_entry(&self, job: &NewJob) -> Result<JobData, sqlx::Error> {
         sqlx::query_as(
-            "INSERT INTO cronjobs (guild, job_name, schedule, webhook_url, map_name, draw_text, job_id) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *",
+            "INSERT INTO cronjobs \
+                 (guild, job_name, schedule, webhook_url, map_name, draw_text, job_id, \
+                  schedule_label, timezone) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *",
         )
         .bind(job.guild)
         .bind(&job.job_name)
@@ -350,6 +375,8 @@ impl Database {
         .bind(&job.map_name)
         .bind(job.draw_text)
         .bind(&job.job_id)
+        .bind(&job.schedule_label)
+        .bind(&job.timezone)
         .fetch_one(&self.conn)
         .await
     }

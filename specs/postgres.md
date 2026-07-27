@@ -92,6 +92,18 @@ edited):
   requests predating the column have none. The channel id is deliberately *not* stored beside it —
   the post lives wherever `REQUESTS_CHANNEL_ID` points now, and a per-row copy would be one more
   thing able to disagree with the truth.
+- **`0005_schedule_input.sql`** — structured schedule input and timezones
+  (`specs/active/schedule-input.md`): `guilds.timezone` and `cronjobs.timezone`, both
+  `TEXT NOT NULL DEFAULT 'UTC'`, plus `cronjobs.schedule_label TEXT` (nullable) holding the
+  cadence in words.
+
+  IANA names (`Europe/Bratislava`), never fixed offsets — an offset stored in summer is wrong in
+  winter. The per-schedule column is resolved at creation rather than read through to the guild's
+  default at tick time, so changing the server default can't silently move a report people have
+  arranged their day around. Both defaults are `'UTC'`, which is exactly what every pre-`0005`
+  schedule already assumed, so nothing moves because this shipped. `cronjobs.schedule` keeps its
+  meaning — a string the scheduler accepts — and now holds a generated cron expression for new
+  rows; `schedule_label` is NULL for old ones, which display falls back from.
 
 Constraint changes vs current SQLite schema:
 - `guilds.guild_id` gains `NOT NULL UNIQUE` → kills duplicate-row lookups (QA **C-10**) and

@@ -24,12 +24,16 @@ Exactly this, and nothing else:
 - The chosen shard (Able / Baker / Charlie) and its display name.
 - Whether command output is public or private.
 - Whether the full map is shaded by faction control.
+- The server's default timezone for scheduled reports (an IANA name such as `Europe/Berlin`).
 - Whether the server is approved to *schedule* full-map reports, and when that approval was
   granted.
 
 **Per scheduled report**
 
-- The schedule's name, and the schedule phrase that was typed for it (e.g. "every 6 hours").
+- The schedule's name, the timing expression the bot runs it on, and the same cadence in words
+  (e.g. "every 6 hours — 03:30, 09:30, 15:30, 21:30").
+- The timezone the schedule is read in, recorded when it was created so that changing the
+  server's default never moves an existing report.
 - The webhook URL the report posts to.
 - The region name — or a marker saying the report is the whole world map — and whether text
   labels are drawn on the map.

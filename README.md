@@ -14,10 +14,11 @@ through webhooks.
 - `/full-map` — render the whole world map: all 53 regions on one hex grid.
 - `/war-report` — casualties, enlistments and day of war for one region.
 - `/war-state` — the global war state for the server's shard.
-- `/set-guild-settings` — set the shard and reply visibility (Administrator).
-- `/schedule-report` — post a region's map to a channel on a recurring schedule (Manage Webhooks).
+- `/set-guild-settings` — set the shard, reply visibility and timezone (Administrator).
+- `/schedule-report` — post a map to a channel on a recurring schedule, in your own timezone
+  (Manage Webhooks).
 - `/remove-report` — delete a schedule and its webhook (Manage Webhooks).
-- `/schedule-help` — the accepted schedule phrases.
+- `/schedule-help` — how schedules are timed.
 
 ## Self-hosting
 

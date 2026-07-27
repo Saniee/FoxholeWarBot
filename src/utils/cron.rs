@@ -15,6 +15,7 @@ use super::format_timestamp;
 use super::map_render::{render_full_map, render_region};
 use super::request_processing::RenderConfig;
 use super::regions::display_name;
+use super::schedule;
 
 #[derive(Debug, Error)]
 pub enum CronError {
@@ -31,8 +32,14 @@ pub struct ReportJob {
     /// `guilds.id`, the surrogate row id.
     pub guild_row_id: i64,
     pub schedule_name: String,
-    /// The user's original phrase, stored as-is so it stays readable.
+    /// The expression the scheduler runs — generated from the user's choices
+    /// (`utils::schedule`), or, on a row that predates that, the phrase they
+    /// typed. Both are strings `schedule_to_cron` accepts.
     pub schedule: String,
+    /// The cadence in words, for the embed. `None` on pre-`0005` rows.
+    pub schedule_label: Option<String>,
+    /// IANA name the expression is interpreted in.
+    pub timezone: String,
     pub webhook_url: String,
     /// The region to render, or `None` for the whole world map. Only the
     /// full-map variant is gated (`utils::entitlement`).
@@ -89,11 +96,57 @@ impl CronHandler {
         Ok(())
     }
 
+    /// Re-registers every stored schedule from its timezone, nightly.
+    ///
+    /// Not housekeeping — this is the only thing that makes stored timezones
+    /// true. `Job::new_async_tz` reads the zone's offset **once**, at
+    /// construction, and keeps that fixed offset for the life of the job: a
+    /// schedule created in January fires an hour out all summer, and only a
+    /// restart fixes it. Rebuilding every night means any transition is
+    /// corrected within a day of itself, without anyone noticing there was
+    /// something to correct.
+    ///
+    /// Deliberately not "rebuild only on the two transition dates per zone":
+    /// that is more code, per zone, to save a few seconds of work once a day.
+    pub async fn start_job_rebuild_job(
+        &self,
+        http: Arc<serenity::Http>,
+        db: Database,
+    ) -> Result<(), JobSchedulerError> {
+        let handler = self.clone();
+
+        // Late enough that it isn't competing with the daily cache refresh, and
+        // an hour that is the middle of the night for nobody in particular.
+        let job = Job::new_async("0 20 4 * * *", move |_uuid, _lock| {
+            let handler = handler.clone();
+            let http = http.clone();
+            let db = db.clone();
+
+            Box::pin(async move {
+                handler.load_jobs(http, &db, true).await;
+            })
+        })?;
+
+        self.scheduler.add(job).await?;
+        log::info!("started the nightly schedule rebuild");
+
+        Ok(())
+    }
+
     /// Re-registers every stored schedule at startup.
     ///
     /// Each row is joined to its own guild, and a row that can't be restored is
     /// skipped rather than aborting the rest (QA C-7, C-8).
     pub async fn restore_jobs(&self, http: Arc<serenity::Http>, db: &Database) {
+        self.load_jobs(http, db, false).await;
+    }
+
+    /// `replace` drops each row's currently registered job first. At startup
+    /// there is nothing registered to drop — the stored UUID belongs to a
+    /// previous process — so removing it would only log about ids the scheduler
+    /// has never heard of. During a rebuild it is the whole point: without it,
+    /// every guild would end up with two copies of every report.
+    async fn load_jobs(&self, http: Arc<serenity::Http>, db: &Database, replace: bool) {
         let rows = match db.all_jobs_with_guilds().await {
             Ok(rows) => rows,
             Err(err) => return log::error!("could not read scheduled reports: {err}"),
@@ -111,10 +164,23 @@ impl CronHandler {
                 guild_row_id: row.guild_row_id,
                 schedule_name: row.job_name.clone(),
                 schedule: row.schedule.clone(),
+                schedule_label: row.schedule_label.clone(),
+                timezone: row.timezone.clone(),
                 webhook_url: row.webhook_url.clone(),
                 map_name: row.map_name.clone(),
                 draw_text: row.draw_text,
             };
+
+            // Unscheduled before the replacement is registered, so a row can
+            // never briefly have two live jobs posting the same report. The
+            // cost is the other order's risk: if `schedule` then fails, this
+            // report stops until the next rebuild or restart. That's the safer
+            // way round — a schedule that fails to register here would have
+            // failed at boot too, and a duplicated report is the failure users
+            // actually notice.
+            if replace {
+                self.unschedule(row.job_id.as_deref()).await;
+            }
 
             match self.schedule(http.clone(), db.clone(), &job).await {
                 Ok(uuid) => {
@@ -136,7 +202,11 @@ impl CronHandler {
             }
         }
 
-        log::info!("restored {restored}/{total} scheduled reports");
+        if replace {
+            log::info!("rebuilt {restored}/{total} scheduled reports for their timezones");
+        } else {
+            log::info!("restored {restored}/{total} scheduled reports");
+        }
     }
 
     /// Registers a job with the scheduler. Does **not** touch the database —
@@ -151,8 +221,14 @@ impl CronHandler {
         let cron = Job::schedule_to_cron(&job.schedule)
             .map_err(|_| CronError::BadSchedule(job.schedule.clone()))?;
 
+        // An unknown name falls back to UTC rather than refusing the row: the
+        // stored zone came out of an autocomplete over this same database, so
+        // the only way to get here is a `chrono-tz` that no longer carries a
+        // zone it used to, and a report an hour out beats a report that stops.
+        let tz = schedule::timezone_or_utc(&job.timezone);
+
         let job = job.clone();
-        let scheduled = Job::new_async(cron.as_str(), move |uuid, mut scheduler| {
+        let scheduled = Job::new_async_tz(cron.as_str(), tz, move |uuid, mut scheduler| {
             let http = http.clone();
             let db = db.clone();
             let job = job.clone();
@@ -247,16 +323,20 @@ async fn run_report(
         None => "full-map.png".to_string(),
     };
     let mut description = format!(
-        "{target}\nLast API Update: {}",
+        "{target}\nSchedule: {}\nLast API Update: {}",
+        schedule::describe(job.schedule_label.as_deref(), &job.schedule, &job.timezone),
         format_timestamp(rendered.last_updated)
     );
 
-    // Scheduler ticks are UTC, so the embed says so rather than rendering them
-    // in the host's local time (QA L-2).
+    // Discord's own timestamp markup, so every reader sees the next run in
+    // *their* timezone with no work from us. It used to print a UTC wall clock,
+    // which is correct and useless to anyone who doesn't think in UTC — and a
+    // fair share of "it fires at the wrong time" was a right schedule described
+    // in the wrong clock.
     if let Some(next) = next_tick {
         description.push_str(&format!(
-            "\nNext Scheduled Update: {} UTC",
-            next.format("%Y %m %d %H:%M:%S")
+            "\nNext Scheduled Update: <t:{0}:F> (<t:{0}:R>)",
+            next.timestamp()
         ));
     }
 

@@ -108,6 +108,70 @@ pub async fn autocomplete_map(
         .collect()
 }
 
+/// Offered when nothing has been typed yet. Somewhere to start for a server that
+/// has never set a timezone, since the full IANA list opens on `Africa/Abidjan`
+/// and teaches nobody anything.
+const COMMON_TIMEZONES: [&str; 10] = [
+    "UTC",
+    "Europe/London",
+    "Europe/Berlin",
+    "Europe/Bratislava",
+    "Europe/Moscow",
+    "America/New_York",
+    "America/Chicago",
+    "America/Denver",
+    "America/Los_Angeles",
+    "Australia/Sydney",
+];
+
+/// Autocomplete over the IANA timezone database.
+///
+/// A timezone is exactly the class of input that must never be free text — the
+/// whole point of `specs/active/schedule-input.md` — so the picker is the only
+/// way a name is meant to arrive, and every name in it parses by construction.
+pub async fn autocomplete_timezone(
+    ctx: Context<'_>,
+    partial: &str,
+) -> Vec<serenity::AutocompleteChoice> {
+    let filter = partial.trim().to_lowercase();
+
+    if filter.is_empty() {
+        // The server's own setting first: for most guilds, most of the time, the
+        // right answer is the one they already chose.
+        let mut names: Vec<String> = Vec::new();
+
+        if let Ok(id) = guild_id(ctx) {
+            if let Ok(Some(guild)) = ctx.data().db.get_guild(id).await {
+                names.push(guild.timezone);
+            }
+        }
+
+        for name in COMMON_TIMEZONES {
+            if !names.iter().any(|chosen| chosen == name) {
+                names.push(name.to_string());
+            }
+        }
+
+        return names
+            .into_iter()
+            .take(MAX_CHOICES)
+            .map(|name| serenity::AutocompleteChoice::new(name.clone(), name))
+            .collect();
+    }
+
+    // Underscores are how the database spells a space, and nobody types them:
+    // "new york" and "new_york" should both find America/New_York.
+    let filter = filter.replace('_', " ");
+
+    chrono_tz::TZ_VARIANTS
+        .iter()
+        .map(|tz| tz.name())
+        .filter(|name| name.to_lowercase().replace('_', " ").contains(&filter))
+        .take(MAX_CHOICES)
+        .map(|name| serenity::AutocompleteChoice::new(name, name))
+        .collect()
+}
+
 /// The same list, plus the whole-world-map option.
 ///
 /// Only `/schedule-report` uses this. `/get-map` and `/war-report` take a single

@@ -132,8 +132,8 @@ with no request timeout to cut it. If it ever returns, the other candidate was "
 `upsert_guild` failed", and `on_error`'s `command /… failed: …` line splits the two cleanly.
 
 ## Adjacent work raised this session
-`specs/active/schedule-input.md` — **specced, nothing built, and now the priority.** See
-"Next steps".
+`specs/active/schedule-input.md` — picked up as its own task; see `dev/active/schedule-input/`.
+It claimed migration `0005`, so the next free number is **0006**.
 
 ## Phase 2 decisions taken while building (not in the spec — worth keeping)
 - **Reviewers are exactly `REVIEWER_IDS`, with no implicit owner.** The spec said "owner/admin";
@@ -177,22 +177,9 @@ with no request timeout to cut it. If it ever returns, the other candidate was "
   it.
 
 ## Next steps
-**This task is finished bar the two unverified items in `tasks.md`. Start the next one.**
+**This task is finished bar the two unverified items in `tasks.md`** (the 90-day purge and peak
+render memory), both of which are release-gate checks rather than development. Active work has
+moved to `dev/active/schedule-input/`.
 
-**`specs/active/schedule-input.md` is now the user's stated priority** — the schedule rework for
-cron jobs. It is specced and nothing is built. Read the spec first; the shape is settled (guild
-timezone default + per-schedule override, choice list + `Custom…`, existing schedules left
-alone), and two questions are still open: weekly in v1, and whether full-map schedules get a
-minimum interval.
-
-Start at `migrations/0005_*.sql` (`guilds.timezone`, `cronjobs.timezone`,
-`cronjobs.schedule_label`). Two findings in the spec worth not re-deriving:
-- `Job::new_async_tz` snapshots a **fixed offset** at construction and never re-reads the zone, so
-  DST only applies at restart. A nightly job rebuild is the fix.
-- `"every 6 hours"` becomes `0 0 */6 * * *` — absolute clock times, not six hours from now. Some
-  of the "fires at the wrong time" reports are probably this and not timezones at all.
-
-Remember: a `migrations/` change is a `docs/tos.md` + `docs/privacy.md` change in the same commit.
-Timezone strings are per-guild stored data and belong in both lists.
-
-When this task's last two items are closed, move `dev/active/full-map/` to `dev/done/`.
+When those two are closed and both `specs/active/` specs are promoted, move
+`dev/active/full-map/` to `dev/done/`.

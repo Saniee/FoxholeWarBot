@@ -20,8 +20,8 @@ recurring map reports to a channel on a schedule.
 
 ## [FAQ - Frequently Asked Questions/Help](faq)
 
-- Permissions, the command list, schedule phrases, and what to do when the bot is down. If your
-  question isn't answered there, head over to
+- Permissions, the command list, how schedules are timed, and what to do when the bot is down.
+  If your question isn't answered there, head over to
   <a href="https://discord.gg/9wzppSgXdQ">the Support Server</a>.
 
 ---

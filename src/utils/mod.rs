@@ -8,6 +8,7 @@ pub mod map_render;
 pub mod regions;
 pub mod request_processing;
 pub mod review;
+pub mod schedule;
 
 /// Formats a Foxhole API millisecond timestamp.
 ///

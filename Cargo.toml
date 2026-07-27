@@ -6,7 +6,14 @@ edition = "2021"
 [dependencies]
 ab_glyph = "0.2.29"
 chrono = "0.4.39"
+# The IANA database chrono itself doesn't ship. Storing an offset instead would
+# be wrong for half the year (specs/active/schedule-input.md).
+chrono-tz = "0.10"
 clap = { version = "4.5.31", features = ["derive"] }
+# The cron parser tokio-cron-scheduler already uses internally. Taken as a direct
+# dependency so the fire-time preview is computed by the same parser that runs
+# the job — a preview from a different implementation is a guess.
+croner = "2.0.5"
 dotenv = "0.15.0"
 env_logger = "0.11.6"
 image = { version = "0.25.5", features = ["serde"] }

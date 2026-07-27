@@ -1,7 +1,9 @@
 # Schedule input: structured options and timezones (ACTIVE)
 
-Status: **proposed.** Nothing built. Supersedes the free-text `schedule` option on
-`/schedule-report` (`specs/scheduling.md`, `specs/schedule-report.md`).
+Status: **built, unverified.** Written but never compiled or run — the boot, a schedule created
+on each path, and a DST rebuild are all still to be walked. Supersedes the free-text `schedule`
+option on `/schedule-report` (`specs/scheduling.md`, `specs/schedule-report.md`), which those two
+specs now describe as shipped.
 
 Two reported problems, one root cause:
 1. **Users can't get a phrase accepted.** `/schedule-report schedule:` is free text handed to
@@ -127,7 +129,7 @@ generated cron.
 ## Data model
 
 ```sql
--- migrations/0005_*.sql   (0003 is the full-map gate, 0004 the review-post id)
+-- migrations/0005_schedule_input.sql  (0003 is the full-map gate, 0004 the review-post id)
 ALTER TABLE guilds   ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC';
 ALTER TABLE cronjobs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC';
 -- Human-readable cadence for embeds and listings; `schedule` holds the generated cron.
@@ -158,16 +160,18 @@ cadence label.
   their English phrase. Nothing moves because this shipped — which is also why both new timezone
   columns default to `'UTC'`.
 
-## Open questions
-1. **Weekly in v1?** Adds a `day` option that is inert for every other frequency — the one thing
-   the single-command shape doesn't handle cleanly. Suggest deferring it; `Custom…` covers it in
-   the meantime for anyone who actually needs it.
-2. **Minimum interval.** 15 minutes for a region schedule. A *full map* at 15-minute intervals is
-   53 regions fetched and composited 96 times a day, and the gate
-   (`specs/active/premium-full-map.md`) reviews *whether* a guild may schedule one, not how often
-   — so the floor is the only thing standing between an approval and that load. Suggest a
-   **one-hour floor for full-map schedules**, enforced for `Custom…` too, since that path is
-   exactly where someone would write `*/5`.
+## The two open questions, answered
+1. **Weekly ships in v1**, against the earlier suggestion to defer it. The objection was the
+   inert `day` option, but `custom` is inert too and this command already carries it, so weekly
+   costs one more optional field rather than a new shape. The alternative was worse than it
+   looked: the old free-text box *did* accept "every Friday at 18:00", so deferring weekly would
+   have removed something that worked and pointed the people who wanted it at cron. `day`
+   defaults to Monday rather than erroring, so it is never a required-but-not-really option.
+2. **A one-hour floor for full-map schedules**, as suggested. Enforced by measuring the gaps
+   between the previewed fire times rather than by reading the expression, so `Custom…` is held
+   to the same rule — `*/5` and a hand-written list of twelve minutes are the same problem, and
+   only one of them looks like it. Region schedules are unchanged; the floor exists because a
+   full map re-renders all 53 regions each time.
 
 ## Acceptance criteria
 - No command takes a free-text schedule phrase or a cron expression.

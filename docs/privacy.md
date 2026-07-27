@@ -9,10 +9,12 @@ Short version: the bot stores per-server settings and nothing about you personal
 # [](#header-2)What is collected
 
 - **Server settings.** The server (guild) ID, the shard it reads from, whether replies are
-  public or private, whether the full map is shaded by faction control, and whether the server is
-  approved to *schedule* full-map reports (plus when that approval was granted).
-- **Scheduled reports.** For each one: its name, the schedule phrase, the webhook URL it posts
-  to, the region — or a marker saying it's the whole world map — and whether labels are drawn.
+  public or private, whether the full map is shaded by faction control, the server's default
+  timezone for scheduled reports, and whether the server is approved to *schedule* full-map
+  reports (plus when that approval was granted).
+- **Scheduled reports.** For each one: its name, when it runs (both the timing expression and the
+  same cadence in words), the timezone it is read in, the webhook URL it posts to, the region —
+  or a marker saying it's the whole world map — and whether labels are drawn.
 - **Full-map schedule requests.** Only if someone in your server fills in
   `/request-full-map-schedule`: the Discord user ID of whoever submitted it, the server's ID, a
   one-off snapshot of the server's member count, the channel the reports would post to, and the
@@ -54,7 +56,7 @@ server owner about errors; it never did, and it doesn't now.
 
 # [](#header-5)Command arguments
 
-The options passed to a command (a region name, a schedule phrase) are used to build the request
+The options passed to a command (a region name, a frequency) are used to build the request
 and then discarded. The exceptions are `/schedule-report` and `/request-full-map-schedule`, which
 by definition have to store what you asked for — those fields are listed above.
 

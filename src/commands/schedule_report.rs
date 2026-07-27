@@ -1,12 +1,13 @@
 use poise::serenity_prelude as serenity;
-use tokio_cron_scheduler::Job;
 
 use crate::commands::common::{
-    autocomplete_schedule_target, defer_for, guild_settings, FULL_MAP_TARGET,
+    autocomplete_schedule_target, autocomplete_timezone, defer_for, guild_settings,
+    FULL_MAP_TARGET,
 };
 use crate::utils::cron::ReportJob;
 use crate::utils::db::NewJob;
 use crate::utils::entitlement::{self, FullMapScheduling};
+use crate::utils::schedule::{self, Day, Frequency};
 use crate::{Context, Error};
 
 const WEBHOOK_NAME: &str = "Scheduled Map Report Webhook";
@@ -28,8 +29,18 @@ pub async fn schedule_report(
     #[description = "Name for this schedule. Must be unique within this server."]
     schedule_name: String,
     #[description = "Channel the reports are posted to."] report_channel: serenity::GuildChannel,
-    #[description = "When to post. See /schedule-help for accepted phrases."] schedule: String,
+    #[description = "How often to post."] frequency: Frequency,
     #[description = "Draw map labels (city names etc.)."] draw_text: bool,
+    // Everything below is optional, and Discord requires the required options
+    // first — so this order is registration order, not importance.
+    #[description = "Time to line the schedule up with, 24-hour HH:MM. Default 00:00."]
+    at_time: Option<String>,
+    #[description = "Timezone for the time above. Defaults to this server's."]
+    #[autocomplete = "autocomplete_timezone"]
+    timezone: Option<String>,
+    #[description = "Which day, for a weekly report. Default Monday."] day: Option<Day>,
+    #[description = "Only for Custom: a cron expression or a plain-English phrase."]
+    custom: Option<String>,
 ) -> Result<(), Error> {
     let Some(guild) = guild_settings(ctx).await? else {
         return Ok(());
@@ -49,11 +60,56 @@ pub async fn schedule_report(
         return Ok(());
     }
 
-    if Job::schedule_to_cron(&schedule).is_err() {
-        ctx.say(
-            "That schedule isn't a phrase the scheduler understands. \
-             Run `/schedule-help` to see what works.",
-        )
+    // The guild's default unless this report overrides it. Resolved here and
+    // stored on the row, so changing the server default later can't move a
+    // schedule that already exists.
+    let zone_name = timezone.as_deref().unwrap_or(&guild.timezone);
+    let zone = match schedule::timezone(zone_name) {
+        Ok(zone) => zone,
+        Err(err) => {
+            ctx.say(err.to_string()).await?;
+            return Ok(());
+        }
+    };
+
+    // The user picked from a list; this turns the pick into cron. The only error
+    // an ordinary path can produce is a malformed `at_time`, and it says so with
+    // an example.
+    let cadence = match schedule::cadence(frequency, at_time.as_deref(), day, custom.as_deref()) {
+        Ok(cadence) => cadence,
+        Err(err) => {
+            ctx.say(err.to_string()).await?;
+            return Ok(());
+        }
+    };
+
+    // Nothing is stored until these are on screen. An expression that parses can
+    // still mean something the user didn't intend — `every 6 hours` is absolute
+    // clock times, not six hours from now — and three real timestamps are what
+    // catch that, for the choice list as much as for `Custom…`.
+    let fires = match schedule::next_fires(&cadence.cron, zone, schedule::PREVIEW_COUNT + 1) {
+        Ok(fires) => fires,
+        Err(err) => {
+            ctx.say(err.to_string()).await?;
+            return Ok(());
+        }
+    };
+
+    // The gate says whether a guild may schedule the world map; it says nothing
+    // about how often, so this is the only thing standing between an approval
+    // and 53 regions re-rendered every five minutes.
+    let full_map_gap = target
+        .is_none()
+        .then(|| schedule::shortest_gap_minutes(&fires))
+        .flatten();
+
+    if let Some(gap) = full_map_gap.filter(|gap| *gap < schedule::FULL_MAP_MIN_INTERVAL_MINUTES) {
+        ctx.say(format!(
+            "A **full-map** schedule can't run more often than once an hour, and some runs of \
+             that one would be only {gap} minutes apart. All 53 regions are re-rendered every \
+             time, and the war doesn't move that fast. `/full-map` is still on demand, \
+             unlimited, and needs no approval."
+        ))
         .await?;
         return Ok(());
     }
@@ -93,7 +149,9 @@ pub async fn schedule_report(
     let job = ReportJob {
         guild_row_id: guild.id,
         schedule_name: schedule_name.clone(),
-        schedule: schedule.clone(),
+        schedule: cadence.cron.clone(),
+        schedule_label: Some(cadence.label.clone()),
+        timezone: zone.name().to_string(),
         webhook_url: webhook_url.clone(),
         map_name: target.clone(),
         draw_text,
@@ -120,7 +178,9 @@ pub async fn schedule_report(
         .add_job_entry(&NewJob {
             guild: guild.id,
             job_name: schedule_name.clone(),
-            schedule,
+            schedule: cadence.cron.clone(),
+            schedule_label: Some(cadence.label.clone()),
+            timezone: zone.name().to_string(),
             webhook_url,
             map_name: target,
             draw_text,
@@ -138,8 +198,12 @@ pub async fn schedule_report(
     }
 
     ctx.say(format!(
-        "Scheduled report `{schedule_name}` created. Reports will appear in <#{}>.",
-        report_channel.id
+        "Scheduled report `{schedule_name}` created — **{}** ({}), posting to <#{}>.\n\
+         Next three runs:\n{}",
+        cadence.label,
+        zone.name(),
+        report_channel.id,
+        schedule::preview_lines(&fires[..schedule::PREVIEW_COUNT.min(fires.len())]),
     ))
     .await?;
 

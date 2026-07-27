@@ -40,6 +40,27 @@ to the design.
   UUID — no orphan rows on failure.
 - Handle missing "Manage Webhooks" permission with a clear reply (fixes C-11).
 
+### Timezones, and the nightly rebuild
+Each `cronjobs` row stores an IANA name (`Europe/Bratislava`), never a fixed offset — an offset
+stored in summer is wrong in winter. It is resolved when the schedule is created and kept on the
+row, so changing the guild's default never moves a report that already exists.
+
+**Storing the name is necessary but not sufficient.** `Job::new_async_tz` does not track a
+timezone: it calls `offset_from_utc_datetime` once at construction and keeps the resulting fixed
+offset for the life of the job. A schedule created in January fires an hour out all summer, and
+only a process restart corrects it.
+
+So a **nightly job rebuild** (04:20 UTC) re-registers every stored schedule from its stored name,
+unscheduling the current registration first. Any transition is corrected within a day of itself,
+without anyone noticing there was something to correct. It shares one code path with startup
+restoration — the only difference is that the rebuild removes the existing registration before
+adding the replacement, and at startup there is nothing to remove because the stored UUID belongs
+to a previous process.
+
+Rejected alternatives: rebuilding only on each zone's two transition dates (more code, per zone,
+to save seconds of work a day), and documenting that DST applies at restart (cheapest, and the
+wrong answer for a bot whose complaint of record is "it fires at the wrong time").
+
 ### Per-tick execution (fixes C-1, C-3, C-5)
 - Renders to an in-memory attachment; no file is written, so ticks and interactive
   commands cannot collide.
@@ -70,12 +91,18 @@ Full schema: `specs/postgres.md`.
 - Two guilds can each have a schedule named "daily".
 - A non-privileged member cannot create or remove schedules.
 - No scheduling code path can leave a deferred interaction without a final reply.
+- A schedule keeps firing at its stated wall-clock time across a DST transition, with no restart
+  and no user action.
+- Every schedule created before timezones existed keeps firing exactly when it did: both columns
+  default to `'UTC'`, and an English phrase still parses.
 
 ## Related
-- **Full-map gating** — scheduling a *full-map* report is free for small guilds but requires a
-  (non-monetary) approval form for large guilds; on-demand full-map renders stay free for all.
-  The full-map job type carries an `is_full_map` marker so the tick applies the gate. See
-  `specs/active/premium-full-map.md`.
+- **Full-map gating** — scheduling a *full-map* report requires a (non-monetary) approval, for
+  every guild regardless of size; on-demand full-map renders stay free and ungated for all. The
+  job carries a **NULL `map_name`** rather than an `is_full_map` flag, so there is one fact and
+  not two that can disagree, and the tick re-reads the approval so it can be withdrawn. The
+  approval decides *whether*, not how often: the once-an-hour floor on full-map schedules lives
+  in `/schedule-report`. See `specs/active/premium-full-map.md`.
 
 ## Out of scope (future)
 - Listing schedules (`/list-reports`) — currently only removable via autocomplete.
