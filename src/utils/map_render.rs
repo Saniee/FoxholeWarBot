@@ -202,8 +202,26 @@ pub async fn render_full_map(
     let client = reqwest::Client::new();
     let permits = Arc::new(Semaphore::new(FETCH_CONCURRENCY));
     let mut fetches: JoinSet<Tile> = JoinSet::new();
+    let mut tiles: Vec<Tile> = Vec::with_capacity(REGIONS.len());
 
-    for region in regions_on_shard(shard_name).await {
+    let live = live_regions(shard_name).await;
+
+    for region in REGIONS {
+        // Every region in the table is drawn, always. Whether the API lists it
+        // only decides whether we go looking for icons to put on it — a region
+        // we can't fetch is bare terrain, never a hole in the world.
+        let Some(fetch_name) = live_name(&live, region) else {
+            log::info!(
+                "shard {shard_name} doesn't list {}, drawing it as background only",
+                region.api_name
+            );
+            tiles.push((region, None));
+            continue;
+        };
+
+        // The API's spelling for the API's URLs and cache keys; the table's for
+        // assets and placement. Conflating the two is what lost Marban Hollow.
+        let fetch_name = fetch_name.to_string();
         let client = client.clone();
         let api_url = api_url.to_string();
         let shard_name = shard_name.to_string();
@@ -214,7 +232,7 @@ pub async fn render_full_map(
             // report cannot happen here.
             let _permit = permits.acquire().await;
 
-            match fetch_region(&client, &api_url, &shard_name, region.api_name).await {
+            match fetch_region(&client, &api_url, &shard_name, &fetch_name).await {
                 Ok(data) => (region, Some(data)),
                 // One region failing is not the map failing: it is drawn as bare
                 // terrain and the other 52 are unaffected.
@@ -229,7 +247,6 @@ pub async fn render_full_map(
         });
     }
 
-    let mut tiles: Vec<Tile> = Vec::with_capacity(REGIONS.len());
     let mut last_updated = 0;
 
     while let Some(joined) = fetches.join_next().await {
@@ -261,33 +278,46 @@ pub async fn render_full_map(
     Ok(RenderedMap { png, last_updated })
 }
 
-/// Which grid regions to draw for this shard.
+/// The regions the API says are in this shard's war, if we have a cached list.
 ///
-/// The cached `/worldconquest/maps` list wins when we have one: a region the API
-/// doesn't list — a stub, or one Siege Camp pulled — shouldn't be drawn, and
-/// that check is generic where a hardcoded name (the old `OriginHex` exclusion)
-/// was not. On a cold start there is no cached list, and drawing nothing would
-/// be a worse answer than drawing the table, so fall back to all 53.
-async fn regions_on_shard(shard_name: &str) -> Vec<&'static Region> {
+/// `None` on a cold start, before the first map refresh has run — which is a
+/// different thing from "the war has no regions" and must not be read as one.
+async fn live_regions(shard_name: &str) -> Option<Vec<String>> {
     let listed = load_maps(Shard::from_str(shard_name)).await;
 
     if listed.is_empty() {
-        log::warn!("no cached map list for shard {shard_name}, rendering every known region");
-        return REGIONS.iter().collect();
+        log::warn!("no cached map list for shard {shard_name}, fetching every known region");
+        return None;
     }
 
-    listed
-        .iter()
-        .filter_map(|api_name| match regions::find(api_name) {
-            Some(region) => Some(region),
-            None => {
-                // A region with no grid coordinates has nowhere to go. It stays
-                // out of the full map until the table in `regions.rs` learns it.
-                log::warn!("shard {shard_name} lists {api_name}, which has no grid position");
-                None
-            }
-        })
-        .collect()
+    for api_name in &listed {
+        if regions::find(api_name).is_none() {
+            // Nothing to be done at render time — a region with no grid
+            // coordinates has nowhere to go — but it means Siege Camp shipped a
+            // region and `regions.rs` hasn't learned it yet.
+            log::warn!("shard {shard_name} lists {api_name}, which has no grid position");
+        }
+    }
+
+    Some(listed)
+}
+
+/// What the API calls this region, or `None` if it isn't in play.
+///
+/// Matched leniently: the API spells Marban Hollow `MarbanHollow` while its
+/// assets and this table say `MarbanHollowHex`, and an exact comparison quietly
+/// drops the region on that alone. The API's own spelling comes back out,
+/// because that is what its URLs answer to.
+fn live_name<'a>(live: &'a Option<Vec<String>>, region: &'static Region) -> Option<&'a str> {
+    match live {
+        Some(live) => live
+            .iter()
+            .find(|api_name| regions::same_region(api_name, region.api_name))
+            .map(String::as_str),
+        // No cached list to disagree with; the table's spelling is the best
+        // guess we have.
+        None => Some(region.api_name),
+    }
 }
 
 /// Draws every tile at its grid offset, then scales the composite down to
@@ -349,8 +379,14 @@ fn canvas_size(tiles: &[Tile], config: &RenderConfig) -> (u32, u32) {
         })
 }
 
+/// The background asset for a region, named the way the *assets* spell it.
+///
+/// Never the way the caller spelled it: the API asks for `MarbanHollow`, and
+/// `MapMarbanHollow.TGA` does exist — as a stale leftover of an older art drop.
+/// Going through the table picks `MapMarbanHollowHex.TGA`, the one that gets
+/// updated, so `/get-map` stops quietly rendering year-old terrain.
 fn background_path(map_name: &str) -> String {
-    format!("./assets/Maps/Map{map_name}.TGA")
+    format!("./assets/Maps/Map{}.TGA", regions::asset_name(map_name))
 }
 
 fn encode_png(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>, RenderError> {

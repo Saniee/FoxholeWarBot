@@ -42,6 +42,14 @@ uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bol
 - `OriginHex` is already un-excluded (landed in the core rewrite).
 
 ## Risks / gotchas
+- **Identifier drift is real, and it was silent.** The first live render came back with two holes:
+  the API calls Marban Hollow `MarbanHollow` (no `Hex`), and `MapDeadLandsHex.TGA` has a
+  capitalisation history — there is a commit literally named "Rename MapDeadlandsHex.TGA to
+  MapDeadLandsHex.TGA". Both now handled (lenient `same_region`, case-insensitive background
+  retry, assets addressed through the table). If a hex ever goes missing again, the log names it.
+- **Two stale assets are still in the tree**: `MapMarbanHollow.TGA` and `MapClahstraHexMap.TGA`
+  are *not* copies of the `*Hex` files — they're older art. Nothing reaches them now, but they
+  should be deleted.
 - ~~Column pitch 768 is derived, not measured.~~ **Resolved.** Measured off the assets' alpha
   channel: the art is a true flat-top hexagon with no padding, two neighbours at `(+768, +444)`
   leave **0 uncovered pixels**, and a 53-hex composite has continuous coastlines across every

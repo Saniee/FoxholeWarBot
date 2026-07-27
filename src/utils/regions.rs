@@ -97,7 +97,39 @@ pub const REGIONS: &[Region] = &[
 
 /// Looks a region up by its API identifier.
 pub fn find(api_name: &str) -> Option<&'static Region> {
-    REGIONS.iter().find(|region| region.api_name == api_name)
+    REGIONS.iter().find(|region| same_region(region.api_name, api_name))
+}
+
+/// Do two identifiers name the same region?
+///
+/// Deliberately lenient, because the API's own spelling is not stable: this
+/// repo carries `MapMarbanHollow.TGA` *and* `MapMarbanHollowHex.TGA`, and
+/// `DeadLandsHex` has been seen written `DeadlandsHex`. An exact `==` turns a
+/// spelling drift into a region that silently doesn't exist — a hole in the
+/// full map, and a `/get-map` that can't find its own background file.
+///
+/// So: case-insensitive, and the `Hex` suffix is optional. No two regions
+/// collide under that rule.
+pub fn same_region(a: &str, b: &str) -> bool {
+    strip_hex(a).eq_ignore_ascii_case(strip_hex(b))
+}
+
+fn strip_hex(name: &str) -> &str {
+    let name = name.trim();
+
+    match name.len().checked_sub(3) {
+        Some(cut) if name.get(cut..).is_some_and(|s| s.eq_ignore_ascii_case("hex")) => &name[..cut],
+        _ => name,
+    }
+}
+
+/// The name this region's assets are filed under, for an identifier that may be
+/// spelled however the API felt like spelling it.
+pub fn asset_name(api_name: &str) -> &str {
+    match find(api_name) {
+        Some(region) => region.api_name,
+        None => api_name,
+    }
 }
 
 /// The display name for an API region identifier.

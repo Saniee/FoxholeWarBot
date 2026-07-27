@@ -324,11 +324,55 @@ pub fn load_background<P>(path: &P) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, Re
 where
     P: AsRef<std::path::Path> + ?Sized,
 {
-    image::open(path)
-        .map(|img| img.to_rgba8())
-        .map_err(|source| RenderError::Background {
-            path: path.as_ref().display().to_string(),
-            source,
+    let path = path.as_ref();
+
+    let source = match image::open(path) {
+        Ok(img) => return Ok(img.to_rgba8()),
+        Err(source) => source,
+    };
+
+    // The map assets' capitalisation has drifted before — this repo carries a
+    // commit called "Rename MapDeadlandsHex.TGA to MapDeadLandsHex.TGA", and a
+    // checkout on a case-insensitive filesystem can keep the older spelling on
+    // disk while git reports the tree clean. On Linux that reads as a missing
+    // file, and a missing background is a hole punched in the world map.
+    //
+    // So: on the failure path only (the common case costs no extra syscall),
+    // look again ignoring case, and say so loudly enough to get it renamed.
+    if let Some(actual) = find_ignoring_case(path) {
+        log::warn!(
+            "{} does not exist, but {} does — the asset is misnamed, opening it anyway",
+            path.display(),
+            actual.display()
+        );
+
+        return image::open(&actual)
+            .map(|img| img.to_rgba8())
+            .map_err(|source| RenderError::Background {
+                path: actual.display().to_string(),
+                source,
+            });
+    }
+
+    Err(RenderError::Background {
+        path: path.display().to_string(),
+        source,
+    })
+}
+
+/// The real name of a file that differs from `path` only in capitalisation.
+fn find_ignoring_case(path: &std::path::Path) -> Option<std::path::PathBuf> {
+    let wanted = path.file_name()?.to_str()?;
+
+    std::fs::read_dir(path.parent()?)
+        .ok()?
+        .flatten()
+        .find_map(|entry| {
+            entry
+                .file_name()
+                .to_str()?
+                .eq_ignore_ascii_case(wanted)
+                .then(|| entry.path())
         })
 }
 

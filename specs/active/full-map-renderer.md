@@ -125,6 +125,27 @@ Shipped as `utils::regions::REGIONS`, a `&[Region]` where `Region` carries `api_
 region is **one** edit: the display-name table and the grid table are the same table. Every
 `api_name` in it has been confirmed to resolve to an existing `assets/Maps/Map*.TGA`.
 
+### Identifier drift (gotcha, confirmed live)
+The API's own spelling does **not** match the asset names, and matching them exactly loses
+regions. Checked against a live `/worldconquest/maps` response (Able, 2026-07):
+
+| API says | Assets and this table say | Consequence of an exact match |
+|---|---|---|
+| `MarbanHollow` | `MarbanHollowHex` | Region silently dropped — **a hole in the world map** |
+| `DeadLandsHex` | `MapDeadLandsHex.TGA` / `MapDeadlandsHex.TGA` | Case drift on disk; missing background on Linux |
+
+All 52 other names match exactly. Two rules follow, and the renderer holds both:
+
+- **Region identifiers are compared leniently** — case-insensitively, with the `Hex` suffix
+  optional (`regions::same_region`). No two regions collide under that rule.
+- **The API's spelling addresses the API; the table's spelling addresses the assets.** They are
+  not interchangeable. `MapMarbanHollow.TGA` exists as a stale leftover of an older art drop, so
+  using the API's name for the asset path renders year-old terrain rather than failing loudly.
+
+Beyond that, a missing background is never fatal to the layout: a region the API doesn't list, or
+whose fetch fails, is drawn as bare terrain. Only the art going missing can leave a hole, and
+`load_background` retries case-insensitively (with a warning) before giving up.
+
 ### Display-name mapping (gotcha)
 Several API names differ from displayed names — the renderer must not assume they match:
 
@@ -146,8 +167,10 @@ rewrite should use an explicit display-name table (this one) rather than string 
   render target and not a grid tile (confirms the earlier correction).
 - `MapHomeRegionC.TGA` / `MapHomeRegionW.TGA` — Colonial/Warden home regions; not part of the
   world-conquest grid, excluded.
-- `MapMarbanHollow.TGA`, `MapClahstraHexMap.TGA` — duplicates of their `*Hex` counterparts;
-  ignore (candidates for deletion).
+- `MapMarbanHollow.TGA`, `MapClahstraHexMap.TGA` — **stale** near-duplicates of their `*Hex`
+  counterparts, not identical to them: the recent art drops updated `MapMarbanHollowHex.TGA` and
+  `MapClahstraHex.TGA` only. Deleting them is the real fix; until then, asset paths must go
+  through `regions::asset_name` so nothing can reach the outdated copy.
 
 ## `OriginHex` — un-exclude it
 Current code skips `OriginHex` in every autocomplete (`get_map.rs:128`, `war_report.rs:105`,
