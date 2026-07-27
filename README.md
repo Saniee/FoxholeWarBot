@@ -40,6 +40,26 @@ cargo run -- --clear-commands
 
 Note: `docker compose down -v` removes the database volume. Use `docker compose down`.
 
+### Updating map and icon art
+
+Artwork tracks [`clapfoot/warapi`](https://github.com/clapfoot/warapi). With a clone of it on
+disk:
+
+```sh
+scripts/update_assets.py --warapi ../warapi --dry-run   # see what would change
+scripts/update_assets.py --warapi ../warapi
+scripts/update_assets.py --audit                        # check what's on disk, copy nothing
+```
+
+It renames as it copies, because upstream and the renderer disagree about names in ways that fail
+silently: upstream ships `MapDeadlandsHex.TGA` where the region table says `DeadLandsHex`, and
+icons are descriptive TGA upstream (`MapIconTownBaseTier1Colonial.TGA`) against the
+`{iconType}{Team}.png` the renderer looks up. Copying by hand once left a region with no
+background and a clean `git status`.
+
+`--audit` cross-checks `assets/Maps/` against the 53-region table and exits non-zero on a missing,
+misnamed, or leftover file. Worth running after any art drop.
+
 ---
 
 Foxhole is a registered trademark of Siege Camp. This is an unofficial, free, fan-made tool, not

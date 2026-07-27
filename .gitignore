@@ -13,6 +13,8 @@
 !/.github
 !/dev
 !/migrations
+!/scripts
+__pycache__/
 !/Dockerfile
 !/compose.yaml
 !/.dockerignore

@@ -31,6 +31,8 @@ recurring scheduled map reports via webhooks.
 - `src/utils/api_definitions/foxhole.rs` — Foxhole War API response types
 - `migrations/` — schema, embedded and applied at startup via `sqlx::migrate!`
 - `assets/Maps/` — per-hex background TGA images; `assets/MapIcons/` — icon PNGs
+- `scripts/update_assets.py` — refreshes both from a local `clapfoot/warapi` clone, and audits
+  `assets/Maps/` against the region table
 - `Dockerfile` / `compose.yaml` — self-hosted deployment (bot + Postgres on a named volume)
 - `docs/` — the GitHub Pages site (ToS, Privacy, FAQ), deployed by `.github/workflows/pages.yml`
 - `specs/` — feature specifications (see below)
@@ -43,6 +45,9 @@ recurring scheduled map reports via webhooks.
 - Run (guild-scoped commands, fast iteration): `cargo run -- --local`
 - Clear all registered commands: `cargo run -- --clear-commands`
 - Deploy: `docker compose up -d --build` (never `docker compose down -v` — it wipes the DB)
+- Update art: `scripts/update_assets.py --warapi <path-to-warapi-clone>` (`--dry-run` first)
+- Audit art only: `scripts/update_assets.py --audit` — exits non-zero if any region's background
+  is missing or misnamed
 
 ## Runtime config (`.env`)
 - `TOKEN` — Discord bot token (required)
@@ -66,6 +71,10 @@ recurring scheduled map reports via webhooks.
   literals in the compositing code.
 - Region display names come from `utils::regions::display_name`, never from string surgery on
   the API id.
+- Art comes in through `scripts/update_assets.py`, not by hand. Upstream and this repo disagree
+  about names on purpose (upstream ships `MapDeadlandsHex.TGA`, the table says `DeadLandsHex`;
+  icons are descriptive TGA upstream and `{iconType}{Team}.png` here), and a hand copy that gets
+  the case wrong renders as a missing hex with a clean `git status`.
 - The stored-data list in `docs/tos.md` and `docs/privacy.md` is the database schema in prose:
   a change under `migrations/` is also a `docs/` change, in the same commit
   (see `specs/docs-site.md`).
