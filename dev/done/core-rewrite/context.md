@@ -43,8 +43,20 @@ Key commits: `dbab23a` data layer, `5638ac4` poise + QA fixes, `c3288e5` Docker 
 - `Anchor::TopLeft` is now unused-but-kept (`#[allow(dead_code)]`). Once the centered render
   has lived a while, it can go.
 
+## Follow-on: specs reconciled (done, `92f04c9`)
+`specs/` now describes the shipped bot, not the thing it replaced. Per-command specs rewritten;
+`postgres.md` / `rendering-placement.md` / `scheduling.md` promoted out of `specs/active/`;
+`qa-report.md` kept and marked resolved with an index (its IDs are cited from commits and code
+comments, so they must stay resolvable). `specs/active/` now holds only pending work.
+
 ## What's next
+Nothing is in flight — working tree clean, everything pushed to `feat/rewrite-overhaul` (PR #1).
 Deferred specs, in priority order:
 1. `specs/active/docs-legal-overhaul.md`
 2. `specs/active/full-map-renderer.md` (depends on `rendering-placement.md`, which landed)
 3. `specs/active/premium-full-map.md`
+
+**Gotcha for whoever starts premium-full-map:** its spec describes adding columns to `guilds`
+(cached member count, approval flag) and a `full_map_requests` table. The schema is now live, so
+that is a **new** `migrations/0002_*.sql` — not an edit to `0001_init.sql`, which has already run
+against real databases.
