@@ -20,8 +20,10 @@ costs the bot's infra repeatedly and forever. Large guilds concentrate that recu
 reach, so they go through a lightweight approval gate — **not** a paywall.
 
 ### "Larger guild" threshold
-- A configurable member-count threshold, `FULL_MAP_FREE_MEMBER_THRESHOLD` (starting value to
-  tune, e.g. **250**). Below it: schedule full-map reports freely. At/above it: approval required.
+- A configurable member-count threshold, `FULL_MAP_FREE_MEMBER_THRESHOLD` = **50** (Foxhole
+  guilds above ~200 are rare, so a higher value would gate almost nobody; 50 is where the gate
+  actually bites — tune down further if needed). Below it: schedule full-map reports freely.
+  At/above it: approval required.
 - Member count comes from the gateway `guild_create` payload (`Guild.member_count`, available
   under the `GUILDS` intent); store it on the `guilds` row and refresh on `guild_create`/updates
   so the check works at command time without an extra fetch.
@@ -130,7 +132,7 @@ trait FullMapScheduling {
    reactivates it.
 
 ## Open decisions
-- Threshold value (start ~250, tune from real guild sizes).
+- Threshold value (set to 50; tune down further from real guild sizes if needed).
 - Form delivery: in-Discord modal (recommended) vs external web form.
 - Review surface: dedicated review channel with buttons vs owner-only command (could do both).
 - Whether to post in Siege Camp's `code-talk` before any donation framing (recommended: yes).
