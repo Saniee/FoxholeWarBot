@@ -35,26 +35,39 @@ fn requests_channel() -> Option<serenity::ChannelId> {
     })
 }
 
-/// Extra people allowed to decide requests, beyond the application's owner.
+/// Everyone allowed to decide requests. **The complete list — there is no
+/// implicit owner.**
 ///
-/// `REVIEWER_IDS`, comma-separated Discord user snowflakes. In `.env` rather
-/// than the database on purpose: reviewing means reading other servers'
-/// free-text answers and granting recurring load on the host, so the list of
-/// people who may do it belongs to whoever runs the host — not to anything
-/// editable from inside Discord, where a compromised account could add itself.
+/// `REVIEWER_IDS`, in `.env`. One id on its own, or several separated by
+/// commas; whitespace around them is ignored:
 ///
-/// It also means the bot stores no record of who its reviewers are, which keeps
-/// `docs/privacy.md`'s stored-data list honest without a word of change.
+/// ```text
+/// REVIEWER_IDS=123456789012345678
+/// REVIEWER_IDS=123456789012345678,987654321098765432
+/// ```
+///
+/// The application's owner is **not** added automatically, and that is the
+/// point. This bot is open source and self-hosted: "the owner can always
+/// approve" reads clearly when you wrote it and misleadingly when you are
+/// deploying somebody else's code, because it invites a guess about whose
+/// account that is — the Discord application's owner, which on a team
+/// application may be nobody who runs the deployment. One env var that lists
+/// every reviewer by id cannot be misread. Set it, put your own id in it.
+///
+/// In `.env` rather than the database on purpose: reviewing means reading other
+/// servers' free-text answers and granting recurring load on the host, so the
+/// list belongs to whoever runs the host — not to anything editable from inside
+/// Discord, where a compromised account could add itself. It also means the bot
+/// stores no record of who its reviewers are, which keeps `docs/privacy.md`'s
+/// stored-data list honest without a word of change.
 ///
 /// Parsed once. A malformed entry is logged and skipped rather than taken as an
 /// empty list — one typo must not quietly lock everyone out.
-fn extra_reviewers() -> &'static HashSet<u64> {
+pub fn reviewers() -> &'static HashSet<u64> {
     static REVIEWERS: OnceLock<HashSet<u64>> = OnceLock::new();
 
     REVIEWERS.get_or_init(|| {
-        let Ok(raw) = dotenv::var("REVIEWER_IDS") else {
-            return HashSet::new();
-        };
+        let raw = dotenv::var("REVIEWER_IDS").unwrap_or_default();
 
         let reviewers: HashSet<u64> = raw
             .split(',')
@@ -69,12 +82,32 @@ fn extra_reviewers() -> &'static HashSet<u64> {
             })
             .collect();
 
-        if !reviewers.is_empty() {
-            log::info!("{} extra full-map reviewer(s) from REVIEWER_IDS", reviewers.len());
+        // Warned about at startup, not on the first refusal, so a misconfigured
+        // deployment is noticed before someone has already filed a request that
+        // nobody can act on.
+        if reviewers.is_empty() {
+            log::warn!(
+                "REVIEWER_IDS is empty — nobody can approve full-map schedule requests. \
+                 Set it to your own Discord user id (see .env.example); the application owner \
+                 is not added automatically."
+            );
+        } else {
+            log::info!("{} full-map reviewer(s) configured", reviewers.len());
         }
 
         reviewers
     })
+}
+
+/// May this user decide requests?
+///
+/// Membership of [`reviewers`], and nothing else. Not the application owner
+/// unless they listed themselves, and specifically **not** "an administrator of
+/// the server this was used in" — a reviewer sees other servers' free-text
+/// answers and can grant recurring load on the host, so the gate is who runs the
+/// bot, not who runs a server that happens to have added it.
+pub fn is_reviewer(user: serenity::UserId) -> bool {
+    reviewers().contains(&user.get())
 }
 
 /// What a reviewer needs to decide, and nothing they don't.
@@ -178,37 +211,6 @@ pub async fn announce(http: &serenity::Http, request: &FullMapRequest, guild_nam
     }
 }
 
-/// May this user decide requests?
-///
-/// The application's owner, any member of its team, or anyone named in
-/// `REVIEWER_IDS`. Nothing else — and specifically **not** "an administrator of
-/// the server this was invoked in". A reviewer sees other servers' free-text
-/// answers and can grant recurring load on the host, so the gate has to be the
-/// people who run the bot, not the people who run a server that happens to have
-/// added it.
-pub async fn is_reviewer(ctx: &serenity::Context, user: serenity::UserId) -> bool {
-    // Checked first because it costs nothing. The owner lookup below is an HTTP
-    // round trip, and a self-hoster who has listed themselves shouldn't pay for
-    // one on every button press.
-    if extra_reviewers().contains(&user.get()) {
-        return true;
-    }
-
-    let Ok(info) = ctx.http.get_current_application_info().await else {
-        // Failing closed is right: an unreachable Discord must not hand the
-        // approve button to whoever pressed it.
-        log::warn!("could not read application info, refusing the review action");
-        return false;
-    };
-
-    if info.owner.as_ref().is_some_and(|owner| owner.id == user) {
-        return true;
-    }
-
-    info.team
-        .is_some_and(|team| team.members.iter().any(|m| m.user.id == user))
-}
-
 /// Handles an Approve/Deny press. `Ok(false)` means the component wasn't ours.
 pub async fn handle_button(
     ctx: &serenity::Context,
@@ -231,7 +233,7 @@ pub async fn handle_button(
         return Ok(false);
     };
 
-    if !is_reviewer(ctx, interaction.user.id).await {
+    if !is_reviewer(interaction.user.id) {
         reply(ctx, interaction, "Only a reviewer can decide these requests.").await?;
         return Ok(true);
     }

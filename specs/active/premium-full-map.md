@@ -82,10 +82,11 @@ fallback/scriptable path over the same actions (both write the same `full_map_re
 - Requires the bot to be in the support guild and able to post there; if `REQUESTS_CHANNEL_ID` is
   unset or unreachable, fall back to command-only review and log a warning (don't drop the
   request).
-- Button interactions are reviewer-gated so only reviewers can approve/deny. **A reviewer is the
-  application's owner, its team, or a user id in `REVIEWER_IDS` — never "an administrator of the
-  server this was used in".** An admin check would have meant any administrator of any server that
-  added the bot could `/full-map-requests list` and read every other server's form answers.
+- Button interactions are reviewer-gated so only reviewers can approve/deny. **A reviewer is a
+  user id in `REVIEWER_IDS` and nothing else** — not the application owner unless they listed
+  themselves, and never "an administrator of the server this was used in". An admin check would
+  have meant any administrator of any server that added the bot could `/full-map-requests list`
+  and read every other server's form answers.
 
 ### Flow
 1. Any guild wanting a scheduled full map → `/request-full-map-schedule` → modal → a `pending`
@@ -124,8 +125,16 @@ Asked of the requester:
 - `REQUESTS_CHANNEL_ID` — channel id on the support Discord where full-map requests are posted
   for review. Optional: unset ⇒ command-only review (`/full-map-requests`). Read via `dotenv::var`
   like the other ids.
-- `REVIEWER_IDS` — comma-separated Discord user ids allowed to decide requests, in addition to the
-  application's owner and team. Optional; empty means owner and team only.
+- `REVIEWER_IDS` — Discord user ids allowed to decide requests. One id, or several separated by
+  commas. **The complete list: the application's owner is _not_ added automatically and must
+  appear in it like anyone else.** Empty means nobody can review, warned about at startup.
+
+  **No implicit owner, deliberately.** This bot is open source and self-hosted, so "the owner can
+  always approve" reads clearly to the person who wrote it and misleadingly to everyone deploying
+  it — it invites a guess about whose account that is, and on a team application the Discord
+  owner may be nobody who runs the deployment. One variable listing every reviewer by id cannot be
+  misread. The cost is that forgetting to set it means nobody can review; the startup warning is
+  what pays that back.
 
   **In `.env` rather than in the database, deliberately.** Reviewing means reading other servers'
   free-text answers and granting recurring load on the host, so the list of people who may do it
@@ -194,8 +203,8 @@ a future entitlement source (sponsor role, donation tier) out of the command bod
   primary; `/full-map-requests list|approve|deny` is the fallback/scriptable path. Both drive the
   same rows and flag.
 - **Command names:** `/request-full-map-schedule` and `/full-map-requests` as specced.
-- **Reviewers are owner + team + an `REVIEWER_IDS` allow-list**, and guild administrator grants
-  nothing. See Config for why the list lives in `.env`.
+- **Reviewers are exactly the `REVIEWER_IDS` allow-list.** No implicit owner, and guild
+  administrator grants nothing. See Config for why.
 - **On-demand render:** a dedicated `/full-map` command (see
   `specs/active/full-map-renderer.md` → Decisions), free for everyone and ungated.
 - **Monetization: none.** The form gate is the only mechanism. No paid tier, no vote-wall, no

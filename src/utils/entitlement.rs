@@ -16,16 +16,23 @@
 
 use super::db::GuildData;
 
-// One implementation, called on a concrete type, never behind `dyn` — the
-// lint's warning about unnameable futures doesn't apply, and spelling the
-// signature as `-> impl Future` would only obscure it.
-#[allow(async_fn_in_trait)]
 pub trait FullMapScheduling {
     /// May this guild run a *scheduled* full-map report right now?
     ///
     /// Nothing about guild size enters into this. Rendering the full map on
     /// demand never asks at all — that path is free for everyone.
-    async fn is_allowed(&self, guild: &GuildData) -> bool;
+    ///
+    /// Spelled `-> impl Future + Send` rather than as an `async fn`, and the
+    /// `Send` is not decoration. A bare `async fn` in a trait produces a future
+    /// with no `Send` bound, and both callers need one: poise boxes every
+    /// command body as `Pin<Box<dyn Future + Send>>`, and the scheduler does the
+    /// same to every tick. Written the short way, this compiles here and fails
+    /// at both call sites with an error that points at them and not at this
+    /// line.
+    fn is_allowed(
+        &self,
+        guild: &GuildData,
+    ) -> impl std::future::Future<Output = bool> + Send;
 }
 
 /// The shipped rule: the owner approved this guild's request, and hasn't taken

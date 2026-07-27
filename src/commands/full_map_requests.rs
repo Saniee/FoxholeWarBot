@@ -160,12 +160,13 @@ async fn decide(ctx: Context<'_>, id: i64, status: RequestStatus) -> Result<(), 
 async fn reviewer(ctx: Context<'_>) -> Result<bool, Error> {
     ctx.defer_ephemeral().await?;
 
-    let allowed = review::is_reviewer(ctx.serenity_context(), ctx.author().id).await;
+    let allowed = review::is_reviewer(ctx.author().id);
 
     if !allowed {
         ctx.say(
-            "Only the bot's owner, its team, or someone listed in `REVIEWER_IDS` can \
-             review these.",
+            "Only someone listed in the bot's `REVIEWER_IDS` can review these. \
+             That list is set by whoever hosts the bot, and it doesn't include \
+             the application owner unless they put themselves in it.",
         )
         .await?;
     }

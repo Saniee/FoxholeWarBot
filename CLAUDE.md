@@ -57,8 +57,9 @@ recurring scheduled map reports via webhooks.
 - `POSTGRES_PASSWORD` — password for the docker-compose `db` service
 - `REQUESTS_CHANNEL_ID` — support-server channel for full-map schedule requests (optional;
   see `specs/active/premium-full-map.md`)
-- `REVIEWER_IDS` — comma-separated Discord user ids allowed to approve/deny those requests, on
-  top of the application's owner and team (optional)
+- `REVIEWER_IDS` — Discord user ids allowed to approve/deny those requests. One id, or several
+  comma-separated. **The complete list — the app owner is not implicit and must list themselves.**
+  Empty means nobody can review; the bot warns at startup
 
 ## Conventions
 - Each command module exports a `#[poise::command(slash_command)]` async fn (typed params for

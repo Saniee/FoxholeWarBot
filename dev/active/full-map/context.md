@@ -9,8 +9,10 @@ ungated, then the gate around it.
 
 ## Current state
 **Phase 1 is functionally complete and rendering correctly.** All 53 hexes, icons legible,
-faction tint in and seen working. **Phase 2 is written end to end but has never been compiled or
-run** — that is the single most important thing to know before touching it.
+faction tint in and seen working.
+
+**Phase 2 is written end to end. The first build attempt got two errors, both fixed but not yet
+re-compiled** — assume more remain. Everything else about Phase 2 is untested at runtime.
 
 Both earlier open loops are closed and confirmed by live renders: the two missing hexes are back,
 and the invisible icons are visible (`full_map_icon_px`, sized backwards from the finished PNG).
@@ -70,6 +72,13 @@ were rendering as `DebugIcon.png`.
   logging, it needs a rotation policy — the container disk is not large.
 
 ## Risks / gotchas
+- **`async fn` in a trait produces a future with no `Send` bound**, and both this codebase's
+  async call sites require one: poise boxes every command body as `Pin<Box<dyn Future + Send>>`
+  and the scheduler does the same to every tick. `FullMapScheduling::is_allowed` is therefore
+  spelled `-> impl Future<Output = bool> + Send`, not `async fn`. Written the short way it
+  compiles at the definition and fails at both call sites, with an error that points at them.
+  (Cost a build. The `#[allow(async_fn_in_trait)]` I had put on it was wrong — the lint was
+  telling the truth.)
 - **Identifier drift is real, and it was silent.** The first live render came back with two holes:
   the API calls Marban Hollow `MarbanHollow` (no `Hex`), and `MapDeadLandsHex.TGA` has a
   capitalisation history — there is a commit literally named "Rename MapDeadlandsHex.TGA to
@@ -133,11 +142,13 @@ four open questions. Two findings in it worth not re-deriving:
   the "fires at the wrong time" reports are probably this rather than timezones.
 
 ## Phase 2 decisions taken while building (not in the spec — worth keeping)
-- **Reviewers are the app owner, its team, and `REVIEWER_IDS`.** The spec said "owner/admin"; an
-  admin check would have meant any server admin could run `/full-map-requests list` and read other
-  servers' free-text answers. Guild admin grants nothing. The allow-list is an env var, not a
-  table — reviewing grants recurring load on the host, so the list belongs to whoever runs the
-  host, and keeping it out of the database also keeps the `docs/` stored-data list unchanged.
+- **Reviewers are exactly `REVIEWER_IDS`, with no implicit owner.** The spec said "owner/admin";
+  an admin check would have meant any server admin could run `/full-map-requests list` and read
+  other servers' free-text answers. The owner shortcut then went too, at the user's call: this is
+  open source and self-hosted, so "the owner can always approve" invites a guess about whose
+  account that is. You must list yourself. Empty ⇒ nobody can review, warned at startup.
+  Env var, not a table — reviewing grants recurring load on the host, so the list belongs to
+  whoever runs the host, and keeping it out of the database also keeps `docs/` unchanged.
 - **`cronjobs.map_name` nullable, NULL = full map.** No `is_full_map` flag beside it. The `Option`
   is what made the change find its own call sites.
 - **The full-map target is a sentinel in the existing `map-name` option** (`full-map`, offered
@@ -149,10 +160,17 @@ four open questions. Two findings in it worth not re-deriving:
   constant.
 
 ## Next steps
-**Build.** Phase 2 has never been compiled — expect the first pass to be type errors, not design
-problems. Then walk the flow once: `/request-full-map-schedule` → the post in
-`REQUESTS_CHANNEL_ID` → Approve → `/schedule-report map-name:full-map` → `revoke` → confirm the
-next tick pauses and says so exactly once.
+**The user is compiling and will send the output.** The first attempt failed on two errors, both
+the same cause (`is_allowed` needed an explicit `Send` bound); both are fixed and pushed but not
+re-compiled. Expect more type errors, not design problems — nothing in Phase 2 has ever reached a
+running binary.
+
+Before it will run at all: `REVIEWER_IDS` must be set in `.env`, or nobody can approve anything.
+The bot warns at startup if it's empty.
+
+Then walk the flow once: `/request-full-map-schedule` → the post in `REQUESTS_CHANNEL_ID` →
+Approve → `/schedule-report map-name:full-map` → `revoke` → confirm the next tick pauses and says
+so exactly once.
 
 Also unverified from Phase 1: the tint tiebreak (one hex was untinted at an even base split).
 Peak memory during a full-map render is still unmeasured.

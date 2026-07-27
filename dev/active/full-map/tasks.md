@@ -50,9 +50,8 @@
 - [x] `/request-full-map-schedule` — modal, writes a `pending` row
 - [x] Post the request to `REQUESTS_CHANNEL_ID` (embed + Approve/Deny buttons); unset or
       unreachable ⇒ command-only review + warn, never drop the request
-- [x] Reviewer gate on both surfaces: owner + team + `REVIEWER_IDS` allow-list — **not** guild
-      admins, since a reviewer reads other servers' free-text answers. Allow-list is an env var,
-      not a table
+- [x] Reviewer gate on both surfaces: **exactly** `REVIEWER_IDS`, no implicit owner, not guild
+      admins. Env var, not a table. Empty ⇒ nobody reviews, warned at startup
 - [x] `/full-map-requests list|approve|deny|revoke` over the same rows and flag
 - [x] Tick-time re-check: revoked approval ⇒ job goes **dormant** with a one-time heads-up,
       not deleted; re-approval resumes it (`go_dormant`, `dormant_notified`)
@@ -63,7 +62,9 @@
 - [x] **Docs, in the same commit as the migration** — `tos.md`/`privacy.md` stored-data list,
       90-day retention for denied/withdrawn, the user-facing form section stating plainly that no
       payment is involved
-- [ ] **Build and exercise the whole flow** — none of Phase 2 has been compiled or run
+- [x] First build attempt — two errors, both `is_allowed`'s missing `Send` bound. Fixed
+- [ ] **Build again, then exercise the whole flow** — Phase 2 has never got past the compiler,
+      and nothing in it has been run
 - [ ] Promote the spec out of `specs/active/`, reconcile to shipped behavior
 
 ## Next up (`specs/active/schedule-input.md`) — specced, nothing built
