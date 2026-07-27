@@ -34,6 +34,7 @@ services:
       APP_ID: ${APP_ID}
       GUILD_ID: ${GUILD_ID}
       REQUESTS_CHANNEL_ID: ${REQUESTS_CHANNEL_ID:-}
+      REVIEWER_IDS: ${REVIEWER_IDS}
     volumes:
       - fwb_cache:/app/cache
 
