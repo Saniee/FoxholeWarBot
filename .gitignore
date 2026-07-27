@@ -10,4 +10,8 @@
 !/CLAUDE.md
 !/specs
 !/.github
+!/dev
+!/migrations
+!/Dockerfile
+!/compose.yaml
 *.example
