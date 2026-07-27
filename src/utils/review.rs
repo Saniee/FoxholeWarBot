@@ -6,6 +6,7 @@
 //! `review_full_map_request` call and render the same embed, so they cannot
 //! diverge (`specs/active/premium-full-map.md`).
 
+use std::collections::HashSet;
 use std::sync::OnceLock;
 
 use poise::serenity_prelude as serenity;
@@ -31,6 +32,48 @@ fn requests_channel() -> Option<serenity::ChannelId> {
             }
         },
         Err(_) => None,
+    })
+}
+
+/// Extra people allowed to decide requests, beyond the application's owner.
+///
+/// `REVIEWER_IDS`, comma-separated Discord user snowflakes. In `.env` rather
+/// than the database on purpose: reviewing means reading other servers'
+/// free-text answers and granting recurring load on the host, so the list of
+/// people who may do it belongs to whoever runs the host — not to anything
+/// editable from inside Discord, where a compromised account could add itself.
+///
+/// It also means the bot stores no record of who its reviewers are, which keeps
+/// `docs/privacy.md`'s stored-data list honest without a word of change.
+///
+/// Parsed once. A malformed entry is logged and skipped rather than taken as an
+/// empty list — one typo must not quietly lock everyone out.
+fn extra_reviewers() -> &'static HashSet<u64> {
+    static REVIEWERS: OnceLock<HashSet<u64>> = OnceLock::new();
+
+    REVIEWERS.get_or_init(|| {
+        let Ok(raw) = dotenv::var("REVIEWER_IDS") else {
+            return HashSet::new();
+        };
+
+        let reviewers: HashSet<u64> = raw
+            .split(',')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .filter_map(|entry| match entry.parse::<u64>() {
+                Ok(id) => Some(id),
+                Err(_) => {
+                    log::warn!("ignoring '{entry}' in REVIEWER_IDS — not a Discord user id");
+                    None
+                }
+            })
+            .collect();
+
+        if !reviewers.is_empty() {
+            log::info!("{} extra full-map reviewer(s) from REVIEWER_IDS", reviewers.len());
+        }
+
+        reviewers
     })
 }
 
@@ -137,12 +180,20 @@ pub async fn announce(http: &serenity::Http, request: &FullMapRequest, guild_nam
 
 /// May this user decide requests?
 ///
-/// The application's owner, or any member of its team. Nothing else — and
-/// specifically **not** "an administrator of the server this was invoked in".
-/// A reviewer sees other servers' free-text answers and can grant recurring load
-/// on the host, so the gate has to be the people who own the bot, not the people
-/// who own a server that happens to have added it.
+/// The application's owner, any member of its team, or anyone named in
+/// `REVIEWER_IDS`. Nothing else — and specifically **not** "an administrator of
+/// the server this was invoked in". A reviewer sees other servers' free-text
+/// answers and can grant recurring load on the host, so the gate has to be the
+/// people who run the bot, not the people who run a server that happens to have
+/// added it.
 pub async fn is_reviewer(ctx: &serenity::Context, user: serenity::UserId) -> bool {
+    // Checked first because it costs nothing. The owner lookup below is an HTTP
+    // round trip, and a self-hoster who has listed themselves shouldn't pay for
+    // one on every button press.
+    if extra_reviewers().contains(&user.get()) {
+        return true;
+    }
+
     let Ok(info) = ctx.http.get_current_application_info().await else {
         // Failing closed is right: an unreachable Discord must not hand the
         // approve button to whoever pressed it.

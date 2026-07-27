@@ -50,8 +50,9 @@
 - [x] `/request-full-map-schedule` — modal, writes a `pending` row
 - [x] Post the request to `REQUESTS_CHANNEL_ID` (embed + Approve/Deny buttons); unset or
       unreachable ⇒ command-only review + warn, never drop the request
-- [x] Owner/team gate on both surfaces — **not** guild admins: a reviewer reads other servers'
-      free-text answers, so the gate is who owns the bot, not who owns a server that added it
+- [x] Reviewer gate on both surfaces: owner + team + `REVIEWER_IDS` allow-list — **not** guild
+      admins, since a reviewer reads other servers' free-text answers. Allow-list is an env var,
+      not a table
 - [x] `/full-map-requests list|approve|deny|revoke` over the same rows and flag
 - [x] Tick-time re-check: revoked approval ⇒ job goes **dormant** with a one-time heads-up,
       not deleted; re-approval resumes it (`go_dormant`, `dormant_notified`)

@@ -82,7 +82,10 @@ fallback/scriptable path over the same actions (both write the same `full_map_re
 - Requires the bot to be in the support guild and able to post there; if `REQUESTS_CHANNEL_ID` is
   unset or unreachable, fall back to command-only review and log a warning (don't drop the
   request).
-- Button interactions are owner/admin-gated so only reviewers can approve/deny.
+- Button interactions are reviewer-gated so only reviewers can approve/deny. **A reviewer is the
+  application's owner, its team, or a user id in `REVIEWER_IDS` — never "an administrator of the
+  server this was used in".** An admin check would have meant any administrator of any server that
+  added the bot could `/full-map-requests list` and read every other server's form answers.
 
 ### Flow
 1. Any guild wanting a scheduled full map → `/request-full-map-schedule` → modal → a `pending`
@@ -121,6 +124,16 @@ Asked of the requester:
 - `REQUESTS_CHANNEL_ID` — channel id on the support Discord where full-map requests are posted
   for review. Optional: unset ⇒ command-only review (`/full-map-requests`). Read via `dotenv::var`
   like the other ids.
+- `REVIEWER_IDS` — comma-separated Discord user ids allowed to decide requests, in addition to the
+  application's owner and team. Optional; empty means owner and team only.
+
+  **In `.env` rather than in the database, deliberately.** Reviewing means reading other servers'
+  free-text answers and granting recurring load on the host, so the list of people who may do it
+  belongs to whoever runs the host — not to a table editable from inside Discord, where a
+  compromised account with the right command could add itself. It also means the bot stores no
+  record of who its reviewers are, which keeps the `docs/` stored-data list accurate without a
+  word of change. The cost is a restart to change the list, which for a list that changes about
+  once a year is the right trade.
 
 ## Data model (folds into `specs/postgres.md`)
 ```sql
@@ -181,6 +194,8 @@ a future entitlement source (sponsor role, donation tier) out of the command bod
   primary; `/full-map-requests list|approve|deny` is the fallback/scriptable path. Both drive the
   same rows and flag.
 - **Command names:** `/request-full-map-schedule` and `/full-map-requests` as specced.
+- **Reviewers are owner + team + an `REVIEWER_IDS` allow-list**, and guild administrator grants
+  nothing. See Config for why the list lives in `.env`.
 - **On-demand render:** a dedicated `/full-map` command (see
   `specs/active/full-map-renderer.md` → Decisions), free for everyone and ungated.
 - **Monetization: none.** The form gate is the only mechanism. No paid tier, no vote-wall, no

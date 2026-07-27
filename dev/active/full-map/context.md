@@ -133,9 +133,11 @@ four open questions. Two findings in it worth not re-deriving:
   the "fires at the wrong time" reports are probably this rather than timezones.
 
 ## Phase 2 decisions taken while building (not in the spec — worth keeping)
-- **Reviewers are the app owner and its team, full stop.** The spec said "owner/admin"; an admin
-  check would have meant any server admin could run `/full-map-requests list` and read other
-  servers' free-text answers. Guild admin grants nothing.
+- **Reviewers are the app owner, its team, and `REVIEWER_IDS`.** The spec said "owner/admin"; an
+  admin check would have meant any server admin could run `/full-map-requests list` and read other
+  servers' free-text answers. Guild admin grants nothing. The allow-list is an env var, not a
+  table — reviewing grants recurring load on the host, so the list belongs to whoever runs the
+  host, and keeping it out of the database also keeps the `docs/` stored-data list unchanged.
 - **`cronjobs.map_name` nullable, NULL = full map.** No `is_full_map` flag beside it. The `Option`
   is what made the change find its own call sites.
 - **The full-map target is a sentinel in the existing `map-name` option** (`full-map`, offered

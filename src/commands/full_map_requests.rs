@@ -163,7 +163,11 @@ async fn reviewer(ctx: Context<'_>) -> Result<bool, Error> {
     let allowed = review::is_reviewer(ctx.serenity_context(), ctx.author().id).await;
 
     if !allowed {
-        ctx.say("Only the bot's owner can review these.").await?;
+        ctx.say(
+            "Only the bot's owner, its team, or someone listed in `REVIEWER_IDS` can \
+             review these.",
+        )
+        .await?;
     }
 
     Ok(allowed)
