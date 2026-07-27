@@ -60,6 +60,13 @@ struct RequestModal {
 // poise checks it at compile time. The long-form explanation — and especially
 // "no payment is involved" — lives in the reply and in docs/tos.md, which is
 // where there is room to say it properly.
+//
+// Replies here are public, not ephemeral. Applying for a recurring report is a
+// decision about the server, not a private one, and an ephemeral confirmation
+// vanishes the moment the applicant dismisses it — leaving the next admin to
+// wonder whether anything was ever filed. The Withdraw button rides on a public
+// message as a result, which is safe: pressing it is checked against who filed
+// the request, so a bystander who clicks is told it isn't theirs to withdraw.
 #[poise::command(
     slash_command,
     guild_only,
@@ -79,7 +86,6 @@ pub async fn request_full_map_schedule(
         base.send(
             poise::CreateReply::default()
                 .content(crate::commands::common::NEEDS_SETUP)
-                .ephemeral(true),
         )
         .await?;
         return Ok(());
@@ -89,7 +95,6 @@ pub async fn request_full_map_schedule(
         base.send(
             poise::CreateReply::default()
                 .content("Already approved — set one up with `/schedule-report`.")
-                .ephemeral(true),
         )
         .await?;
         return Ok(());
@@ -110,7 +115,6 @@ pub async fn request_full_map_schedule(
                     open.id, open.created_at
                 ))
                 .components(review::withdraw_button(&open))
-                .ephemeral(true),
         )
         .await?;
         return Ok(());
@@ -129,7 +133,6 @@ pub async fn request_full_map_schedule(
                     "The last box needs to say `YES`. Nothing was submitted — \
                      run the command again when you're ready.",
                 )
-                .ephemeral(true),
         )
         .await?;
         return Ok(());
@@ -158,8 +161,12 @@ pub async fn request_full_map_schedule(
         })
         .await?;
 
+    // Takes the database because posting the review message is also when its id
+    // gets recorded — that id is what lets a decision made anywhere else come
+    // back and correct the post.
     review::announce(
         &base.serenity_context().http,
+        &base.data().db,
         &request,
         guild_name.as_deref(),
     )
@@ -173,7 +180,6 @@ pub async fn request_full_map_schedule(
                 request.id, report_channel.id
             ))
             .components(review::withdraw_button(&request))
-            .ephemeral(true),
     )
     .await?;
 

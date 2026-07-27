@@ -43,7 +43,9 @@ Exactly this, and nothing else:
 - The schedule that was asked for, and the channel the reports would post to.
 - The free-text answers: what the server needs it for, its expected audience, and an optional
   contact handle.
-- Whether the request is pending, approved or denied, who decided it, and when.
+- Whether the request is pending, approved, denied or withdrawn, who decided it, and when.
+- The ID of the review post the bot made for it in the support server, so that post can be
+  corrected when the request is decided somewhere else.
 
 **Not stored:** message content, member lists, usernames, roles, personal profile data, or
 payment data. The one personal identifier stored anywhere is the Discord user ID of someone who

@@ -157,6 +157,10 @@ pub struct FullMapRequest {
     pub contact: Option<String>,
     pub status: String,
     pub reviewed_by: Option<i64>,
+    /// The review post in `REQUESTS_CHANNEL_ID`, once it has been made. `None`
+    /// means there is nothing to keep in step — no channel configured, the post
+    /// failed, or the request predates the column.
+    pub message_id: Option<i64>,
     pub created_at: i64,
 }
 
@@ -171,6 +175,21 @@ impl FullMapRequest {
     pub fn is_approved(&self) -> bool {
         self.status == RequestStatus::Approved.as_str()
     }
+}
+
+/// The outcome of withdrawing a guild's approval.
+///
+/// Two facts, not one: whether anything changed, and whether there is still a
+/// request on file to correct. An `Option<FullMapRequest>` would collapse them —
+/// a guild whose request has been purged would look identical to a guild that
+/// was never approved, and the caller would report "nothing to withdraw" having
+/// just withdrawn it.
+pub enum Revoked {
+    /// It wasn't approved. Nothing changed.
+    NotApproved,
+    /// Approval withdrawn. Carries the closed request when there is one, so its
+    /// review post can be brought back into line.
+    Withdrawn(Option<FullMapRequest>),
 }
 
 /// The answers from the application modal, plus what the bot fills in itself.
@@ -192,7 +211,7 @@ pub struct NewFullMapRequest {
 /// in every caller — nothing user-supplied is ever formatted in here.
 const REQUEST_SELECT: &str = "SELECT r.id, r.guild, g.guild_id, r.requested_by, r.member_count, \
                                      r.cadence, r.channel_id, r.use_case, r.audience, r.contact, \
-                                     r.status, r.reviewed_by, \
+                                     r.status, r.reviewed_by, r.message_id, \
                                      EXTRACT(EPOCH FROM r.created_at)::BIGINT AS created_at \
                               FROM full_map_requests r \
                               JOIN guilds g ON g.id = r.guild";
@@ -491,6 +510,22 @@ impl Database {
         self.get_full_map_request(id).await
     }
 
+    /// Remembers which message is this request's review post, so a decision made
+    /// anywhere else can go back and correct it.
+    pub async fn set_request_message(
+        &self,
+        id: i64,
+        message_id: i64,
+    ) -> Result<(), sqlx::Error> {
+        sqlx::query("UPDATE full_map_requests SET message_id = $2 WHERE id = $1")
+            .bind(id)
+            .bind(message_id)
+            .execute(&self.conn)
+            .await?;
+
+        Ok(())
+    }
+
     /// Takes back a request that hasn't been decided yet. `None` means it was no
     /// longer pending — already decided, already withdrawn, or never existed.
     ///
@@ -548,7 +583,7 @@ impl Database {
     // which is how the flag and the request start disagreeing.
 
     /// Withdraws a guild's approval and closes the request that granted it, in
-    /// one transaction. `false` means it wasn't approved to begin with.
+    /// one transaction.
     ///
     /// The two facts move together on purpose. An approval lives on the guild
     /// row, but the *reason* for it is the request, and a guild whose flag is
@@ -567,7 +602,7 @@ impl Database {
         &self,
         guild: i64,
         reviewed_by: i64,
-    ) -> Result<bool, sqlx::Error> {
+    ) -> Result<Revoked, sqlx::Error> {
         let mut tx = self.conn.begin().await?;
 
         let revoked: Option<(i64,)> = sqlx::query_as(
@@ -581,22 +616,34 @@ impl Database {
 
         if revoked.is_none() {
             tx.rollback().await?;
-            return Ok(false);
+            return Ok(Revoked::NotApproved);
         }
 
-        sqlx::query(
+        // At most one row: the partial unique index allows one pending request
+        // per guild, and an approval can only come from one that was pending.
+        let closed: Option<(i64,)> = sqlx::query_as(
             "UPDATE full_map_requests \
              SET status = $3, reviewed_by = $2, reviewed_at = now() \
-             WHERE guild = $1 AND status = 'approved'",
+             WHERE guild = $1 AND status = 'approved' \
+             RETURNING id",
         )
         .bind(guild)
         .bind(reviewed_by)
         .bind(RequestStatus::Withdrawn.as_str())
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await?;
 
         tx.commit().await?;
 
-        Ok(true)
+        // The flag is off either way. A guild whose request has since been
+        // purged has nothing to read back, and that is not a failure to revoke —
+        // which is exactly why this isn't an `Option<FullMapRequest>`, where
+        // "nothing to correct" and "nothing happened" would look identical.
+        let request = match closed {
+            Some((id,)) => self.get_full_map_request(id).await?,
+            None => None,
+        };
+
+        Ok(Revoked::Withdrawn(request))
     }
 }

@@ -127,7 +127,7 @@ generated cron.
 ## Data model
 
 ```sql
--- migrations/0004_*.sql   (0003 is the full-map gate)
+-- migrations/0005_*.sql   (0003 is the full-map gate, 0004 the review-post id)
 ALTER TABLE guilds   ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC';
 ALTER TABLE cronjobs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'UTC';
 -- Human-readable cadence for embeds and listings; `schedule` holds the generated cron.

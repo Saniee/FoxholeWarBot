@@ -56,9 +56,9 @@ were rendering as `DebugIcon.png`.
 - `scripts/update_assets.py` — art in from a warapi clone, renamed to the table's spelling.
   `--audit` alone cross-checks `assets/Maps/` and exits non-zero. `HAND_SOURCED` lists the 13
   icon types warapi doesn't ship, so only a real upstream rename is reported as UNEXPECTED.
-- `migrations/0003_full_map_gate.sql` — the gate. Next free number is **0004**, which
-  `specs/active/schedule-input.md` has already claimed. `0001_init.sql` has run against real
-  databases and must not be edited.
+- `migrations/0003_full_map_gate.sql` — the gate. `0004_request_message.sql` — the review post's
+  message id. Next free number is **0005**, which `specs/active/schedule-input.md` now claims.
+  `0001_init.sql` has run against real databases and must not be edited.
 
 ## Decisions already settled (in the specs — don't re-litigate)
 - Dedicated `/full-map` command, not a flag on `/get-map`.
@@ -170,7 +170,18 @@ four open questions. Two findings in it worth not re-deriving:
   could only do the flag, which is how the flag and the record start disagreeing.
 - **Neither undo announces anything.** A withdrawal is the applicant's own doing; a revocation is
   already the dormancy notice's job, in the channel the reports actually go to. Two sources for
-  one fact is how they end up disagreeing.
+  one fact is how they end up disagreeing. The dormancy notice therefore has to *say* "withdrawn"
+  — it used to say the approval "isn't active", which left a reader guessing between a revocation
+  and never having been approved. It is the only message that ever reports a revocation.
+- **`/request-full-map-schedule` replies in public, not ephemerally** (user's call). Applying for
+  a recurring server-wide report isn't a private act, and an ephemeral confirmation disappears on
+  dismiss, leaving the next admin unable to tell whether anything was filed. The Withdraw button
+  consequently sits on a public message; `withdrawable` checks the presser against the filer, so
+  a bystander clicking it is told it isn't theirs.
+- **`revoke_full_map_approval` returns `Revoked`, not `Option`/`bool`.** "Nothing to correct" and
+  "nothing happened" are different answers — a guild whose request was purged still gets revoked,
+  and an `Option` would have had the command report "nothing to withdraw" right after withdrawing
+  it.
 
 ## Next steps
 **Phase 2 compiles and the happy path has been seen working end to end**: request → post in
@@ -184,13 +195,12 @@ Still unwalked: `/schedule-report map-name:full-map` → Revoke → confirm the 
 says so **exactly once** (`dormant_notified`). That flag is the only part of the gate with no
 observation behind it at all.
 
-**Known gap, deliberate:** withdrawing a pending request does not edit the review post in
-`REQUESTS_CHANNEL_ID` — the message id isn't stored, so the post keeps showing "pending" with
-live buttons. Pressing Approve on it answers "already decided by someone else" and changes
-nothing, which is safe but reads oddly. Storing `message_id` on the request row would fix it and
-costs a migration.
+~~Known gap: withdrawing doesn't edit the review post.~~ **Closed** by `0004_request_message.sql`
+— `announce` records the post's id and `review::refresh_post` brings it back into line whenever a
+decision is made anywhere other than on the post itself (the applicant's Withdraw button, or any
+`/full-map-requests` subcommand).
 
 Also unverified from Phase 1: the tint tiebreak (one hex was untinted at an even base split).
 Peak memory during a full-map render is still unmeasured.
 
-Then `specs/active/schedule-input.md`, starting with `migrations/0004_*.sql`.
+Then `specs/active/schedule-input.md`, starting with `migrations/0005_*.sql`.

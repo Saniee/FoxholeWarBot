@@ -6,7 +6,7 @@
 //! buttons use (`utils::review`), so the two surfaces can't disagree about what
 //! was decided.
 
-use crate::utils::db::RequestStatus;
+use crate::utils::db::{RequestStatus, Revoked};
 use crate::utils::review;
 use crate::{Context, Error};
 
@@ -97,18 +97,26 @@ async fn revoke(
 
     // Same call the Revoke button makes, so the guild flag and the request that
     // granted it can't end up disagreeing about whether the approval still
-    // stands. `false` means it wasn't approved in the first place — the
-    // statement's own `WHERE`, not a check either surface has to remember.
-    let revoked = ctx
+    // stands. `NotApproved` comes from the statement's own `WHERE`, not from a
+    // check either surface has to remember to run.
+    let closed = match ctx
         .data()
         .db
         .revoke_full_map_approval(guild.id, ctx.author().id.get() as i64)
-        .await?;
+        .await?
+    {
+        Revoked::Withdrawn(request) => request,
+        Revoked::NotApproved => {
+            ctx.say("That server isn't approved, so there's nothing to withdraw.")
+                .await?;
+            return Ok(());
+        }
+    };
 
-    if !revoked {
-        ctx.say("That server isn't approved, so there's nothing to withdraw.")
-            .await?;
-        return Ok(());
+    // The decision was made here, so the review post in the requests channel is
+    // still showing the old status — unless there is no post, which is fine.
+    if let Some(request) = &closed {
+        review::refresh_post(&ctx.serenity_context().http, request).await;
     }
 
     ctx.say(format!(
@@ -148,6 +156,9 @@ async fn decide(ctx: Context<'_>, id: i64, status: RequestStatus) -> Result<(), 
         return Ok(());
     };
 
+    // Decided from the command, so the post in the requests channel still shows
+    // the old status and live buttons until this puts it right.
+    review::refresh_post(&ctx.serenity_context().http, &request).await;
     review::notify_requester(ctx.serenity_context(), &request).await;
 
     ctx.send(

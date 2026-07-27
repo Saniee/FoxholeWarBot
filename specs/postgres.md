@@ -86,6 +86,12 @@ edited):
   on `(guild) WHERE status = 'pending'` (one open application per guild, so approving one can't
   strand another), and a plain one on `(created_at) WHERE status = 'pending'` for the reviewer's
   queue.
+- **`0004_request_message.sql`** — `full_map_requests.message_id BIGINT` (nullable): which message
+  in `REQUESTS_CHANNEL_ID` is a request's review post, so a decision made anywhere else can go
+  back and correct it. Nullable for good: the channel is optional, the post is best-effort, and
+  requests predating the column have none. The channel id is deliberately *not* stored beside it —
+  the post lives wherever `REQUESTS_CHANNEL_ID` points now, and a per-row copy would be one more
+  thing able to disagree with the truth.
 
 Constraint changes vs current SQLite schema:
 - `guilds.guild_id` gains `NOT NULL UNIQUE` → kills duplicate-row lookups (QA **C-10**) and

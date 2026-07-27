@@ -313,15 +313,21 @@ async fn go_dormant(
         return Ok(());
     }
 
+    // Says *withdrawn*, not "isn't active". This code is only reachable for a
+    // schedule that exists, and a full-map schedule can only have been created
+    // while the guild was approved — so reaching here means an approval that was
+    // granted has since been taken back. "Isn't active" left a reader guessing
+    // between that and never having been approved at all, which is the one thing
+    // this notice exists to settle.
     let embed = serenity::CreateEmbed::new()
-        .title(format!("Scheduled Report Paused: {}", job.schedule_name))
+        .title(format!("Full-Map Approval Withdrawn: {}", job.schedule_name))
         .color((255, 170, 0))
         .description(
-            "This server's approval for **scheduled** full-map reports isn't active, so this \
-             schedule is paused rather than deleted — it resumes on its own if approval comes \
-             back.\n\nNothing else is affected: `/full-map` still renders on demand for \
-             everyone, and single-region schedules are unchanged. Run \
-             `/request-full-map-schedule` to apply.",
+            "This server's approval to run **scheduled** full-map reports has been withdrawn, \
+             so this schedule is paused rather than deleted — it resumes on its own if approval \
+             is granted again.\n\nNothing else is affected: `/full-map` still renders the world \
+             map on demand for everyone, and single-region schedules are unchanged. To ask for \
+             it back, run `/request-full-map-schedule`.",
         )
         .footer(serenity::CreateEmbedFooter::new("Paused at"))
         .timestamp(serenity::Timestamp::now());

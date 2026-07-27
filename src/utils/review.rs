@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 
 use poise::serenity_prelude as serenity;
 
-use super::db::{Database, FullMapRequest, RequestStatus};
+use super::db::{Database, FullMapRequest, RequestStatus, Revoked};
 
 /// Prefix on every button this module owns, so the interaction handler can tell
 /// its own components from anything else the bot ever adds.
@@ -230,7 +230,12 @@ pub fn withdraw_button(request: &FullMapRequest) -> Vec<serenity::CreateActionRo
 /// by the time this runs, and losing the notification is a reviewer checking
 /// `/full-map-requests` instead — losing the request because a channel id was
 /// wrong would be unforgivable.
-pub async fn announce(http: &serenity::Http, request: &FullMapRequest, guild_name: Option<&str>) {
+pub async fn announce(
+    http: &serenity::Http,
+    db: &Database,
+    request: &FullMapRequest,
+    guild_name: Option<&str>,
+) {
     let Some(channel) = requests_channel() else {
         log::info!(
             "REQUESTS_CHANNEL_ID is unset — request #{} is reviewable with /full-map-requests only",
@@ -243,13 +248,60 @@ pub async fn announce(http: &serenity::Http, request: &FullMapRequest, guild_nam
         .embed(request_embed(request, guild_name))
         .components(review_buttons(request));
 
-    match channel.send_message(http, message).await {
-        Ok(_) => log::info!("posted request #{} for review", request.id),
-        Err(err) => log::warn!(
-            "could not post request #{} to the review channel: {err} \
-             — it is still pending and visible to /full-map-requests",
+    let posted = match channel.send_message(http, message).await {
+        Ok(posted) => posted,
+        Err(err) => {
+            log::warn!(
+                "could not post request #{} to the review channel: {err} \
+                 — it is still pending and visible to /full-map-requests",
+                request.id
+            );
+            return;
+        }
+    };
+
+    log::info!("posted request #{} for review", request.id);
+
+    // Recorded so a decision made anywhere else can come back and correct this
+    // post. Failing to record it costs the post going stale later, never the
+    // request itself, so it is logged rather than raised.
+    if let Err(err) = db
+        .set_request_message(request.id, posted.id.get() as i64)
+        .await
+    {
+        log::warn!(
+            "posted request #{} but could not remember the message: {err} \
+             — the post won't update if it's decided elsewhere",
             request.id
-        ),
+        );
+    }
+}
+
+/// Brings a request's review post back into line with the row.
+///
+/// Needed because a decision can be made somewhere other than the post itself:
+/// `/full-map-requests`, or the applicant's own Withdraw button. Without this the
+/// post keeps showing `pending` with live buttons — a record that lies, which is
+/// the one thing a review queue can't afford.
+///
+/// Skipped silently when there is no post to correct, and every failure is
+/// logged rather than raised: the decision is already committed, and an
+/// uneditable message (deleted, or in a channel the bot lost access to) must not
+/// turn a completed decision into an error.
+pub async fn refresh_post(http: &serenity::Http, request: &FullMapRequest) {
+    let (Some(channel), Some(message_id)) = (requests_channel(), request.message_id) else {
+        return;
+    };
+
+    let edit = serenity::EditMessage::new()
+        .embed(request_embed(request, None))
+        .components(review_buttons(request));
+
+    if let Err(err) = channel
+        .edit_message(http, serenity::MessageId::new(message_id as u64), edit)
+        .await
+    {
+        log::warn!("could not update the post for request #{}: {err}", request.id);
     }
 }
 
@@ -353,6 +405,14 @@ pub async fn handle_button(
         .create_response(ctx, serenity::CreateInteractionResponse::UpdateMessage(updated))
         .await?;
 
+    // A withdrawal happens on the applicant's own ephemeral reply, so the
+    // reviewers' post is somewhere else entirely and still reads "pending".
+    // The other actions were pressed on that post, and the edit above *was* the
+    // correction.
+    if matches!(action, Action::Withdraw) {
+        refresh_post(&ctx.http, &request).await;
+    }
+
     // Only an answer to an open application gets announced. A withdrawal is the
     // applicant's own doing, and a revocation is already the dormancy notice's
     // job — it says the same thing, in the channel the reports actually go to,
@@ -405,11 +465,16 @@ async fn revoke(
         return Ok(None);
     };
 
-    if !request.is_approved() || !db.revoke_full_map_approval(request.guild, reviewer).await? {
+    if !request.is_approved() {
         return Ok(None);
     }
 
-    db.get_full_map_request(id).await
+    match db.revoke_full_map_approval(request.guild, reviewer).await? {
+        // The row it closed *is* this one — an approval only ever comes from the
+        // guild's single approved request — so read it back for the new embed.
+        Revoked::Withdrawn(_) => db.get_full_map_request(id).await,
+        Revoked::NotApproved => Ok(None),
+    }
 }
 
 /// Tells the requesting server what was decided, in the channel they nominated

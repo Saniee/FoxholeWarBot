@@ -17,7 +17,8 @@ Short version: the bot stores per-server settings and nothing about you personal
   `/request-full-map-schedule`: the Discord user ID of whoever submitted it, the server's ID, a
   one-off snapshot of the server's member count, the channel the reports would post to, and the
   free-text answers given in the form (requested schedule, use case, expected audience, and an
-  optional contact handle). See below.
+  optional contact handle), plus where the request stands and the ID of the bot's own review post
+  for it. See below.
 
 That's the complete list. The full breakdown, field by field, is in the
 [Terms of Service](tos).
