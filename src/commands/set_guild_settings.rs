@@ -25,8 +25,15 @@ impl From<ShardChoice> for Shard {
     }
 }
 
-/// Sets the shard this server pulls data from, whether command output is
-/// visible to everyone, and whether the full map is tinted by faction control.
+/// Sets this server's shard, output visibility, and full-map faction tint.
+//
+// Kept to one line on purpose: poise hands the doc comment to Discord as the
+// command description, and Discord rejects anything over 100 characters at
+// registration time. Anything worth saying at length goes in a plain comment
+// like this one, which the macro never sees.
+//
+// The tint shades each hex on /full-map by whichever faction holds it; see
+// `utils::request_processing::controlling_team`.
 #[poise::command(
     slash_command,
     guild_only,
