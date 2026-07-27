@@ -7,4 +7,6 @@
 !/.env.example
 !/README.md
 !/docs
+!/CLAUDE.md
+!/specs
 *.example
