@@ -1,0 +1,9 @@
+target/
+cache/
+.env
+database.db
+.git/
+docs/
+specs/
+dev/
+assets/TGA/

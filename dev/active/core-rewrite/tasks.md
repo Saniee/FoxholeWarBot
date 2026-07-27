@@ -1,12 +1,13 @@
 # Tasks: Core rewrite (poise + Postgres)
 
 ## 1. Dependencies & data layer
-- [ ] `Cargo.toml`: add poise 0.6, swap sqlx `sqlite` → `postgres`
-- [ ] `migrations/0001_init.sql`: guilds + cronjobs (BIGINT, BOOLEAN, UNIQUE guild_id,
+- [x] `Cargo.toml`: add poise 0.6, swap sqlx `sqlite` → `postgres`
+- [x] `migrations/0001_init.sql`: guilds + cronjobs (BIGINT, BOOLEAN, UNIQUE guild_id,
       UNIQUE(guild,job_name), ON DELETE CASCADE)
-- [ ] `db.rs` → `PgPool`, `$N` placeholders, `bool` fields, upsert `create_guild`
+- [x] `db.rs` → `PgPool`, `$N` placeholders, `bool` fields, upsert `create_guild`
       (honor `show` — fixes B-1), drop `migrate()`/legacy foxholewarbot path
-- [ ] Deployment: `Dockerfile`, `compose.yaml` (db service + named volume + healthcheck)
+- [x] Deployment: `Dockerfile`, `.dockerignore`, `compose.yaml` (db service + named volume
+      + healthcheck)
 
 ## 2. Framework scaffold
 - [ ] `main.rs`: poise `Framework`, `Data`, `on_error`, run-once `setup` (fixes C-6)

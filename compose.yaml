@@ -1,0 +1,42 @@
+# Self-hosted deployment. See specs/active/postgres-migration.md.
+#
+# The named volume `fwb_db` is what makes guild settings and schedules durable:
+# `docker compose down` keeps it, `docker compose down -v` DESTROYS it. Never run
+# the latter unless you intend to wipe the database.
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: foxhole
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: foxholewarbot
+    volumes:
+      - fwb_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U foxhole -d foxholewarbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Overrides the .env DATABASE_URL: inside the compose network the host is
+      # the `db` service, not localhost.
+      DATABASE_URL: postgres://foxhole:${POSTGRES_PASSWORD}@db:5432/foxholewarbot
+      TOKEN: ${TOKEN}
+      APP_ID: ${APP_ID}
+      GUILD_ID: ${GUILD_ID}
+      REQUESTS_CHANNEL_ID: ${REQUESTS_CHANNEL_ID:-}
+    volumes:
+      - fwb_cache:/app/cache
+
+volumes:
+  fwb_db:
+  fwb_cache:

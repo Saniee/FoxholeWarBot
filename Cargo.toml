@@ -11,11 +11,12 @@ dotenv = "0.15.0"
 image = { version = "0.25.5", features = ["serde"] }
 imageproc = "0.25.0"
 log = "0.4.25"
+poise = "0.6.1"
 reqwest = { version = "0.12.12", features = ["json"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.137"
 serenity = "0.12.4"
-sqlx = { version = "0.8.3", features = ["runtime-tokio", "sqlite"] }
+sqlx = { version = "0.8.3", features = ["runtime-tokio", "postgres", "migrate", "macros"] }
 thiserror = "2.0.12"
 tokio = { version = "1.43.0", features = ["full"] }
 tokio-cron-scheduler = { version = "0.13.0", features = ["english", "signal"] }
