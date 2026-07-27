@@ -11,10 +11,23 @@ is built on top of it.
 
 ## Grounding facts (measured from `assets/`)
 - Every hex background (`Maps/Map*Hex.TGA`) is **1024 × 888**, RGB 32-bit.
-- The world map (`Maps/BGOneWorldMap.TGA`) is **1920 × 1080**.
 - **All 129 icons** (`MapIcons/*.png`) are **48 × 48**.
 - Font: `assets/Inter-Bold.ttf`.
 - Foxhole API `MapItem.x/y` and `MapTextItem.x/y` are **normalized `0.0..1.0`** within the region.
+
+### What "the full map" is (corrected)
+The full Foxhole map is **all hex regions stitched together on their hex-grid positions** — each
+region rendered at its own **1024 × 888** footprint and offset into a larger canvas by its grid
+coordinate. It is **not** a composite onto `BGOneWorldMap.TGA` (1920 × 1080); that image is a
+decorative/background asset, **not** the render target. (Its exact role — and the
+`MapHomeRegion*.TGA` assets — is out of scope here; a home-view screenshot is forthcoming and
+will inform the full-map layout spec.)
+
+Consequence for this spec: the placement primitive is **region-relative** (anchored to the
+1024 × 888 region footprint). It is identical whether a region is rendered standalone (`/get-map`)
+or as one tile of the stitched full map — the full renderer only adds a per-region pixel offset.
+The full canvas size is therefore derived from the hex-grid packing of regions, not a fixed
+1920 × 1080.
 
 ## Magic numbers inventory (current code)
 | Value | Where | What it really is |
@@ -29,15 +42,15 @@ is built on top of it.
 ## Target design
 
 ### 1. A single `RenderConfig` (named constants, one source of truth)
-Replace the scattered literals with a config struct carrying documented, canvas-relative values.
+Replace the scattered literals with a config struct carrying documented, region-relative values.
 Sketch:
 ```rust
 pub struct RenderConfig {
-    /// Rendered icon edge length as a fraction of canvas width.
-    /// 24 px on a 1024-wide hex ⇒ 24/1024 ≈ 0.0234.
+    /// Rendered icon edge length as a fraction of the **region** width (1024).
+    /// 24 px ⇒ 24/1024 ≈ 0.0234.
     pub icon_size_ratio: f32,
-    /// Major/Minor label heights as a fraction of canvas height.
-    /// 25 px on an 888-tall hex ⇒ 25/888 ≈ 0.0282 (major); minor slightly smaller.
+    /// Major/Minor label heights as a fraction of the **region** height (888).
+    /// 25 px ⇒ 25/888 ≈ 0.0282 (major); minor slightly smaller.
     pub major_text_ratio: f32,
     pub minor_text_ratio: f32,
     pub text_color: Rgba<u8>,
@@ -47,10 +60,11 @@ pub struct RenderConfig {
 }
 impl Default for RenderConfig { /* the ratios above, reproducing today's look at 1024×888 */ }
 ```
-Constants are expressed as **ratios of the target canvas**, so the same config yields
-proportional results on a 1024×888 hex and a 1920×1080 world map. The `Default` is chosen to
-reproduce today's visual output on a hex (24 px icons, 25 px text) so single-hex renders don't
-regress.
+Constants are expressed as **ratios of the 1024 × 888 region footprint**, so a region looks the
+same standalone or as a tile of the stitched full map (the full renderer only offsets each region
+into place). The `Default` reproduces today's visual output on a hex (24 px icons, 25 px text) so
+single-hex renders don't regress. If the finished full map is downscaled to fit Discord's image
+limits, scale the **composite** uniformly rather than changing these per-region ratios.
 
 ### 2. Explicit anchoring (the real fix)
 Introduce an `Anchor` and a helper that converts a normalized point + a drawn object's size into
@@ -67,11 +81,11 @@ fn place(norm_x: f64, norm_y: f64, w: u32, h: u32, cw: u32, ch: u32, anchor: Anc
 > bug the magic numbers were hiding — but it's opt-outable via config if you want byte-identical
 > hex output first.
 
-### 3. Icon sizing derived from canvas, not from the icon
-Compute the target edge from `icon_size_ratio * canvas_width` and resize to that, instead of
-`icon.width() * 0.5`. Because all icons are 48×48 today this is numerically identical on a hex,
-but it (a) documents intent and (b) makes world-map icons scale correctly instead of rendering
-at a fixed 24 px on a 1920 canvas.
+### 3. Icon sizing derived from the region footprint, not from the icon
+Compute the target edge from `icon_size_ratio * region_width` (1024) and resize to that, instead
+of `icon.width() * 0.5`. Because all icons are 48×48 today this is numerically identical on a hex,
+but it (a) documents intent and (b) keeps icons correctly sized when the region is a tile of the
+stitched full map, regardless of the full canvas size.
 
 ### 4. Use `MapMarkerType`
 Major vs Minor labels size off `major_text_ratio` / `minor_text_ratio` (and optionally weight),
@@ -82,18 +96,19 @@ Optional 1 px outline (`text_outline`) so labels stay legible over both light an
 today's flat black vanishes on dark hexes. Off by default to preserve current look.
 
 ## Non-goals (this spec)
-- The full-world renderer itself (region compositing onto `BGOneWorldMap`, world offsets,
-  hex-grid layout). This spec only makes the **per-region placement primitive** clean and
-  parameterized so the world renderer can reuse it. That renderer gets its own spec.
+- The full-map renderer itself (stitching hex regions onto their hex-grid positions, the
+  region→grid-position layout, and the total canvas size). This spec only makes the **per-region
+  placement primitive** clean and parameterized so the full renderer can reuse it unchanged. That
+  renderer gets its own spec, informed by the forthcoming home-view screenshot and a
+  region-layout source.
 - Caching, ETag, and the `render.png` output-path race (tracked separately: QA C-1).
 
 ## Acceptance criteria
 - No literal placement/size constant remains in `place_image_info`; all live in `RenderConfig`
-  with a documented rationale, expressed relative to canvas dimensions.
+  with a documented rationale, expressed relative to the 1024 × 888 region footprint.
 - With `RenderConfig::default()` and `Anchor::TopLeft`, a single-hex render is visually identical
   to the current output (regression guard).
-- With `Anchor::Center`, icons/labels are centered on their API coordinates on both a 1024×888
-  hex and a 1920×1080 canvas, at proportional sizes.
+- With `Anchor::Center`, icons/labels are centered on their API coordinates within the region.
+- A region renders identically standalone and as a tile of the stitched full map (only its pixel
+  offset differs) — the placement primitive needs no changes to serve the full renderer.
 - Major and Minor labels render at distinct sizes.
-- The same placement helper is callable by the future world renderer with only a different
-  canvas size (no code changes to the primitive).
