@@ -334,12 +334,17 @@ fn composite_full_map(
     let (canvas_w, canvas_h) = canvas_size(&tiles, config);
     let mut canvas = ImageBuffer::from_pixel(canvas_w, canvas_h, Rgba([0, 0, 0, 0]));
 
+    // Known before the first tile is drawn, because the icons have to be sized
+    // for the image that comes out the far side of it.
+    let scale = config.full_map_scale(canvas_w, canvas_h);
+    let tile_config = config.for_full_map(scale);
+
     for (region, data) in tiles {
         let background = background_path(region.api_name);
 
         let hex = match data {
             Some((dynamic, statics)) => {
-                place_image_info(&dynamic, &statics, draw_text, &background, config)
+                place_image_info(&dynamic, &statics, draw_text, &background, &tile_config)
             }
             None => load_background(&background),
         };
@@ -353,8 +358,6 @@ fn composite_full_map(
             Err(err) => log::warn!("skipping {}: {err}", region.api_name),
         }
     }
-
-    let scale = config.full_map_scale(canvas_w, canvas_h);
 
     let scaled = if scale < 1.0 {
         let width = ((canvas_w as f32 * scale).round() as u32).max(1);
@@ -382,9 +385,10 @@ fn canvas_size(tiles: &[Tile], config: &RenderConfig) -> (u32, u32) {
 /// The background asset for a region, named the way the *assets* spell it.
 ///
 /// Never the way the caller spelled it: the API asks for `MarbanHollow`, and
-/// `MapMarbanHollow.TGA` does exist — as a stale leftover of an older art drop.
-/// Going through the table picks `MapMarbanHollowHex.TGA`, the one that gets
-/// updated, so `/get-map` stops quietly rendering year-old terrain.
+/// `MapMarbanHollow.TGA` used to exist alongside `MapMarbanHollowHex.TGA` as a
+/// stale leftover of an older art drop — `/get-map` was quietly rendering
+/// year-old terrain off it. That file is gone, but the routing is what keeps
+/// the next one from mattering: only names in the table can address art.
 fn background_path(map_name: &str) -> String {
     format!("./assets/Maps/Map{}.TGA", regions::asset_name(map_name))
 }

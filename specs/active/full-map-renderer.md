@@ -167,10 +167,13 @@ rewrite should use an explicit display-name table (this one) rather than string 
   render target and not a grid tile (confirms the earlier correction).
 - `MapHomeRegionC.TGA` / `MapHomeRegionW.TGA` — Colonial/Warden home regions; not part of the
   world-conquest grid, excluded.
-- `MapMarbanHollow.TGA`, `MapClahstraHexMap.TGA` — **stale** near-duplicates of their `*Hex`
-  counterparts, not identical to them: the recent art drops updated `MapMarbanHollowHex.TGA` and
-  `MapClahstraHex.TGA` only. Deleting them is the real fix; until then, asset paths must go
-  through `regions::asset_name` so nothing can reach the outdated copy.
+- ~~`MapMarbanHollow.TGA`, `MapClahstraHexMap.TGA`~~ — **deleted.** They were *stale* near-
+  duplicates of their `*Hex` counterparts, not identical to them: the art drops updated
+  `MapMarbanHollowHex.TGA` and `MapClahstraHex.TGA` only, and `/get-map` was resolving the API's
+  `MarbanHollow` straight onto the year-old file. Both are gone, but asset paths still go through
+  `regions::asset_name` — deletion fixed this instance, the routing is what stops the next one.
+  `assets/Maps/` now holds exactly one file per table region plus the three non-conquest assets
+  above.
 
 ## `OriginHex` — un-exclude it
 Current code skips `OriginHex` in every autocomplete (`get_map.rs:128`, `war_report.rs:105`,
@@ -195,6 +198,18 @@ never the per-region ratios — with a target long-edge of **~2048 px** (0.2× �
 against the real encoded size. Make the factor a named constant in `RenderConfig`, not a literal.
 If icons become illegible at that scale, prefer bumping `icon_size_ratio` for full-map renders
 over changing the downscale.
+
+**They did — confirmed on the first live render.** The per-region 24 px icon is 4.8 px after the
+0.2× downscale, and about **one pixel** once Discord scales the embed to ~400 px. The first full
+map came back looking like bare terrain for exactly this reason; the icons were drawn, then
+resampled out of existence.
+
+Fixed by sizing icons backwards from the finished image rather than by picking a bigger ratio:
+`full_map_icon_px` (default **12**) states the icon edge wanted in the output PNG, and
+`RenderConfig::for_full_map(scale)` returns a config whose `icon_size_ratio` is whatever the
+1024 px tile needs to land there — 60 px at 0.2×. A raw ratio bump would have been a magic number
+tied to today's `full_map_long_edge`; this stays correct if that ever changes. **The downscale
+itself is untouched**, so terrain still matches a standalone `/get-map` render.
 
 ### Performance
 This is 53× the work of a single hex — the reason scheduled full-map renders are gated

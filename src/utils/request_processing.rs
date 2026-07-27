@@ -109,6 +109,15 @@ pub struct RenderConfig {
     /// [`RenderConfig::resample`]: Lanczos3 over 63.6 MP costs seconds of CPU,
     /// and at 0.2x the difference from a triangle filter is not visible.
     pub full_map_resample: FilterType,
+    /// Icon edge in the *finished* full-map PNG, in pixels.
+    ///
+    /// The one quantity here that is honestly absolute rather than a ratio: it
+    /// is a legibility floor, and legibility is measured in screen pixels. The
+    /// per-region [`RenderConfig::icon_size_ratio`] cannot serve the full map,
+    /// because 24 px on a 1024 px tile survives the 0.2x downscale as under
+    /// 5 px — which is why the first full render looked like bare terrain.
+    /// [`RenderConfig::for_full_map`] sizes source icons backwards from this.
+    pub full_map_icon_px: u32,
 }
 
 impl Default for RenderConfig {
@@ -126,6 +135,7 @@ impl Default for RenderConfig {
             odd_column_offset_ratio: 1.0 / 2.0,
             full_map_long_edge: 2048,
             full_map_resample: FilterType::Triangle,
+            full_map_icon_px: 12,
         }
     }
 }
@@ -157,6 +167,26 @@ impl RenderConfig {
         let long_edge = width.max(height) as f32;
 
         (self.full_map_long_edge as f32 / long_edge).min(1.0)
+    }
+
+    /// This config with its icons resized for tiles that are about to be
+    /// scaled by `scale`.
+    ///
+    /// Icons are drawn on full-size 1024 px tiles and only shrink at the very
+    /// end, so sizing them for the tile is sizing them for an image nobody
+    /// sees. Dividing the target by the downscale is what makes
+    /// [`RenderConfig::full_map_icon_px`] mean what it says, at whatever
+    /// [`RenderConfig::full_map_long_edge`] happens to be.
+    ///
+    /// Only the icons change. The downscale itself is left alone deliberately —
+    /// it is what keeps a hex's terrain looking like its standalone render.
+    pub fn for_full_map(&self, scale: f32) -> RenderConfig {
+        let source_px = (self.full_map_icon_px as f32 / scale.max(f32::EPSILON)).round();
+
+        RenderConfig {
+            icon_size_ratio: source_px.max(1.0) / REGION_WIDTH as f32,
+            ..self.clone()
+        }
     }
 
     pub fn text_size(&self, canvas_height: u32, marker: &MapMarkerType) -> f32 {

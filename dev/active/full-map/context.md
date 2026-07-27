@@ -14,9 +14,12 @@ downscale and the Discord upload all worked on the first try. Phase 2 (the gate)
 Commits on `feat/rewrite-overhaul` (PR #1): `5bff8b3` the renderer, `288182f` the identifier
 fixes, `82cf4e0` the log filter.
 
-**Open loop:** that first render came back with two hexes missing (below). The fix is pushed but
-**has not been re-rendered** — confirming Marban Hollow and Deadlands are back is the first thing
-to do next session.
+The two missing hexes (below) are **fixed and confirmed** — the re-render shows all 53, coastlines
+continuous, no holes.
+
+**Open loop:** that same render showed *no icons*. Not a bug in drawing them — 24 px on a 1024 px
+tile is 4.8 px after the 0.2x downscale and about one pixel in a Discord embed. Sized backwards
+from the output instead (`full_map_icon_px`, `for_full_map`); **not yet built or rendered.**
 
 The user pushed new map art mid-work (`b6bcef1`, `307050c`) — same 1024 x 888 32-bit
 uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bold.ttf` into
@@ -58,9 +61,15 @@ uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bol
   capitalisation history — there is a commit literally named "Rename MapDeadlandsHex.TGA to
   MapDeadLandsHex.TGA". Both now handled (lenient `same_region`, case-insensitive background
   retry, assets addressed through the table). If a hex ever goes missing again, the log names it.
-- **Two stale assets are still in the tree**: `MapMarbanHollow.TGA` and `MapClahstraHexMap.TGA`
-  are *not* copies of the `*Hex` files — they're older art. Nothing reaches them now, but they
-  should be deleted.
+- ~~Two stale assets are still in the tree.~~ **Deleted** (`MapMarbanHollow.TGA`,
+  `MapClahstraHexMap.TGA` — older art, not copies). `assets/Maps/` now holds exactly one file per
+  table region, name-for-name, plus `BGOneWorldMap.TGA` and the two `MapHomeRegion{C,W}.TGA`.
+  A quick cross-check script against `regions.rs` is worth re-running after any art drop.
+- **Anything drawn on a tile is drawn at 5x too small.** The tiles are composited at full size and
+  the whole 63.6 MP canvas is scaled once at the end, so a per-region ratio tuned for `/get-map`
+  is five times too small on the full map. Icons hit this; labels would too, which is part of why
+  `draw_text` is `false` there. `for_full_map` is where anything else with a legibility floor
+  belongs.
 - ~~Column pitch 768 is derived, not measured.~~ **Resolved.** Measured off the assets' alpha
   channel: the art is a true flat-top hexagon with no padding, two neighbours at `(+768, +444)`
   leave **0 uncovered pixels**, and a 53-hex composite has continuous coastlines across every
@@ -83,7 +92,6 @@ uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bol
 - User compiles and runs locally; **don't run `cargo build`/`check`/`run`** unless told otherwise.
 
 ## Next steps
-Re-render `/full-map` and confirm Marban Hollow and Deadlands are back — that's the one unverified
-fix. While looking at it: are the icons legible at the 0.2x downscale (the knob is
-`icon_size_ratio`, **not** the downscale factor), and what was peak memory? Then Phase 2, starting
-with `migrations/0002_*.sql`.
+Build and re-render once more to judge the icons at `full_map_icon_px: 12` — that constant is the
+only knob to turn, and it means output pixels, so 16 reads as "half again bigger" and nothing else
+moves. Peak memory is still unmeasured. Then Phase 2, starting with `migrations/0002_*.sql`.

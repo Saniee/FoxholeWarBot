@@ -17,11 +17,12 @@
 - [x] Builds and renders live (user, Able) — first render was correct apart from two hexes
 - [x] Fix those two: lenient region matching, case-insensitive background retry, asset paths
       resolved through the table, and a region the API doesn't list drawn as bare terrain
-- [ ] **Re-render and confirm Marban Hollow + Deadlands are back** — the fix is pushed, unverified
-- [ ] Judge icon legibility at 0.2x; if poor, raise `icon_size_ratio` for the full map (do **not**
-      touch the downscale)
-- [ ] Delete the stale `MapMarbanHollow.TGA` and `MapClahstraHexMap.TGA` — older art, no longer
-      reachable, still confusing
+- [x] **Re-rendered: all 53 hexes present.** The world map is whole
+- [x] Icon legibility at 0.2x — it was ~1 px on screen, i.e. invisible. Fixed with
+      `full_map_icon_px` (12) + `RenderConfig::for_full_map`, which sizes source icons backwards
+      from the finished PNG. Downscale untouched. **Unverified — needs a build**
+- [x] Deleted the stale `MapMarbanHollow.TGA` and `MapClahstraHexMap.TGA`; `assets/Maps/` is now
+      exactly one file per table region plus three non-conquest assets
 - [ ] Optional faction tint behind a `RenderConfig` flag, OFF by default
 - [ ] Promote the spec out of `specs/active/`, reconcile it to shipped behavior
 

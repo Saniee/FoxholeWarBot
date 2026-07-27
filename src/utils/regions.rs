@@ -102,11 +102,12 @@ pub fn find(api_name: &str) -> Option<&'static Region> {
 
 /// Do two identifiers name the same region?
 ///
-/// Deliberately lenient, because the API's own spelling is not stable: this
-/// repo carries `MapMarbanHollow.TGA` *and* `MapMarbanHollowHex.TGA`, and
-/// `DeadLandsHex` has been seen written `DeadlandsHex`. An exact `==` turns a
-/// spelling drift into a region that silently doesn't exist — a hole in the
-/// full map, and a `/get-map` that can't find its own background file.
+/// Deliberately lenient, because the API's own spelling is not stable: it
+/// serves Marban Hollow as `MarbanHollow` while the assets and this table say
+/// `MarbanHollowHex`, and `DeadLandsHex` has been seen written `DeadlandsHex`.
+/// An exact `==` turns a spelling drift into a region that silently doesn't
+/// exist — a hole in the full map, and a `/get-map` that can't find its own
+/// background file.
 ///
 /// So: case-insensitive, and the `Hex` suffix is optional. No two regions
 /// collide under that rule.
