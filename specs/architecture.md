@@ -15,6 +15,14 @@ Shared machinery every command depends on.
      - Set presence to "Watching Foxhole Wars", status idle.
      - `save_maps_cache()` — refresh the per-shard map list cache.
      - Register commands: `register_globally` (or `register_in_guild(GUILD_ID)` when `--local`).
+       A global registration then **clears the dev guild's command list**, because guild-scoped
+       registrations from a `--local` run outlive the process that made them: the dev guild
+       otherwise shows two of every command, and a leftover whose name or options no longer
+       match a registered command produces an interaction poise has no handler for — never
+       acknowledged, so it hangs until Discord reports "application did not respond".
+       Best-effort: a failure here is logged, never fatal, since tidying the dev guild is not a
+       reason to refuse to start in production. Not done in reverse — a `--local` run leaves
+       global commands alone, or dev would deregister production.
      - Start the daily map-list refresh job and restart persisted report jobs **once**.
      - Return the shared `Data` (see below).
 6. `serenity::ClientBuilder::new(TOKEN, GatewayIntents::GUILDS).framework(framework)` and start.

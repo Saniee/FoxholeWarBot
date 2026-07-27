@@ -104,9 +104,39 @@ async fn register_commands(
     } else {
         poise::builtins::register_globally(ctx, commands).await?;
         log::info!("registered {} commands globally", commands.len());
+        clear_dev_guild_commands(ctx).await;
     }
 
     Ok(())
+}
+
+/// Deletes any guild-scoped commands left in the dev guild by a `--local` run.
+///
+/// Those registrations outlive the process that made them — Discord keeps them
+/// until something deletes them — so a dev guild ends up showing two of every
+/// command once the real bot is deployed. The duplicate is worse than untidy:
+/// a leftover whose name or options no longer match a registered command
+/// arrives as an interaction poise has no handler for, so nothing ever
+/// acknowledges it and Discord spins until it gives up with "application did
+/// not respond".
+///
+/// Best-effort by design. This runs inside `setup`, where returning an error
+/// aborts the whole startup, and failing to tidy the dev guild is never a
+/// reason to refuse to run in production.
+async fn clear_dev_guild_commands(ctx: &serenity::Context) {
+    // No GUILD_ID set means there is no dev guild to clean up, which is the
+    // normal case for anyone self-hosting.
+    let Ok(guild_id) = dev_guild_id() else {
+        return;
+    };
+
+    match guild_id
+        .set_commands(ctx, Vec::<serenity::CreateCommand>::new())
+        .await
+    {
+        Ok(_) => log::info!("cleared any leftover dev-guild commands in {guild_id}"),
+        Err(err) => log::warn!("could not clear dev-guild commands in {guild_id}: {err}"),
+    }
 }
 
 fn dev_guild_id() -> Result<serenity::GuildId, Error> {
