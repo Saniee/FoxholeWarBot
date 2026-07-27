@@ -49,6 +49,11 @@ pub enum Anchor {
     Center,
     /// The coordinate is the object's top-left corner — reproduces the
     /// pre-rewrite output exactly, kept only as an A/B comparison escape hatch.
+    ///
+    /// Nothing constructs this: swapping it into `RenderConfig::default` by hand
+    /// is the entire point. Keep it until the centered output has been reviewed
+    /// against old renders, then it can go.
+    #[allow(dead_code)]
     TopLeft,
 }
 
