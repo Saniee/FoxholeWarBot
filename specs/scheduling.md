@@ -1,9 +1,12 @@
-# Scheduling system overhaul (ACTIVE)
+# Scheduling system
 
-Status: **proposed** — promoted from `specs/schedule-report.md` / `specs/remove-report.md`.
-The scheduling subsystem carries the most severe defects in the QA sweep (C-6, C-7, C-8, C-9,
-B-2, B-3, S-4). This spec describes the **intended** behavior for the rewrite, not the current
-one.
+Status: **shipped.** Cross-cutting spec for the scheduling subsystem — the `CronHandler`, the
+`cronjobs` table, and startup restoration. Per-command surfaces live in
+`specs/schedule-report.md` and `specs/remove-report.md`.
+
+This subsystem carried the most severe defects in the QA sweep (C-6, C-7, C-8, C-9, B-2, B-3,
+S-4); all are fixed. The "fixes X" annotations below are kept so the reasoning stays attached
+to the design.
 
 ## Goals
 1. A given schedule fires exactly on its cadence — never duplicated by gateway reconnects.
@@ -17,7 +20,7 @@ one.
 - The map rendering path is shared with `/get-map`; see the C-1 fix (unique output) which both
   must adopt.
 
-## Intended behavior
+## Behavior
 
 ### Startup restoration (fixes C-6, C-7, C-8)
 - Restoration runs **once per process**, guarded by shared state on `Handler`
@@ -38,7 +41,8 @@ one.
 - Handle missing "Manage Webhooks" permission with a clear reply (fixes C-11).
 
 ### Per-tick execution (fixes C-1, C-3, C-5)
-- Render to a unique/in-memory attachment, not the shared `render.png`.
+- Renders to an in-memory attachment; no file is written, so ticks and interactive
+  commands cannot collide.
 - No `.unwrap()` on `send`/`json`/`webhook.execute`/`from_timestamp_millis`; a failed tick logs
   and returns without panicking.
 - Continue to revalidate via ETag against the owning guild's shard.
@@ -48,13 +52,14 @@ one.
 - Case-insensitive autocomplete filtering.
 - Deleting an already-removed webhook is treated as success, not a panic.
 
-## Data model changes
+## Data model
 ```sql
--- cronjobs: replace global UNIQUE(job_name) with a composite uniqueness
+-- cronjobs: composite uniqueness, replacing the old global UNIQUE(job_name)
 UNIQUE (guild, job_name)
--- consider NOT NULL + ON DELETE CASCADE for the guild FK so removing a guild
+-- the guild FK is NOT NULL + ON DELETE CASCADE, so removing a guild
 -- cleans up its jobs.
 ```
+Full schema: `specs/postgres.md`.
 
 ## Acceptance criteria
 - Reconnecting the gateway (or forcing multiple `ready` events) does **not** increase the number

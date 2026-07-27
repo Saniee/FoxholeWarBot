@@ -61,7 +61,7 @@ earlier:
 (The reference site foxholestats.com carries an equivalent notice, which is the community norm.)
 
 ### Self-hosting / infra note
-Brief mention that the bot now runs against Postgres (`specs/active/postgres-migration.md`) — only
+Brief mention that the bot now runs against Postgres (`specs/postgres.md`) — only
 relevant to self-hosters, so keep it in the README rather than the legal pages.
 
 ## Housekeeping

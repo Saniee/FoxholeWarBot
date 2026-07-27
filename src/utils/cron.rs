@@ -1,4 +1,4 @@
-//! Scheduled map reports. See `specs/active/scheduling-overhaul.md`.
+//! Scheduled map reports. See `specs/scheduling.md`.
 
 use std::sync::Arc;
 use std::str::FromStr;

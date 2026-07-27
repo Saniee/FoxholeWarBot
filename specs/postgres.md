@@ -1,11 +1,13 @@
-# SQLite → Postgres migration (ACTIVE)
+# Data store: Postgres
 
-Status: **proposed** — rewrite architecture decision.
+Status: **shipped.** Documents the current data layer. The SQLite → Postgres migration this
+describes is complete; the "dialect changes" and "removed/retired" sections are kept as the
+record of what changed and why.
 
 ## Motivation
-The current store is a single local `database.db` (SQLite). An accidental delete or a redeploy
-that doesn't preserve the file wipes all guild settings and scheduled reports — this has already
-happened multiple times. Moving to a self-hosted **Postgres** instance (with a persistent named
+The old store was a single local `database.db` (SQLite). An accidental delete or a redeploy
+that didn't preserve the file wiped all guild settings and scheduled reports — this happened
+multiple times. The bot now runs against a self-hosted **Postgres** instance (with a persistent named
 volume) makes the data durable and decoupled from the bot container's filesystem.
 
 ## Decisions (locked)

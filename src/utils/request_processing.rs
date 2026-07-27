@@ -3,7 +3,7 @@
 //! All placement and sizing constants live in [`RenderConfig`] and are expressed as
 //! ratios of the region footprint, so a region looks the same rendered standalone
 //! (`/get-map`) or as one tile of the stitched full map — only its pixel offset
-//! differs. See `specs/active/rendering-placement.md`.
+//! differs. See `specs/rendering-placement.md`.
 
 use std::sync::OnceLock;
 

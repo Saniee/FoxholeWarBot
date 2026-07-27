@@ -1,6 +1,7 @@
-# Rendering: de-magic icon & text placement (ACTIVE)
+# Rendering: icon & text placement
 
-Status: **proposed** — prerequisite for the full-map renderer.
+Status: **shipped.** Documents the current per-region placement primitive, which the full-map
+renderer (`specs/active/full-map-renderer.md`) builds on unchanged.
 
 ## Motivation
 `request_processing.rs::place_image_info` places icons and text with unnamed literal constants
@@ -29,7 +30,7 @@ or as one tile of the stitched full map — the full renderer only adds a per-re
 The full canvas size is therefore derived from the hex-grid packing of regions, not a fixed
 1920 × 1080.
 
-## Magic numbers inventory (current code)
+## Magic numbers inventory (the pre-rewrite code this replaced)
 | Value | Where | What it really is |
 |---|---|---|
 | `* 0.5` icon resize (×2) | `request_processing.rs:34-37, 49-52` | fixed 24 px target (48 × 0.5); **not** a true scale |
@@ -39,7 +40,7 @@ The full canvas size is therefore derived from the hex-grid packing of regions, 
 | `FilterType::Lanczos3` | `:37, :52` | resample filter (fine, but should be named) |
 | `MapMarkerType::Major/Minor` **ignored** | parsed in `foxhole.rs`, never used | major/minor labels render identically |
 
-## Target design
+## Design
 
 ### 1. A single `RenderConfig` (named constants, one source of truth)
 Replace the scattered literals with a config struct carrying documented, region-relative values.
@@ -102,7 +103,9 @@ today's flat black vanishes on dark hexes. Off by default to preserve current lo
   placement primitive** clean and parameterized so the full renderer can reuse it unchanged.
   That renderer is specced in **`specs/active/full-map-renderer.md`** (layout table derived and
   verified against the assets), and it depends on this spec landing first.
-- Caching, ETag, and the `render.png` output-path race (tracked separately: QA C-1).
+- Caching and ETag revalidation — that's the map pipeline's job
+  (`architecture.md` → Map pipeline). The shared-output-file race this spec used to defer to
+  was QA C-1, now fixed by encoding renders in memory.
 
 ## Acceptance criteria
 - No literal placement/size constant remains in `place_image_info`; all live in `RenderConfig`

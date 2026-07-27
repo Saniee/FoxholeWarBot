@@ -1,24 +1,29 @@
-# /schedule-help ✅
+# /schedule-help
 
 ## Summary
-Explains the rules for the `schedule` argument of `/schedule-report` and links a screenshot of
-accepted phrases.
+Explains the accepted phrases for the `schedule` argument of `/schedule-report`.
 
 ## Command surface
-- Name: `schedule-help`
+- Name: `schedule-help`, guild-only.
 - Options: none.
 - Permissions: none.
 
 ## Behavior
-1. Look up guild; if not set up → ephemeral prompt to run `/set-guild-settings`.
-2. Defer per `show_command_output`.
-3. Reply with static text: schedules need unique names, and a link to a screenshot of accepted
-   phrases (`https://prnt.sc/JOzbuRouDNmq`).
+Replies ephemerally with static help text. **No guild-setup check** — it's documentation, and
+gating it meant a server that hadn't configured the bot yet couldn't read the instructions for
+configuring it.
 
-## Quirks & known bugs
-- Requires guild setup even though it only returns static help text — a user who hasn't set up
-  the bot can't read the scheduling help.
-- Help content is an external screenshot link rather than inline text (link rot risk).
+The content is inline, not a link. The pre-rewrite version pointed at a `prnt.sc` screenshot,
+which made an external image host the sole documentation for the syntax.
+
+Covered:
+- Schedule names must be unique **within the server**.
+- Phrase examples: `every 30 minutes`, `every 2 hours`, `at 6:30 pm`, `every day at 09:00`,
+  `on Monday at 5:00 pm`, `every Friday at 18:00`.
+- A raw 6-field cron expression (`sec min hour day month weekday`) also works.
+- **Times are UTC** — the scheduler runs in UTC, so the help says so.
 
 ## Acceptance criteria
-- `/schedule-help` returns the scheduling rules text and the phrase reference link.
+- `/schedule-help` returns the phrase reference without requiring guild setup.
+- The text names UTC explicitly.
+- No external link is required to understand the syntax.

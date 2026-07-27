@@ -1,41 +1,38 @@
-# /war-report ⚠️
+# /war-report
 
 ## Summary
-Returns per-hex war statistics (enlistments, casualties per faction, day of war) in an embed.
+Returns per-region war statistics (enlistments, casualties per faction, day of war) in an embed.
 
 ## Command surface
-- Name: `war-report`
+- Name: `war-report`, guild-only.
 - Options:
-  - `map-name` (string, **required**, autocomplete) — hex name.
+  - `map_name` (string, **required**, autocomplete) — API region id.
 - Permissions: none.
 
 ### Autocomplete
-Identical to `/get-map`: cached shard map list, case-insensitive substring filter, excludes
-`OriginHex`, 25-choice cap, `Hex` suffix stripped from labels. Requires guild setup.
+Identical to `/get-map` — the same `commands/common.rs::autocomplete_map` helper. See that spec.
 
 ## Behavior
-1. Look up guild; if not set up → ephemeral prompt (message says `/set-shard`, a stale command
-   name — see quirks).
+1. Look up guild; if not set up → ephemeral prompt to run `/set-guild-settings`.
 2. Defer public/ephemeral per `show_command_output`.
-3. Load cached `WarReport` for `(map, shard)`.
-4. `GET /worldconquest/warReport/{map}` with `If-None-Match` (cached version or `"0"`).
-5. `500` → return silently.
-6. Non-`304` → parse fresh, build embed, save cache. `304` → build embed from cache.
-7. Embed (black color) fields: Total Enlistments, Colonial Casualties, Warden Casualties,
-   Day Of War; footer "Requested at" + timestamp.
+3. Load the cached `WarReport` for `(map, shard)`.
+4. `GET /worldconquest/warReport/{map}` with `If-None-Match` (cached version, or `"0"` when
+   there is no cache).
+5. Resolve the response:
+   - `304` → serve the cached report. If the cache went away between the read and the request,
+     refetch unconditionally rather than failing.
+   - `200` → parse fresh and write the cache.
+   - anything else → serve the cached report if there is one, otherwise reply with the status
+     and return.
+6. Embed (black) titled with the region's display name; fields Total Enlistments, Colonial
+   Casualties, Warden Casualties, Day Of War; footer "Requested at" + timestamp.
 
 ## External calls
 - Foxhole: `GET .../worldconquest/warReport/{map}`.
 - Disk: reads/writes `cache/war_reports/Report_<map>-<Shard>.json`.
 
-## Quirks & known bugs
-- **Stale command name in copy** — the not-set-up message references `/set-shard`, which no
-  longer exists (it's `/set-guild-settings`). (qa-report: L-1)
-- Unwrapped `send()`/`json()` → panic on transport/parse error. (qa-report: C-3)
-- `guild_id.unwrap()` panics outside a guild. (qa-report: C-4)
-- `500` path leaves the interaction deferred with no reply.
-
 ## Acceptance criteria
-- `/war-report map-name:<hex>` returns an embed with the four numeric fields populated.
-- Repeated calls within an unchanged war state serve cached values (304 path) without error.
+- `/war-report map_name:<region>` returns an embed with the four numeric fields populated.
+- Repeated calls within an unchanged war state serve cached values (the 304 path) without error.
+- A transient upstream error serves the cached report rather than failing, when one exists.
 - Autocomplete behaves as in `/get-map`.

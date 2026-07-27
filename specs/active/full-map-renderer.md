@@ -1,7 +1,7 @@
 # Full-map renderer (ACTIVE)
 
 Status: **proposed** — layout derived from a reference screenshot (foxholestats.com, WC137) and
-cross-checked 1:1 against `assets/Maps/`. Depends on `specs/active/rendering-placement.md`
+cross-checked 1:1 against `assets/Maps/`. Depends on `specs/rendering-placement.md`
 (the per-region placement primitive) landing first.
 
 ## Summary
@@ -147,7 +147,7 @@ rendered, which handles stubs generically without a special case.
 1. Fetch dynamic (+ static if labels are on) data for **all 53 regions** — see Performance.
 2. Allocate the 10240 × 6216 RGBA canvas.
 3. For each region: run the existing per-region pipeline
-   (`specs/active/rendering-placement.md` — background + icons at region-relative sizes), then
+   (`specs/rendering-placement.md` — background + icons at region-relative sizes), then
    `overlay` the result at its `(x, y)` grid offset. Region-relative sizing means a hex looks
    identical standalone or tiled; only the offset differs.
 4. Downscale the finished composite (see below) and encode PNG.

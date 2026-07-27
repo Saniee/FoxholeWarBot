@@ -1,42 +1,41 @@
-# /remove-report 🔧
-
-> Part of the scheduling system slated for overhaul (`specs/active/scheduling-overhaul.md`).
+# /remove-report
 
 ## Summary
 Removes a previously created scheduled report by name.
 
 ## Command surface
-- Name: `remove-report`
+- Name: `remove-report`, guild-only.
 - Options:
-  - `schedule-name` (string, **required**, autocomplete) — name of the schedule to delete.
-- Permissions: none declared.
+  - `schedule_name` (string, **required**, autocomplete) — the schedule to delete.
+- Permissions: **`MANAGE_WEBHOOKS`**, the same gate as creating one.
 
 ### Autocomplete
-- Requires guild setup.
-- Lists the guild's job names from `cronjobs`; if none, a single placeholder choice
-  "There are no scheduled reports for this guild." with value `-`.
-- Filter is **case-sensitive** (`job_name.trim().contains(filter)` where `filter` is
-  lowercased but `job_name` is not) — a known filtering quirk. (qa-report: L-3)
+- Lists this guild's job names from `cronjobs`; if none, a single placeholder choice
+  ("This server has no scheduled reports.", value `"-"` — Discord rejects an empty value).
+- Filter lowercases **both sides**, so typing "daily" matches a schedule named "Daily".
 
 ## Behavior
 1. Look up guild; if not set up → ephemeral prompt.
 2. Defer per `show_command_output`.
-3. `remove_report_job(name, guild)`:
-   - No such job → `CronError::NoJobFound` → "not in the guild database…".
-   - Guild has no jobs → `CronError::JobListEmpty` → "currently has no scheduled reports".
-   - If this is the guild's **only** job, delete the channel webhook.
-   - Remove the scheduler entry by UUID and delete the `cronjobs` row.
-4. Success → "was removed!". Other errors → generic message pointing to the support server.
+3. Look the job up by `(guild, name)`. No match → reply saying so; not an error.
+4. Remove the scheduler entry by its stored UUID. An id the scheduler no longer recognizes is
+   fine — the job is gone either way.
+5. Delete the webhook **only if no other schedule in this guild uses that URL**. Two schedules
+   posting to the same channel share one webhook, so deleting on "is this the guild's only
+   job?" — the old test — would break the survivor.
+6. Delete the `cronjobs` row, then confirm.
 
-## Quirks & known bugs
-- **Case-sensitive autocomplete filter** vs lowercased input → filtering misses matches.
-  (qa-report: L-3)
-- `Webhook::from_url(...).unwrap()` / `webhook.delete(...).unwrap()` panic if the webhook was
-  already removed manually. (qa-report: C-9)
-- Deletes the webhook only when it's the guild's last job; if multiple guilds/jobs share a
-  channel webhook this is fine, but a manually-deleted webhook still panics.
+A webhook someone already deleted by hand is logged and treated as success: that's the state
+we wanted.
+
+## External calls
+- Discord: resolve and delete the channel webhook (conditionally).
+- DB: `cronjobs` read + delete.
 
 ## Acceptance criteria
-- `/remove-report schedule-name:<name>` stops future posts and deletes the DB row.
-- Removing the last schedule in a guild also cleans up the webhook.
-- A non-existent name yields the "not in the guild database" message, not a crash.
+- `/remove-report schedule_name:<name>` stops future posts and deletes the DB row.
+- Removing the last schedule using a webhook also cleans up that webhook; removing one of two
+  schedules that share it does **not**.
+- A manually-deleted webhook does not cause a failure.
+- A non-existent name yields a clear message, not a crash.
+- A member without Manage Webhooks cannot use the command.

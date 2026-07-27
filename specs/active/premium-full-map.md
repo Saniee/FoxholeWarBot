@@ -5,7 +5,7 @@ Status: **proposed.** Primary mechanism (approval form) is ToS-clean and buildab
 
 ## Gating model (locked)
 The **full-map renderer** (all 53 hex regions stitched together — see
-`specs/active/full-map-renderer.md`, built on `specs/active/rendering-placement.md`) is gated
+`specs/active/full-map-renderer.md`, built on `specs/rendering-placement.md`) is gated
 **only when scheduled**, and even then only for **larger guilds**:
 
 | Path | Gated? |
@@ -115,7 +115,7 @@ Asked of the requester:
   for review. Optional: unset ⇒ command-only review (`/full-map-requests`). Read via `dotenv::var`
   like the other ids.
 
-## Data model (folds into `specs/active/postgres-migration.md`)
+## Data model (folds into `specs/postgres.md`)
 ```sql
 -- guilds: approval state + cached size for the threshold
 ALTER TABLE guilds ADD COLUMN member_count       INTEGER NOT NULL DEFAULT 0;
@@ -156,7 +156,7 @@ trait FullMapScheduling {
 ```
 1. **At schedule creation** (`/schedule-report`, full-map target, large guild, not approved) →
    start the application flow instead of scheduling.
-2. **At tick time** (ties into `specs/active/scheduling-overhaul.md`, `is_full_map` job marker):
+2. **At tick time** (ties into `specs/scheduling.md`, `is_full_map` job marker):
    re-check `is_allowed`. If a large guild's approval was revoked, the job goes **dormant**
    (skips rendering, posts a one-time heads-up) rather than silently burning infra. Re-approval
    reactivates it.

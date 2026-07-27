@@ -1,13 +1,17 @@
 # QA Report — crash sweep & general QA
 
-Findings from a full read of the current `src/` (commit `a1c5a3f`). The code **compiles clean**
-(`cargo check` OK; 5 clippy warnings). The issues below are runtime/logic problems, ranked by
-severity. IDs are referenced from the feature specs.
+Status: **all findings resolved** by the rewrite. Kept as the record of what was wrong and why —
+these IDs are cited from commit messages, the feature specs, and code comments, so they need to
+stay resolvable. The resolution index is at the bottom.
+
+Findings come from a full read of the **pre-rewrite** `src/` (commit `a1c5a3f`). Line references
+below point at that code, not the current tree. The issues were runtime/logic problems, ranked by
+severity.
 
 Legend: **C** = crash/panic, **B** = behavior/correctness, **S** = security/permissions,
-**L** = lower/minor. Every command handler in `main.rs` calls `.await.unwrap()` on the
-command's `run`, so any panic below both fails that interaction (user sees "application did not
-respond" or a stuck "thinking…" spinner) and can bring down the interaction task.
+**L** = lower/minor. Every command handler in the old `main.rs` called `.await.unwrap()` on the
+command's `run`, so any panic below both failed that interaction (user saw "application did not
+respond" or a stuck "thinking…" spinner) and could bring down the interaction task.
 
 ---
 
@@ -141,11 +145,35 @@ appropriate permission (e.g. `MANAGE_WEBHOOKS` or `MANAGE_GUILD`).
 
 ---
 
-## Suggested fix order for the rewrite
-1. C-1, C-3, C-4, C-12 — eliminate the "stuck spinner"/panic class (unwraps, unique output file,
-   guild-only contexts, error replies).
-2. C-6, C-7 — fix the scheduler lifecycle (single restart, per-guild resolution) — see
-   `specs/active/scheduling-overhaul.md`.
-3. C-10, B-1, B-2 — database integrity (unique guild, per-guild job names, honor `show`).
-4. S-4 — permission gates.
-5. Remaining L-items during the port.
+## Resolution index
+
+All findings were fixed during the core rewrite. Where a fix is structural rather than local,
+that's noted — those are the ones that can't regress by accident.
+
+| ID | Resolved in | Note |
+|---|---|---|
+| C-1 | `utils/map_render.rs` | PNG encoded in memory; no shared output file exists to race on |
+| C-2 | `utils/map_render.rs::resolve` | each half revalidates against its own ETag and cache |
+| C-3 | throughout | no `.unwrap()` on network/JSON; errors reach `on_error`, which always replies |
+| C-4 | `commands/common.rs::guild_id` + `guild_only` | structural: poise rejects DMs before the body runs |
+| C-5 | `utils::format_timestamp` | unrepresentable timestamps render as `unknown` |
+| C-6 | poise `setup` hook | structural: setup runs once per process, with no local flag to reset |
+| C-7 | `db::all_jobs_with_guilds` | each job joins to its own guild |
+| C-8 | `CronHandler::restore_jobs` | per-job error handling; restoration continues |
+| C-9 | `remove_report::delete_webhook` | an already-deleted webhook is the desired state |
+| C-10 | `migrations/0001_init.sql` | structural: `guild_id BIGINT NOT NULL UNIQUE` |
+| C-11 | `schedule_report::resolve_webhook` | replies with the permission to grant |
+| C-12 | `on_error` + explicit reply on every early return | |
+| B-1 | `db::upsert_guild` | one statement for create and update, both honoring `show` |
+| B-2 | `migrations/0001_init.sql` | `UNIQUE (guild, job_name)` |
+| B-3 | `schedule_report` | schedule first, persist second, unschedule on insert failure |
+| B-4 | `main::clear_commands` | `Http::new` directly, no gateway client |
+| S-4 | both scheduling commands | `default_member_permissions = "MANAGE_WEBHOOKS"` |
+| L-1 | `war-report`, `schedule-help` | stale `/set-shard` copy and the `prnt.sc` link both gone |
+| L-2 | `cron::run_report` | ticks are UTC and the embed says so; `/schedule-help` states it |
+| L-3 | `remove_report::autocomplete_schedule` | both sides lowercased |
+| L-4 | `war-state` | description no longer contradicts the behavior |
+| L-5 | `schedule-help` | no guild-setup gate on static help text |
+| L-6 | throughout | `unwrap`-after-`is_some` sites rewritten as `match`/`if let` |
+| L-7 | `utils/cache.rs` | I/O and decode failures degrade to a cache miss |
+| L-8 | `map_render::render_region` | compositing runs in `spawn_blocking` |
