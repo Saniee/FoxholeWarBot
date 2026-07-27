@@ -95,18 +95,25 @@ async fn revoke(
         return Ok(());
     };
 
-    if !guild.full_map_approved {
+    // Same call the Revoke button makes, so the guild flag and the request that
+    // granted it can't end up disagreeing about whether the approval still
+    // stands. `false` means it wasn't approved in the first place — the
+    // statement's own `WHERE`, not a check either surface has to remember.
+    let revoked = ctx
+        .data()
+        .db
+        .revoke_full_map_approval(guild.id, ctx.author().id.get() as i64)
+        .await?;
+
+    if !revoked {
         ctx.say("That server isn't approved, so there's nothing to withdraw.")
             .await?;
         return Ok(());
     }
 
-    ctx.data().db.set_full_map_approved(guild.id, false).await?;
-
     ctx.say(format!(
-        "Approval withdrawn for `{parsed}`. Any full-map schedule it has goes dormant at its \
-         next tick — paused, not deleted — and the channel is told once. Approving it again \
-         resumes the schedule as it was."
+        "Approval withdrawn for `{parsed}`. Its full-map schedules pause at the next tick — \
+         paused, not deleted."
     ))
     .await?;
 
@@ -163,12 +170,8 @@ async fn reviewer(ctx: Context<'_>) -> Result<bool, Error> {
     let allowed = review::is_reviewer(ctx.author().id);
 
     if !allowed {
-        ctx.say(
-            "Only someone listed in the bot's `REVIEWER_IDS` can review these. \
-             That list is set by whoever hosts the bot, and it doesn't include \
-             the application owner unless they put themselves in it.",
-        )
-        .await?;
+        ctx.say("Only someone in the bot's `REVIEWER_IDS` can review these.")
+            .await?;
     }
 
     Ok(allowed)

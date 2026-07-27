@@ -120,6 +120,9 @@ pub fn request_embed(request: &FullMapRequest, guild_name: Option<&str>) -> sere
     let color = match request.status.as_str() {
         "approved" => (60, 180, 75),
         "denied" => (200, 60, 60),
+        // Withdrawn is neither a refusal nor still live — grey says "closed,
+        // nobody judged it", which is exactly what happened.
+        "withdrawn" => (130, 135, 140),
         _ => (250, 190, 60),
     };
 
@@ -158,27 +161,66 @@ pub fn request_embed(request: &FullMapRequest, guild_name: Option<&str>) -> sere
     }
 
     if let Some(reviewer) = request.reviewed_by {
-        embed = embed.field("Decided by", format!("<@{reviewer}>"), false);
+        // A withdrawal isn't a judgement, and labelling the applicant who took
+        // their own request back as having "decided" it reads as a refusal they
+        // never received.
+        let label = match request.status.as_str() {
+            "withdrawn" => "Closed by",
+            _ => "Decided by",
+        };
+
+        embed = embed.field(label, format!("<@{reviewer}>"), false);
     }
 
     embed
 }
 
-/// Approve/Deny, or nothing at all once the request has been decided — a
-/// settled request keeps its post as a record, but the buttons stop being a way
-/// to overturn it by accident.
+/// The buttons a request carries at its current status.
+///
+/// Pending offers Approve/Deny. Approved offers **Revoke**, because withdrawing
+/// an approval belongs on the post that granted it — `/full-map-requests revoke`
+/// wants a server id typed out by hand, which is a fine fallback and a poor
+/// primary. Denied and withdrawn offer nothing: those posts are a record, and a
+/// live button on one is how a settled decision gets overturned by a misclick.
 pub fn review_buttons(request: &FullMapRequest) -> Vec<serenity::CreateActionRow> {
+    let buttons = if request.is_pending() {
+        vec![
+            serenity::CreateButton::new(format!("{CUSTOM_ID_PREFIX}:approve:{}", request.id))
+                .label("Approve")
+                .style(serenity::ButtonStyle::Success),
+            serenity::CreateButton::new(format!("{CUSTOM_ID_PREFIX}:deny:{}", request.id))
+                .label("Deny")
+                .style(serenity::ButtonStyle::Danger),
+        ]
+    } else if request.is_approved() {
+        vec![
+            serenity::CreateButton::new(format!("{CUSTOM_ID_PREFIX}:revoke:{}", request.id))
+                .label("Revoke approval")
+                .style(serenity::ButtonStyle::Danger),
+        ]
+    } else {
+        return Vec::new();
+    };
+
+    vec![serenity::CreateActionRow::Buttons(buttons)]
+}
+
+/// The applicant's own way out of a request they no longer want.
+///
+/// Goes on the ephemeral reply they get when they run
+/// `/request-full-map-schedule` with one already open — which is exactly where
+/// somebody who filed the wrong thing ends up. Reviewers have Deny; without
+/// this, an applicant who made a typo had no way to take it back, and the
+/// one-pending-per-guild index meant they couldn't file a corrected one either.
+pub fn withdraw_button(request: &FullMapRequest) -> Vec<serenity::CreateActionRow> {
     if !request.is_pending() {
         return Vec::new();
     }
 
     vec![serenity::CreateActionRow::Buttons(vec![
-        serenity::CreateButton::new(format!("{CUSTOM_ID_PREFIX}:approve:{}", request.id))
-            .label("Approve")
-            .style(serenity::ButtonStyle::Success),
-        serenity::CreateButton::new(format!("{CUSTOM_ID_PREFIX}:deny:{}", request.id))
-            .label("Deny")
-            .style(serenity::ButtonStyle::Danger),
+        serenity::CreateButton::new(format!("{CUSTOM_ID_PREFIX}:withdraw:{}", request.id))
+            .label("Withdraw request")
+            .style(serenity::ButtonStyle::Secondary),
     ])]
 }
 
@@ -211,7 +253,15 @@ pub async fn announce(http: &serenity::Http, request: &FullMapRequest, guild_nam
     }
 }
 
-/// Handles an Approve/Deny press. `Ok(false)` means the component wasn't ours.
+/// What a button press asks for.
+#[derive(Clone, Copy)]
+enum Action {
+    Decide(RequestStatus),
+    Revoke,
+    Withdraw,
+}
+
+/// Handles a review button press. `Ok(false)` means the component wasn't ours.
 pub async fn handle_button(
     ctx: &serenity::Context,
     db: &Database,
@@ -223,9 +273,11 @@ pub async fn handle_button(
 
     let mut parts = rest.trim_start_matches(':').split(':');
 
-    let status = match parts.next() {
-        Some("approve") => RequestStatus::Approved,
-        Some("deny") => RequestStatus::Denied,
+    let action = match parts.next() {
+        Some("approve") => Action::Decide(RequestStatus::Approved),
+        Some("deny") => Action::Decide(RequestStatus::Denied),
+        Some("revoke") => Action::Revoke,
+        Some("withdraw") => Action::Withdraw,
         _ => return Ok(false),
     };
 
@@ -233,15 +285,32 @@ pub async fn handle_button(
         return Ok(false);
     };
 
-    if !is_reviewer(interaction.user.id) {
+    let actor = interaction.user.id.get() as i64;
+
+    // Withdrawing is the applicant's own button, not a reviewer's. It only ever
+    // appears on the ephemeral reply to `/request-full-map-schedule`, which
+    // already needs Manage Webhooks in that server, so the person pressing it is
+    // the person who could have filed it — but the check below is what makes
+    // that true rather than merely likely.
+    if !matches!(action, Action::Withdraw) && !is_reviewer(interaction.user.id) {
         reply(ctx, interaction, "Only a reviewer can decide these requests.").await?;
         return Ok(true);
     }
 
-    let decided = match db
-        .review_full_map_request(id, status, interaction.user.id.get() as i64)
-        .await
-    {
+    let outcome = match action {
+        Action::Decide(status) => db.review_full_map_request(id, status, actor).await,
+        Action::Revoke => revoke(db, id, actor).await,
+        Action::Withdraw => match withdrawable(db, id, interaction).await {
+            Ok(true) => db.withdraw_full_map_request(id, actor).await,
+            Ok(false) => {
+                reply(ctx, interaction, "That isn't your request to withdraw.").await?;
+                return Ok(true);
+            }
+            Err(err) => Err(err),
+        },
+    };
+
+    let decided = match outcome {
         Ok(decided) => decided,
         Err(err) => {
             log::warn!("could not record a decision on request #{id}: {err}");
@@ -250,9 +319,9 @@ pub async fn handle_button(
         }
     };
 
-    // `review_full_map_request` only updates a row that is still pending, so
-    // `None` here is a second reviewer arriving after the first — not an error,
-    // and specifically not a decision to overturn.
+    // Every statement above matches on the status its button assumed, so `None`
+    // here is somebody else having got there first — not an error, and
+    // specifically not a decision to overturn.
     let Some(request) = decided else {
         reply(
             ctx,
@@ -263,23 +332,84 @@ pub async fn handle_button(
         return Ok(true);
     };
 
-    // Edit the original post rather than replying under it: the message is the
-    // record of the request, and a stale "pending" embed with dead buttons under
-    // it is how two reviewers end up disagreeing about what happened.
+    // Edit the message the button was on rather than replying under it: the
+    // reviewer's post *is* the record of the request, and a stale "pending"
+    // embed with dead buttons under it is how two reviewers end up disagreeing
+    // about what happened. The applicant's ephemeral reply gets plain text —
+    // they filed the thing, they don't need it read back at them.
+    let updated = match action {
+        Action::Withdraw => serenity::CreateInteractionResponseMessage::new()
+            .content(format!(
+                "Request **#{}** withdrawn. You can file a new one whenever you like.",
+                request.id
+            ))
+            .components(Vec::new()),
+        _ => serenity::CreateInteractionResponseMessage::new()
+            .embed(request_embed(&request, None))
+            .components(review_buttons(&request)),
+    };
+
     interaction
-        .create_response(
-            ctx,
-            serenity::CreateInteractionResponse::UpdateMessage(
-                serenity::CreateInteractionResponseMessage::new()
-                    .embed(request_embed(&request, None))
-                    .components(review_buttons(&request)),
-            ),
-        )
+        .create_response(ctx, serenity::CreateInteractionResponse::UpdateMessage(updated))
         .await?;
 
-    notify_requester(ctx, &request).await;
+    // Only an answer to an open application gets announced. A withdrawal is the
+    // applicant's own doing, and a revocation is already the dormancy notice's
+    // job — it says the same thing, in the channel the reports actually go to,
+    // and saying it twice from two places is how they end up disagreeing.
+    if matches!(action, Action::Decide(_)) {
+        notify_requester(ctx, &request).await;
+    }
 
     Ok(true)
+}
+
+/// May the presser withdraw this request?
+///
+/// The applicant, or anyone a reviewer would let act anyway. The guild check is
+/// the one that matters: a component interaction can only reach a user Discord
+/// sent it to, but tying the button to the request's own server means a stray
+/// custom id can never take back somebody else's application.
+async fn withdrawable(
+    db: &Database,
+    id: i64,
+    interaction: &serenity::ComponentInteraction,
+) -> Result<bool, sqlx::Error> {
+    let Some(request) = db.get_full_map_request(id).await? else {
+        return Ok(false);
+    };
+
+    if is_reviewer(interaction.user.id) {
+        return Ok(true);
+    }
+
+    let same_guild = interaction
+        .guild_id
+        .is_some_and(|guild| guild.get() as i64 == request.guild_id);
+
+    Ok(same_guild && request.requested_by == interaction.user.id.get() as i64)
+}
+
+/// Withdraws the approval a request granted.
+///
+/// Shaped like [`Database::review_full_map_request`] so the button handler can
+/// treat the two identically: `Some` is the updated row, `None` is "that wasn't
+/// the standing approval any more" — an unknown id, an already-withdrawn
+/// request, or another reviewer pressing first.
+async fn revoke(
+    db: &Database,
+    id: i64,
+    reviewer: i64,
+) -> Result<Option<FullMapRequest>, sqlx::Error> {
+    let Some(request) = db.get_full_map_request(id).await? else {
+        return Ok(None);
+    };
+
+    if !request.is_approved() || !db.revoke_full_map_approval(request.guild, reviewer).await? {
+        return Ok(None);
+    }
+
+    db.get_full_map_request(id).await
 }
 
 /// Tells the requesting server what was decided, in the channel they nominated
@@ -289,21 +419,16 @@ pub async fn handle_button(
 /// is worth more than the convenience — the channel they picked is somewhere
 /// they are already expecting this bot to speak.
 pub async fn notify_requester(ctx: &serenity::Context, request: &FullMapRequest) {
-    let approved = request.status == RequestStatus::Approved.as_str();
-
-    let body = if approved {
-        format!(
-            "<@{}> — your request to schedule full-map reports here was **approved**. \
-             Set it up with `/schedule-report`.",
-            request.requested_by
-        )
+    let outcome = if request.status == RequestStatus::Approved.as_str() {
+        "**approved** — set one up with `/schedule-report`."
     } else {
-        format!(
-            "<@{}> — your request to schedule full-map reports here wasn't approved this time. \
-             `/full-map` still renders the world map on demand, for free, as often as you like.",
-            request.requested_by
-        )
+        "not approved this time. `/full-map` still renders the world map on demand, for free."
     };
+
+    let body = format!(
+        "<@{}> — your full-map schedule request was {outcome}",
+        request.requested_by
+    );
 
     let channel = serenity::ChannelId::new(request.channel_id as u64);
 

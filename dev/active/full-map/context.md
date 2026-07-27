@@ -11,8 +11,9 @@ ungated, then the gate around it.
 **Phase 1 is functionally complete and rendering correctly.** All 53 hexes, icons legible,
 faction tint in and seen working.
 
-**Phase 2 is written end to end. The first build attempt got two errors, both fixed but not yet
-re-compiled** — assume more remain. Everything else about Phase 2 is untested at runtime.
+**Phase 2 builds and its request → approve path has been seen working live.** The undo surfaces
+(Withdraw / Revoke buttons) and the message-shortening pass came after that run and are
+uncompiled.
 
 Both earlier open loops are closed and confirmed by live renders: the two missing hexes are back,
 and the invisible icons are visible (`full_map_icon_px`, sized backwards from the finished PNG).
@@ -158,19 +159,36 @@ four open questions. Two findings in it worth not re-deriving:
   bot never DMs anyone, and that promise is worth more than the convenience.
 - **The spec's `map_target` column was dropped** — with full-map the only target, it stores a
   constant.
+- **Every exit from a request is a button, not only a command.** Withdraw (applicant, on the
+  ephemeral reply to `/request-full-map-schedule`) and Revoke approval (reviewer, on an approved
+  post). `/full-map-requests revoke` stays as the fallback — it wants a server id typed by hand,
+  which is fine as a backstop and poor as the primary way to undo something. Both land on
+  `withdrawn`: neither is a refusal, and `denied` would record a judgement nobody made.
+- **Revoking moves two rows in one transaction** (`revoke_full_map_approval`) — the guild flag and
+  the request that granted it. `set_full_map_approved(guild, bool)` was deleted rather than
+  reused: granting and revoking each have to move a *different* second row, so a shared setter
+  could only do the flag, which is how the flag and the record start disagreeing.
+- **Neither undo announces anything.** A withdrawal is the applicant's own doing; a revocation is
+  already the dormancy notice's job, in the channel the reports actually go to. Two sources for
+  one fact is how they end up disagreeing.
 
 ## Next steps
-**The user is compiling and will send the output.** The first attempt failed on two errors, both
-the same cause (`is_allowed` needed an explicit `Send` bound); both are fixed and pushed but not
-re-compiled. Expect more type errors, not design problems — nothing in Phase 2 has ever reached a
-running binary.
+**Phase 2 compiles and the happy path has been seen working end to end**: request → post in
+`REQUESTS_CHANNEL_ID` → Approve → approved embed. Full-map renders confirmed good at full scale.
 
-Before it will run at all: `REVIEWER_IDS` must be set in `.env`, or nobody can approve anything.
-The bot warns at startup if it's empty.
+Unbuilt since that run: the Withdraw and Revoke buttons, the `withdrawn` status wiring, and a
+pass shortening every user-facing message (the submitted reply, the unapproved `/schedule-report`
+reply, the reviewer refusal). Needs a compile.
 
-Then walk the flow once: `/request-full-map-schedule` → the post in `REQUESTS_CHANNEL_ID` →
-Approve → `/schedule-report map-name:full-map` → `revoke` → confirm the next tick pauses and says
-so exactly once.
+Still unwalked: `/schedule-report map-name:full-map` → Revoke → confirm the next tick pauses and
+says so **exactly once** (`dormant_notified`). That flag is the only part of the gate with no
+observation behind it at all.
+
+**Known gap, deliberate:** withdrawing a pending request does not edit the review post in
+`REQUESTS_CHANNEL_ID` — the message id isn't stored, so the post keeps showing "pending" with
+live buttons. Pressing Approve on it answers "already decided by someone else" and changes
+nothing, which is safe but reads oddly. Storing `message_id` on the request row would fix it and
+costs a migration.
 
 Also unverified from Phase 1: the tint tiebreak (one hex was untinted at an even base split).
 Peak memory during a full-map render is still unmeasured.

@@ -187,19 +187,14 @@ async fn unapproved_message(ctx: Context<'_>, guild_row: i64) -> String {
 
     if let Some(request) = pending {
         return format!(
-            "This server's request to schedule full-map reports (**#{}**, filed <t:{}:R>) is \
-             still waiting for a decision. You'll hear back in the channel it named.\n\n\
-             `/full-map` renders the world map on demand in the meantime — that's free for \
-             everyone and always has been.",
+            "Request **#{}** (filed <t:{}:R>) is still waiting for a decision — you'll hear back \
+             in the channel it named. `/full-map` works on demand meanwhile.",
             request.id, request.created_at
         );
     }
 
-    "Scheduling the **whole world map** needs a quick request first — run \
-     `/request-full-map-schedule`.\n\n\
-     **No payment is involved and there's no paid tier.** `/full-map` renders the world map on \
-     demand for free, as often as you like, and single-region schedules are unaffected. The \
-     request exists only because a scheduled full map stitches all 53 regions on a timer, \
-     forever, whether or not anyone looks at it."
+    "Scheduling the **whole world map** needs approval first — run `/request-full-map-schedule`.\n\
+     It's free. Approval is a queue, not a paid tier: a scheduled full map re-renders all 53 \
+     regions on a timer. `/full-map` and single-region schedules are unaffected."
         .to_string()
 }

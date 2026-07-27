@@ -121,6 +121,25 @@ Asked of the requester:
    - Understands renders may be rate-limited or paused to protect infra.
    - Understands approval can be revoked.
 
+### Taking a request back
+Every state a request can leave is reachable from a button, not only from a typed command.
+`/full-map-requests` stays as the fallback surface, but it is the fallback:
+
+- **Withdraw** — the applicant's, on the ephemeral reply to `/request-full-map-schedule` (both
+  when the request is filed and when the command finds one already open). A pending request only.
+  Gated on being the person who filed it, in the guild that filed it, or a reviewer. Nothing is
+  announced: they did it themselves.
+- **Revoke approval** — the reviewer's, on the request post once it reads `approved`. Withdraws
+  the guild's approval *and* closes the request in one transaction, so the flag and the record
+  can never disagree. Not announced either — the dormancy notice already says it, in the channel
+  the reports actually go to.
+
+Both land on status `withdrawn`, which is right: neither is a refusal, and `denied` would record
+a judgement nobody made. `withdrawn` also puts the row back under the 90-day purge.
+
+Decided posts (denied, withdrawn) carry no buttons at all. They are a record, and a live button
+on a settled decision is how one gets overturned by a misclick.
+
 ## Config
 - `REQUESTS_CHANNEL_ID` — channel id on the support Discord where full-map requests are posted
   for review. Optional: unset ⇒ command-only review (`/full-map-requests`). Read via `dotenv::var`

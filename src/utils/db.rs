@@ -164,6 +164,13 @@ impl FullMapRequest {
     pub fn is_pending(&self) -> bool {
         self.status == RequestStatus::Pending.as_str()
     }
+
+    /// True only while this request *is* the guild's standing approval. Goes
+    /// false the moment it's withdrawn, which is what stops a revoked post from
+    /// still offering a Revoke button.
+    pub fn is_approved(&self) -> bool {
+        self.status == RequestStatus::Approved.as_str()
+    }
 }
 
 /// The answers from the application modal, plus what the bot fills in itself.
@@ -484,6 +491,38 @@ impl Database {
         self.get_full_map_request(id).await
     }
 
+    /// Takes back a request that hasn't been decided yet. `None` means it was no
+    /// longer pending — already decided, already withdrawn, or never existed.
+    ///
+    /// Separate from [`Self::revoke_full_map_approval`] because they undo
+    /// different things: this one closes an application nobody has answered, and
+    /// touches no guild flag, since a pending request never set one. Both land on
+    /// `withdrawn`, which is right — neither is a refusal, and the reviewer's
+    /// judgement shouldn't be recorded where none was given.
+    pub async fn withdraw_full_map_request(
+        &self,
+        id: i64,
+        withdrawn_by: i64,
+    ) -> Result<Option<FullMapRequest>, sqlx::Error> {
+        let updated: Option<(i64,)> = sqlx::query_as(
+            "UPDATE full_map_requests \
+             SET status = $3, reviewed_by = $2, reviewed_at = now() \
+             WHERE id = $1 AND status = 'pending' \
+             RETURNING id",
+        )
+        .bind(id)
+        .bind(withdrawn_by)
+        .bind(RequestStatus::Withdrawn.as_str())
+        .fetch_optional(&self.conn)
+        .await?;
+
+        if updated.is_none() {
+            return Ok(None);
+        }
+
+        self.get_full_map_request(id).await
+    }
+
     /// Deletes requests that were turned down or taken back over 90 days ago.
     ///
     /// The window is stated in `docs/privacy.md`, so this is not housekeeping we
@@ -502,34 +541,62 @@ impl Database {
         Ok(result.rows_affected())
     }
 
-    /// Grants or revokes approval directly, by `guilds.id`.
+    // There is deliberately no `set_full_map_approved(guild, bool)`. Granting and
+    // revoking are not one operation with a flag: granting answers a pending
+    // request, revoking closes an approved one, and each has to move a different
+    // second row in the same transaction. A shared setter could only do the flag,
+    // which is how the flag and the request start disagreeing.
+
+    /// Withdraws a guild's approval and closes the request that granted it, in
+    /// one transaction. `false` means it wasn't approved to begin with.
     ///
-    /// Revoking does **not** delete the guild's schedules: the tick re-checks
-    /// this flag and goes dormant, so re-approving resumes the job the guild
-    /// already set up (`specs/active/premium-full-map.md`).
-    pub async fn set_full_map_approved(
+    /// The two facts move together on purpose. An approval lives on the guild
+    /// row, but the *reason* for it is the request, and a guild whose flag is
+    /// off while its request still reads `approved` is a reviewer looking at a
+    /// post that lies. Marking it `withdrawn` also puts it back in reach of the
+    /// 90-day purge, which is what `docs/privacy.md` says happens to a request
+    /// that is no longer in force.
+    ///
+    /// `WHERE full_map_approved` makes a second press a no-op rather than a
+    /// second revocation — both revoke surfaces need that, since a channel post
+    /// stays clickable long after the decision.
+    ///
+    /// Schedules are left alone. The tick re-reads the flag and goes dormant, so
+    /// re-approving resumes the job the guild already set up.
+    pub async fn revoke_full_map_approval(
         &self,
         guild: i64,
-        approved: bool,
-    ) -> Result<(), sqlx::Error> {
-        sqlx::query(
-            "UPDATE guilds \
-             SET full_map_approved = $2, \
-                 full_map_approved_at = CASE WHEN $2 THEN now() ELSE NULL END \
-             WHERE id = $1",
+        reviewed_by: i64,
+    ) -> Result<bool, sqlx::Error> {
+        let mut tx = self.conn.begin().await?;
+
+        let revoked: Option<(i64,)> = sqlx::query_as(
+            "UPDATE guilds SET full_map_approved = FALSE, full_map_approved_at = NULL \
+             WHERE id = $1 AND full_map_approved \
+             RETURNING id",
         )
         .bind(guild)
-        .bind(approved)
-        .execute(&self.conn)
+        .fetch_optional(&mut *tx)
         .await?;
 
-        if approved {
-            sqlx::query("UPDATE cronjobs SET dormant_notified = FALSE WHERE guild = $1")
-                .bind(guild)
-                .execute(&self.conn)
-                .await?;
+        if revoked.is_none() {
+            tx.rollback().await?;
+            return Ok(false);
         }
 
-        Ok(())
+        sqlx::query(
+            "UPDATE full_map_requests \
+             SET status = $3, reviewed_by = $2, reviewed_at = now() \
+             WHERE guild = $1 AND status = 'approved'",
+        )
+        .bind(guild)
+        .bind(reviewed_by)
+        .bind(RequestStatus::Withdrawn.as_str())
+        .execute(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+
+        Ok(true)
     }
 }

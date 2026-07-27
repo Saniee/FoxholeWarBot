@@ -70,7 +70,9 @@ full-map requests it filed. Deleting a single schedule with `/remove-report` rem
 row and its webhook immediately.
 
 Full-map requests that were **denied or withdrawn** are deleted after 90 days. Approved requests
-are kept while the approval stands, because they are the record of what was approved.
+are kept while the approval stands, because they are the record of what was approved; if the
+approval is later withdrawn, the request counts as withdrawn from that point and is deleted on
+the same 90-day clock.
 To have anything else looked into, ask in
 <a href="https://discord.gg/9wzppSgXdQ">the Support Discord Server</a> or email
 <a href="mailto:asamsku10@gmail.com">asamsku10@gmail.com</a>.

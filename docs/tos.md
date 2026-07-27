@@ -78,7 +78,11 @@ server is deleted with them. Removing a schedule with `/remove-report` deletes b
 row and its webhook straight away.
 
 Full-map requests that were denied or withdrawn are deleted after 90 days. Approved requests are
-kept for as long as the approval stands, since they are the record of what was approved.
+kept for as long as the approval stands, since they are the record of what was approved; once an
+approval is withdrawn, its request falls under the same 90-day deletion.
+
+A request that hasn't been answered yet can be taken back at any time by whoever filed it — run
+`/request-full-map-schedule` again and use the **Withdraw request** button on the reply.
 
 # [](#header-6)Availability
 

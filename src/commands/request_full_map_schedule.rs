@@ -88,10 +88,7 @@ pub async fn request_full_map_schedule(
     if guild.full_map_approved {
         base.send(
             poise::CreateReply::default()
-                .content(
-                    "This server is already approved for scheduled full-map reports — \
-                     no need to apply again. Set one up with `/schedule-report`.",
-                )
+                .content("Already approved — set one up with `/schedule-report`.")
                 .ephemeral(true),
         )
         .await?;
@@ -100,14 +97,19 @@ pub async fn request_full_map_schedule(
 
     // Checked before the modal opens, so nobody fills in five fields only to be
     // told it was pointless. The partial unique index is still the real guard.
+    //
+    // This is also where somebody who filed the wrong thing lands, so it carries
+    // the way out: the button withdraws the open request, and a withdrawn one no
+    // longer counts against the one-at-a-time rule.
     if let Some(open) = base.data().db.pending_request_for_guild(guild.id).await? {
         base.send(
             poise::CreateReply::default()
                 .content(format!(
-                    "This server already has request **#{}** waiting for review, filed <t:{}:R>. \
-                     Only one can be open at a time.",
+                    "Request **#{}** is already open for this server (filed <t:{}:R>). \
+                     One at a time — withdraw it below if it was a mistake.",
                     open.id, open.created_at
                 ))
+                .components(review::withdraw_button(&open))
                 .ephemeral(true),
         )
         .await?;
@@ -124,9 +126,8 @@ pub async fn request_full_map_schedule(
         base.send(
             poise::CreateReply::default()
                 .content(
-                    "The last box needs to say `YES` — it's the bit confirming you understand \
-                     this is a free tool with no uptime guarantee and that approval can be \
-                     withdrawn. Nothing was submitted; run the command again when you're ready.",
+                    "The last box needs to say `YES`. Nothing was submitted — \
+                     run the command again when you're ready.",
                 )
                 .ephemeral(true),
         )
@@ -167,14 +168,11 @@ pub async fn request_full_map_schedule(
     base.send(
         poise::CreateReply::default()
             .content(format!(
-                "Request **#{}** submitted — thanks. You'll get an answer in <#{}>.\n\n\
-                 To be clear about what this is: **no payment is involved and there is no paid \
-                 tier.** Rendering the world map on demand with `/full-map` is free for everyone \
-                 and always will be. The request exists because a *scheduled* full map stitches \
-                 all 53 regions on a timer, forever, whether or not anyone looks at it — this is \
-                 a queue, not a price.",
+                "Request **#{}** submitted — you'll get an answer in <#{}>. \
+                 Nothing to pay; this is a queue, not a paid tier.",
                 request.id, report_channel.id
             ))
+            .components(review::withdraw_button(&request))
             .ephemeral(true),
     )
     .await?;
