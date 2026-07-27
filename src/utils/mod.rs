@@ -2,6 +2,7 @@ pub mod api_definitions;
 pub mod cache;
 pub mod cron;
 pub mod db;
+pub mod http;
 pub mod map_render;
 pub mod regions;
 pub mod request_processing;

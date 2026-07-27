@@ -91,6 +91,19 @@ uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bol
   `dev/done/core-rewrite/context.md`), and this task adds a second job kind to them.
 - User compiles and runs locally; **don't run `cargo build`/`check`/`run`** unless told otherwise.
 
+## Open question, unresolved
+`/set_guild_settings shard:Able show_messages:false faction_tint:true` **did not reply** — the
+user reported it hangs, then clarified the effect appeared to work. Not diagnosed. Two candidates,
+and the logs decide between them:
+- The shard health check had **no HTTP timeout** (now fixed — `utils::http`). If the API accepted
+  the connection and went quiet, the command hung before ever writing to the DB. This fits "no
+  reply" but *not* "the setting applied".
+- Something after `upsert_guild` failed, so the write landed and `ctx.say` didn't. That fits both
+  halves of the report and is **not** fixed by the timeout work.
+
+Ask for `docker compose logs bot` around the invocation. `on_error` logs `command /… failed: …`
+for any command error, so its presence or absence splits the two cleanly.
+
 ## Next steps
 Build and re-render once more to judge the icons at `full_map_icon_px: 12` — that constant is the
 only knob to turn, and it means output pixels, so 16 reads as "half again bigger" and nothing else

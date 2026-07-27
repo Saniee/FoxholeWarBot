@@ -2,6 +2,7 @@ use reqwest::StatusCode;
 
 use crate::commands::common::guild_id;
 use crate::utils::db::Shard;
+use crate::utils::http;
 use crate::{Context, Error};
 
 /// The three live shards, offered as a Discord choice list.
@@ -55,7 +56,7 @@ pub async fn set_guild_settings(
     let shard: Shard = shard.into();
 
     // Confirm the shard is actually up before committing the guild to it.
-    let response = reqwest::Client::new()
+    let response = http::client()
         .get(format!("{}/worldconquest/war", shard.api_url()))
         .send()
         .await?;

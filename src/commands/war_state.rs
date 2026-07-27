@@ -3,6 +3,7 @@ use poise::serenity_prelude as serenity;
 use crate::commands::common::{defer_for, guild_settings};
 use crate::utils::api_definitions::foxhole::War;
 use crate::utils::format_timestamp;
+use crate::utils::http;
 use crate::{Context, Error};
 
 /// Gets the global state of the war on this server's shard.
@@ -14,7 +15,7 @@ pub async fn war_state(ctx: Context<'_>) -> Result<(), Error> {
 
     defer_for(ctx, &guild).await?;
 
-    let war_data = reqwest::Client::new()
+    let war_data = http::client()
         .get(format!("{}/worldconquest/war", guild.shard))
         .send()
         .await?

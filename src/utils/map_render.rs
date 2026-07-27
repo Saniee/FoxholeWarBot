@@ -20,6 +20,7 @@ use tokio::task::JoinSet;
 use super::api_definitions::foxhole::{DynamicMapData, StaticMapData};
 use super::cache::{load_dynamic_cache, load_maps, load_static_cache, save_map_cache};
 use super::db::Shard;
+use super::http;
 use super::regions::{self, Region, REGIONS};
 use super::request_processing::{
     load_background, place_image_info, RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
@@ -164,7 +165,7 @@ pub async fn render_region(
     draw_text: bool,
     config: RenderConfig,
 ) -> Result<RenderedMap, MapError> {
-    let client = reqwest::Client::new();
+    let client = http::client().clone();
 
     let (dynamic_data, static_data) =
         fetch_region(&client, api_url, shard_name, map_name).await?;
@@ -199,7 +200,7 @@ pub async fn render_full_map(
     draw_text: bool,
     config: RenderConfig,
 ) -> Result<RenderedMap, MapError> {
-    let client = reqwest::Client::new();
+    let client = http::client().clone();
     let permits = Arc::new(Semaphore::new(FETCH_CONCURRENCY));
     let mut fetches: JoinSet<Tile> = JoinSet::new();
     let mut tiles: Vec<Tile> = Vec::with_capacity(REGIONS.len());

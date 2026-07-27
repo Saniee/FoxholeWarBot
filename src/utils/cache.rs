@@ -10,6 +10,7 @@ use reqwest::StatusCode;
 
 use super::api_definitions::foxhole::{DynamicMapData, Maps, StaticMapData, WarReport};
 use super::db::Shard;
+use super::http;
 
 const CACHE_DIRS: [&str; 5] = [
     "./cache",
@@ -55,7 +56,7 @@ async fn read_json<T: serde::de::DeserializeOwned>(path: String) -> Option<T> {
 pub async fn save_maps_cache() {
     create_cache_dirs().await;
 
-    let client = reqwest::Client::new();
+    let client = http::client().clone();
 
     for shard in Shard::list_all() {
         let api_url = shard.api_url();

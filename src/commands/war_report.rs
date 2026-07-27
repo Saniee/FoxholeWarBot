@@ -4,6 +4,7 @@ use reqwest::StatusCode;
 use crate::commands::common::{autocomplete_map, defer_for, guild_settings};
 use crate::utils::api_definitions::foxhole::WarReport;
 use crate::utils::cache::{load_war_report, save_war_report};
+use crate::utils::http;
 use crate::utils::regions::display_name;
 use crate::{Context, Error};
 
@@ -23,7 +24,7 @@ pub async fn war_report(
 
     let cached = load_war_report(&map_name, &guild.shard_name).await;
 
-    let response = reqwest::Client::new()
+    let response = http::client()
         .get(format!(
             "{}/worldconquest/warReport/{map_name}",
             guild.shard
@@ -86,7 +87,7 @@ pub async fn war_report(
 }
 
 async fn refetch(api_url: &str, map_name: &str) -> Result<WarReport, Error> {
-    let report = reqwest::Client::new()
+    let report = http::client()
         .get(format!("{api_url}/worldconquest/warReport/{map_name}"))
         .send()
         .await?
