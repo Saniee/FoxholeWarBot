@@ -16,6 +16,16 @@ use croner::Cron;
 use thiserror::Error;
 use tokio_cron_scheduler::Job;
 
+/// No schedule may fire more often than this, whatever it renders.
+///
+/// Not a performance limit — a courtesy one. Every run is a fetch against
+/// Clapfoot's War API and a post into someone's channel, and a report that
+/// arrives every few minutes reads as a bot spamming a server rather than
+/// reporting on a war. Half an hour is well inside how fast the front actually
+/// moves, and `/get-map` is still on demand and unlimited for anyone who wants
+/// a hex *now*.
+pub const MIN_INTERVAL_MINUTES: i64 = 30;
+
 /// A full-map schedule may not fire more often than this.
 ///
 /// The approval queue (`specs/active/premium-full-map.md`) decides *whether* a
@@ -23,6 +33,16 @@ use tokio_cron_scheduler::Job;
 /// approval can turn into 53 regions fetched and composited every five minutes,
 /// forever. An hour is generous next to a war that moves over days.
 pub const FULL_MAP_MIN_INTERVAL_MINUTES: i64 = 60;
+
+/// The floor that applies to a given target: the full map buys an hour, every
+/// other schedule the global half hour.
+pub fn min_interval_minutes(full_map: bool) -> i64 {
+    if full_map {
+        FULL_MAP_MIN_INTERVAL_MINUTES
+    } else {
+        MIN_INTERVAL_MINUTES
+    }
+}
 
 /// How many fire times to show before saving a schedule.
 pub const PREVIEW_COUNT: usize = 3;
@@ -45,8 +65,9 @@ pub enum ScheduleError {
 /// get wrong — plus one escape hatch for people who know exactly what they want.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, poise::ChoiceParameter)]
 pub enum Frequency {
-    #[name = "Every 15 minutes"]
-    Every15Minutes,
+    // Nothing shorter than half an hour is offered — see `MIN_INTERVAL_MINUTES`.
+    // Leaving "every 15 minutes" on the list and then refusing it would be a
+    // worse command than not offering it.
     #[name = "Every 30 minutes"]
     Every30Minutes,
     #[name = "Hourly"]
@@ -165,7 +186,6 @@ pub fn cadence(
     };
 
     let cadence = match frequency {
-        Frequency::Every15Minutes => sub_hourly(15, minute),
         Frequency::Every30Minutes => sub_hourly(30, minute),
         Frequency::Hourly => Cadence {
             cron: format!("0 {minute} * * * *"),
@@ -202,10 +222,10 @@ pub fn cadence(
     Ok(cadence)
 }
 
-/// "Every 15 minutes at :07" means :07, :22, :37, :52 — the offset is kept
-/// rather than rounded away, because someone who asked for :07 asked for it.
+/// "Every 30 minutes at :07" means :07 and :37 — the offset is kept rather than
+/// rounded away, because someone who asked for :07 asked for it.
 ///
-/// The minutes are written out in full instead of as `7-59/15`. A list can't be
+/// The minutes are written out in full instead of as `7-59/30`. A list can't be
 /// misread, by the parser or by whoever reads the row in a year.
 fn sub_hourly(step: u32, minute: u32) -> Cadence {
     let start = minute % step;

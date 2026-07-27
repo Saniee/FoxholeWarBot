@@ -43,8 +43,12 @@ Replace the `schedule` option on `/schedule-report` with:
 | `timezone` | string, optional, autocompleted | IANA name. Defaults to the guild's. |
 | `custom` | string, optional | Only read when `frequency` is `Custom…`. See below. |
 
-**Frequency choices:** every 15 minutes, every 30 minutes, hourly, every 2 / 3 / 4 / 6 / 8 / 12
-hours, daily, weekly (with a `day` option, or drop weekly from v1), and `Custom…`.
+**Frequency choices:** every 30 minutes, hourly, every 2 / 3 / 4 / 6 / 8 / 12 hours, daily,
+weekly (with a `day` option, or drop weekly from v1), and `Custom…`.
+
+**Built with a floor of 30 minutes on every schedule** (60 for the full map), which is why the
+15-minute option this spec originally listed isn't there. Enforced from the previewed fire times,
+so `Custom…` can't undercut it.
 
 `at_time` anchors the cadence rather than only applying to `daily`. "Every 6 hours at 03:30"
 means 03:30, 09:30, 15:30, 21:30 — which is what people mean, and it's the piece the current

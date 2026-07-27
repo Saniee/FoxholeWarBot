@@ -10,8 +10,9 @@ to a channel via a webhook, on a cadence picked from a list and read in a chosen
   - `map_name` (string, autocomplete) — region to render, or the `full-map` sentinel.
   - `schedule_name` (string) — unique **within this server**.
   - `report_channel` (channel) — where reports post.
-  - `frequency` (choice) — every 15/30 minutes, hourly, every 2/3/4/6/8/12 hours, daily, weekly,
-    or `Custom…`.
+  - `frequency` (choice) — every 30 minutes, hourly, every 2/3/4/6/8/12 hours, daily, weekly,
+    or `Custom…`. Nothing shorter than the 30-minute floor is offered: a choice the command
+    would then refuse is a worse command than one that isn't there.
   - `draw_text` (boolean) — overlay text labels.
   - `at_time` (string, optional) — 24-hour `HH:MM`; the anchor the cadence lines up with.
     Defaults to the top of the hour.
@@ -44,9 +45,11 @@ parser reads a step.
    are on screen: an expression that parses can still mean something the user didn't intend
    (`every 6 hours` is absolute clock times, not six hours from now), and three real timestamps
    are what catch that. Rendered as `<t:epoch:F>`, so each reader sees their own timezone.
-7. A **full-map** schedule may not fire more often than once an hour. Measured from the gaps
-   between those same fire times, so `Custom…` is held to it too — the approval queue decides
-   *whether* a guild may schedule the world map, not how often.
+7. **Minimum interval: 30 minutes for any schedule, 60 for a full-map one.** Measured from the
+   gaps between those same fire times, so `Custom…` is held to it too. The global floor is a
+   courtesy limit — a report arriving every few minutes reads as spam in the channel it lands in,
+   and `/get-map` covers wanting a hex *now*. The full map's hour is on top of it: the approval
+   queue decides *whether* a guild may schedule the world map, not how often.
 8. Reject a `schedule_name` already used **in this guild**. The `UNIQUE (guild, job_name)`
    constraint is the real guard; this check exists to produce a friendlier message.
 9. Find or create a webhook named "Scheduled Map Report Webhook" in `report_channel`. Missing
@@ -54,7 +57,10 @@ parser reads a step.
 10. **Schedule first, persist second.** Register the job with the scheduler, then insert the
     `cronjobs` row carrying the scheduler UUID. If the insert fails, the job is unscheduled
     again — no orphan rows, and no reports posting that nothing knows about.
-11. Reply confirming: the cadence in words, its timezone, the channel, and the next three runs.
+11. Reply confirming: the cadence in words, its timezone, the channel, the next three runs, and
+    **that nothing posts on creation** — the first report is the first of those three. Said next
+    to the timestamp that proves it, because "I made a schedule and nothing happened" is the
+    support question this prevents.
 
 ## Scheduled job execution (per tick)
 1. Re-read the owning guild's settings, so a shard or visibility change takes effect without a
@@ -86,7 +92,9 @@ The scheduler issues fresh UUIDs each process, so the stored id is rewritten on 
 - A schedule created with a timezone fires at that wall-clock time in that zone, including after
   a DST transition, without a restart (see `specs/scheduling.md` → nightly rebuild).
 - An invalid `at_time` is rejected at creation, with an example.
-- A full-map schedule cannot be created with gaps shorter than an hour, by any path.
+- No schedule can be created with gaps shorter than 30 minutes, and no full-map schedule with
+  gaps shorter than an hour, by any path — including `Custom…`.
+- The creation reply states that nothing posts until the first listed run time.
 - A duplicate name **in the same guild** is rejected; two different guilds can each have a
   schedule named "daily".
 - Reconnecting the gateway does not increase the number of scheduled ticks or duplicate posts.

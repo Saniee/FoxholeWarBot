@@ -30,7 +30,10 @@ needs network.
 - **Weekly ships**, against the spec's own suggestion to defer it. The old free-text box accepted
   "every Friday at 18:00", so deferring would have *removed* something that worked. `day` defaults
   to Monday, so it's never a required-but-not-really option.
-- **The full-map hourly floor is measured from the previewed fire times, not read off the
+- **Every schedule has a 30-minute floor, the full map an hour** (user call — a report every few
+  minutes reads as spam). `Every 15 minutes` was removed from the choice list rather than left on
+  it and refused.
+- **The floors are measured from the previewed fire times, not read off the
   expression.** `*/5` and a hand-written list of twelve minutes are the same problem and only one
   of them looks like it, so `Custom…` is held to the same rule for free.
 - **Minutes and hours are written out in full** (`0 30 3,9,15,21 * * *`), never `*/6`. Nothing then

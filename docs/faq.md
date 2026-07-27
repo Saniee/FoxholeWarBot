@@ -39,12 +39,12 @@ should be public or private. Until that's done, the other commands will just poi
 
 # [](#header-4)When reports post:
 
-`/schedule-report` asks for a **frequency** from a list — every 15 minutes through weekly — so
+`/schedule-report` asks for a **frequency** from a list — every 30 minutes through weekly — so
 there is no phrase to get right. `at_time` (24-hour `HH:MM`) is what the cadence lines up with,
 and it isn't only for daily reports:
 
 - `every 6 hours` at `03:30` → 03:30, 09:30, 15:30, 21:30
-- `every 15 minutes` at `00:07` → :07, :22, :37, :52
+- `every 30 minutes` at `00:07` → :07, :37
 - `daily` at `18:00` → 18:00, once a day
 
 Left blank it means the top of the hour. These are **clock times, not "from now"**: `every 6
@@ -60,8 +60,13 @@ expression (`sec min hour day month weekday`). Either way, the reply shows **the
 times it will fire** before anything is saved — if those aren't what you meant, nothing has been
 created yet. Schedule names must be unique within a server.
 
-World-map schedules can't run more often than once an hour; every region is re-rendered each
-time. `/full-map` on demand has no such limit.
+**Creating a schedule doesn't post a report there and then.** The first one arrives at the first
+of those three times: an hourly report created at 10:05 posts at 11:00, not at 10:05.
+
+**How often reports can post.** At most every **30 minutes**, and at most every **hour** for the
+world map, which re-renders every region each time. Faster than that stops reading as a war
+report and starts reading as spam in the channel. `/get-map` and `/full-map` on demand have no
+such limit.
 
 # [](#header-5)Scheduling the world map:
 

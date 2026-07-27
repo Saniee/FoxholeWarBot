@@ -95,20 +95,27 @@ pub async fn schedule_report(
         }
     };
 
-    // The gate says whether a guild may schedule the world map; it says nothing
-    // about how often, so this is the only thing standing between an approval
-    // and 53 regions re-rendered every five minutes.
-    let full_map_gap = target
-        .is_none()
-        .then(|| schedule::shortest_gap_minutes(&fires))
-        .flatten();
+    // The floor. Measured from the previewed times rather than read off the
+    // expression, so `Custom…` is held to the same rule as the choice list
+    // without anyone having to reason about what `*/5` expands to.
+    //
+    // The full map buys an hour on top: the approval queue decides *whether* a
+    // guild may schedule the world map and says nothing about how often, so this
+    // is all that stands between one approval and 53 regions re-rendered every
+    // few minutes.
+    let floor = schedule::min_interval_minutes(target.is_none());
 
-    if let Some(gap) = full_map_gap.filter(|gap| *gap < schedule::FULL_MAP_MIN_INTERVAL_MINUTES) {
+    if let Some(gap) = schedule::shortest_gap_minutes(&fires).filter(|gap| *gap < floor) {
+        let reason = if target.is_none() {
+            "All 53 regions are re-rendered every time, and the war doesn't move that fast."
+        } else {
+            "Anything quicker posts faster than the front actually moves, and reads as spam in \
+             the channel it lands in."
+        };
+
         ctx.say(format!(
-            "A **full-map** schedule can't run more often than once an hour, and some runs of \
-             that one would be only {gap} minutes apart. All 53 regions are re-rendered every \
-             time, and the war doesn't move that fast. `/full-map` is still on demand, \
-             unlimited, and needs no approval."
+            "That schedule would post as often as every **{gap} minutes**, and the minimum is \
+             **{floor}**. {reason} `/get-map` and `/full-map` are still on demand and unlimited."
         ))
         .await?;
         return Ok(());
@@ -197,12 +204,19 @@ pub async fn schedule_report(
         return Ok(());
     }
 
+    // The "it's broken" report that isn't: a schedule waits for its next slot,
+    // so creating an hourly report at :05 posts nothing for 55 minutes. Said
+    // here, next to the timestamp that proves it, rather than in a help page
+    // nobody reads until they're already annoyed.
     ctx.say(format!(
         "Scheduled report `{schedule_name}` created — **{}** ({}), posting to <#{}>.\n\
+         **Nothing posts right now.** The first report arrives at the first time below \
+         (<t:{}:R>) — a schedule waits for its next slot, it doesn't fire on creation.\n\
          Next three runs:\n{}",
         cadence.label,
         zone.name(),
         report_channel.id,
+        fires[0].timestamp(),
         schedule::preview_lines(&fires[..schedule::PREVIEW_COUNT.min(fires.len())]),
     ))
     .await?;
