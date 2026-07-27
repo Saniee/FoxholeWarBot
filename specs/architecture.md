@@ -27,6 +27,18 @@ client) and sets both the global and dev-guild command lists to empty, then exit
 > `ready`-based `cron_jobs_restarted` local guard (a dead write) is gone, and poise offers no
 > place to reintroduce it.
 
+### Logging
+`env_logger`, initialised first thing in `main`, writing to **stderr** — nothing is written to a
+file, so capture is the caller's job (`docker compose logs`, or a redirect).
+
+Default filter: `info,tracing::span=off`. The second half is not optional noise-trimming. Serenity
+is instrumented with `tracing`, whose `log` bridge emits a record for every span it opens; on a
+live gateway that is `recv;`, `do_heartbeat;` and `recv_event;` several times a second, forever,
+each carrying no information beyond its own name. They arrive under the `tracing::span` target, so
+they can be dropped without touching serenity's real messages, which keep their own targets.
+
+`RUST_LOG` overrides the whole string when something needs watching.
+
 ### Gateway intents
 Only `GUILDS`. The bot does **not** request message content or member intents; it operates
 purely through slash-command interactions and webhooks.

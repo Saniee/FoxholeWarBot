@@ -22,7 +22,17 @@ pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // `tracing::span=off` silences serenity's gateway internals. They arrive as
+    // `log` records because `tracing` bridges span lifecycles across, and every
+    // heartbeat and received frame produces one — `recv;`, `do_heartbeat;`,
+    // `recv_event;`, a few per second, forever, with no content. Serenity's own
+    // messages have their own targets and are untouched.
+    //
+    // `RUST_LOG` still overrides all of this when something needs watching.
+    env_logger::Builder::from_env(
+        env_logger::Env::default().default_filter_or("info,tracing::span=off"),
+    )
+    .init();
 
     let args = Args::parse();
 
