@@ -16,6 +16,10 @@
 
 use super::db::GuildData;
 
+// One implementation, called on a concrete type, never behind `dyn` — the
+// lint's warning about unnameable futures doesn't apply, and spelling the
+// signature as `-> impl Future` would only obscure it.
+#[allow(async_fn_in_trait)]
 pub trait FullMapScheduling {
     /// May this guild run a *scheduled* full-map report right now?
     ///

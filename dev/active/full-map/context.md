@@ -9,7 +9,8 @@ ungated, then the gate around it.
 
 ## Current state
 **Phase 1 is functionally complete and rendering correctly.** All 53 hexes, icons legible,
-faction tint in. Phase 2 (the gate) is untouched — not started, no code written.
+faction tint in and seen working. **Phase 2 is written end to end but has never been compiled or
+run** — that is the single most important thing to know before touching it.
 
 Both earlier open loops are closed and confirmed by live renders: the two missing hexes are back,
 and the invisible icons are visible (`full_map_icon_px`, sized backwards from the finished PNG).
@@ -41,16 +42,20 @@ were rendering as `DebugIcon.png`.
 - `src/utils/cron.rs` — `ReportJob` gains the full-map marker; `run_report` gains the dormancy
   branch.
 - `src/utils/db.rs` — new columns and the `full_map_requests` table.
-- `src/commands/` — `full_map.rs` exists; `request_full_map_schedule.rs` and
-  `full_map_requests.rs` are Phase 2 and do not exist yet.
+- `src/commands/` — `full_map.rs`, plus Phase 2's `request_full_map_schedule.rs` (the modal) and
+  `full_map_requests.rs` (`list`/`approve`/`deny`/`revoke`).
+- `src/utils/review.rs` — the review embed, the Approve/Deny buttons, and `is_reviewer`. Both
+  review surfaces call the same `review_full_map_request`, so they can't disagree.
+- `src/utils/entitlement.rs` — the one place the scheduling rule is written.
 - `src/utils/http.rs` — **the** HTTP client. One shared `reqwest::Client` with a 15s request and
   5s connect timeout. Every outbound call goes through it; `reqwest::Client::new()` must not come
   back, it has no timeout at all.
 - `scripts/update_assets.py` — art in from a warapi clone, renamed to the table's spelling.
   `--audit` alone cross-checks `assets/Maps/` and exits non-zero. `HAND_SOURCED` lists the 13
   icon types warapi doesn't ship, so only a real upstream rename is reported as UNEXPECTED.
-- `migrations/0003_*.sql` — **the Phase 2 file, not yet written.** `0002_faction_tint.sql` is
-  taken. `0001_init.sql` has run against real databases and must not be edited.
+- `migrations/0003_full_map_gate.sql` — the gate. Next free number is **0004**, which
+  `specs/active/schedule-input.md` has already claimed. `0001_init.sql` has run against real
+  databases and must not be edited.
 
 ## Decisions already settled (in the specs — don't re-litigate)
 - Dedicated `/full-map` command, not a flag on `/get-map`.
@@ -127,9 +132,27 @@ four open questions. Two findings in it worth not re-deriving:
 - "every 6 hours" becomes `0 0 */6 * * *` — absolute clock times, not six hours from now. Some of
   the "fires at the wrong time" reports are probably this rather than timezones.
 
-## Next steps
-Build, then `/full-map` with the tint on to see `faction_tint_strength: 0.5` at real scale — the
-only Phase 1 thing never seen working. If the answer to the hang question above arrives with it,
-take that first; it is the one open defect. Peak memory is still unmeasured.
+## Phase 2 decisions taken while building (not in the spec — worth keeping)
+- **Reviewers are the app owner and its team, full stop.** The spec said "owner/admin"; an admin
+  check would have meant any server admin could run `/full-map-requests list` and read other
+  servers' free-text answers. Guild admin grants nothing.
+- **`cronjobs.map_name` nullable, NULL = full map.** No `is_full_map` flag beside it. The `Option`
+  is what made the change find its own call sites.
+- **The full-map target is a sentinel in the existing `map-name` option** (`full-map`, offered
+  first by `autocomplete_schedule_target`), not a second `full:true` option — one field says what
+  a schedule renders.
+- **Notifications go to the request's own channel, never a DM.** `docs/privacy.md` promises the
+  bot never DMs anyone, and that promise is worth more than the convenience.
+- **The spec's `map_target` column was dropped** — with full-map the only target, it stores a
+  constant.
 
-Then Phase 2, starting with `migrations/0003_*.sql` and its `docs/` change in the same commit.
+## Next steps
+**Build.** Phase 2 has never been compiled — expect the first pass to be type errors, not design
+problems. Then walk the flow once: `/request-full-map-schedule` → the post in
+`REQUESTS_CHANNEL_ID` → Approve → `/schedule-report map-name:full-map` → `revoke` → confirm the
+next tick pauses and says so exactly once.
+
+Also unverified from Phase 1: the tint tiebreak (one hex was untinted at an even base split).
+Peak memory during a full-map render is still unmeasured.
+
+Then `specs/active/schedule-input.md`, starting with `migrations/0004_*.sql`.

@@ -19,6 +19,17 @@ pub const SUPPORT_INVITE: &str = "https://discord.gg/9wzppSgXdQ";
 /// Discord rejects an autocomplete response with more than 25 choices.
 const MAX_CHOICES: usize = 25;
 
+/// The `map-name` value that means "the whole world map" rather than a region.
+///
+/// A sentinel in the same field, rather than a second `full:true` option, so
+/// there is exactly one place a schedule says what it renders. It can't collide
+/// with a region: every region identifier the API serves ends in `Hex`, and this
+/// doesn't.
+pub const FULL_MAP_TARGET: &str = "full-map";
+
+/// Label for the sentinel, in the picker where a region name would be.
+const FULL_MAP_LABEL: &str = "The whole world map (needs approval to schedule)";
+
 /// The guild's Discord id as the `i64` the database stores.
 ///
 /// Every command is `guild_only`, so poise rejects DM invocations before the
@@ -95,4 +106,33 @@ pub async fn autocomplete_map(
         })
         .take(MAX_CHOICES)
         .collect()
+}
+
+/// The same list, plus the whole-world-map option.
+///
+/// Only `/schedule-report` uses this. `/get-map` and `/war-report` take a single
+/// region by definition, and offering them a target they can't render would be a
+/// picker entry whose only outcome is an error.
+pub async fn autocomplete_schedule_target(
+    ctx: Context<'_>,
+    partial: &str,
+) -> Vec<serenity::AutocompleteChoice> {
+    let mut choices = autocomplete_map(ctx, partial).await;
+
+    let filter = partial.trim().to_lowercase();
+    let matches = filter.is_empty()
+        || FULL_MAP_LABEL.to_lowercase().contains(&filter)
+        || FULL_MAP_TARGET.contains(&filter);
+
+    if matches {
+        // First, so it's visible without scrolling — and truncated back to
+        // Discord's limit, since the region list may already be full.
+        choices.insert(
+            0,
+            serenity::AutocompleteChoice::new(FULL_MAP_LABEL, FULL_MAP_TARGET),
+        );
+        choices.truncate(MAX_CHOICES);
+    }
+
+    choices
 }

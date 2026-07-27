@@ -45,21 +45,24 @@
       reads, `review_full_map_request` (one transaction, `WHERE status = 'pending'`),
       `set_full_map_approved`, `purge_stale_full_map_requests`
 - [x] `FullMapScheduling` trait + default impl (`guild.full_map_approved`, no size branch)
-- [ ] `/schedule-report`: full-map target + unapproved ⇒ route into the form, don't hard-refuse
-- [ ] `/request-full-map-schedule` — modal, writes a `pending` row
-- [ ] Post the request to `REQUESTS_CHANNEL_ID` (embed + Approve/Deny buttons); unset or
+- [x] `/schedule-report`: full-map target via a `full-map` sentinel in the existing `map-name`
+      option; unapproved ⇒ points at the form and names the free path, never a bare refusal
+- [x] `/request-full-map-schedule` — modal, writes a `pending` row
+- [x] Post the request to `REQUESTS_CHANNEL_ID` (embed + Approve/Deny buttons); unset or
       unreachable ⇒ command-only review + warn, never drop the request
-- [ ] Owner/admin gate on the button interactions
-- [ ] `/full-map-requests list|approve|deny` over the same rows and flag
+- [x] Owner/team gate on both surfaces — **not** guild admins: a reviewer reads other servers'
+      free-text answers, so the gate is who owns the bot, not who owns a server that added it
+- [x] `/full-map-requests list|approve|deny|revoke` over the same rows and flag
 - [x] Tick-time re-check: revoked approval ⇒ job goes **dormant** with a one-time heads-up,
       not deleted; re-approval resumes it (`go_dormant`, `dormant_notified`)
 - [x] 90-day purge of denied/withdrawn requests, as a daily job — `docs/` states the window, so
       it has to be enforced somewhere
-- [ ] Make sure the "no payment involved" wording is prominent — with no free tier at all, an
-      approval gate reads even more like a paywall than it did
+- [x] "No payment involved" wording — in the submit reply, the unapproved-target reply,
+      `docs/tos.md`, `docs/privacy.md` and `docs/faq.md`
 - [x] **Docs, in the same commit as the migration** — `tos.md`/`privacy.md` stored-data list,
       90-day retention for denied/withdrawn, the user-facing form section stating plainly that no
       payment is involved
+- [ ] **Build and exercise the whole flow** — none of Phase 2 has been compiled or run
 - [ ] Promote the spec out of `specs/active/`, reconcile to shipped behavior
 
 ## Next up (`specs/active/schedule-input.md`) — specced, nothing built

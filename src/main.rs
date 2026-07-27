@@ -212,6 +212,22 @@ async fn event_handler(
                 log::warn!("could not clean up settings for {name}: {err}");
             }
         }
+        // Poise routes slash commands and modals for us, but not message
+        // components — the Approve/Deny buttons on a review post arrive here.
+        serenity::FullEvent::InteractionCreate {
+            interaction: serenity::Interaction::Component(component),
+        } => {
+            // `Ok(false)` means the component wasn't ours, and silence is the
+            // right answer — acknowledging an unknown component would claim an
+            // interaction something else may own.
+            match utils::review::handle_button(ctx, &data.db, component).await {
+                Ok(_) => {}
+                Err(err) => log::warn!(
+                    "could not handle the '{}' button: {err}",
+                    component.data.custom_id
+                ),
+            }
+        }
         _ => {}
     }
 

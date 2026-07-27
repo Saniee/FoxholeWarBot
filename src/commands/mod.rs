@@ -1,7 +1,9 @@
 pub mod common;
 pub mod full_map;
+pub mod full_map_requests;
 pub mod get_map;
 pub mod remove_report;
+pub mod request_full_map_schedule;
 pub mod schedule_help;
 pub mod schedule_report;
 pub mod set_guild_settings;
@@ -22,5 +24,7 @@ pub fn all() -> Vec<poise::Command<Data, Error>> {
         schedule_help::schedule_help(),
         schedule_report::schedule_report(),
         remove_report::remove_report(),
+        request_full_map_schedule::request_full_map_schedule(),
+        full_map_requests::full_map_requests(),
     ]
 }
