@@ -2,25 +2,112 @@
 
 Shared machinery every command depends on. A rewrite should reproduce these contracts.
 
-## Process lifecycle (`src/main.rs`)
+> **Command framework — rewrite decision:** the rewrite moves from raw serenity slash-command
+> plumbing to **[poise](https://crates.io/crates/poise) `0.6`** (built on serenity `0.12`, same
+> maintainers). Poise replaces the hand-rolled `interaction_create` dispatch `match`, the
+> per-command `register()` builders, the manual autocomplete routing, and the `Handler`-struct
+> `.clone()` threading. The data contracts below (shards, API, DB, cache, rendering, scheduler)
+> are framework-agnostic and unchanged. See **Command framework (poise)** below.
+
+## Process lifecycle (`src/main.rs`) — rewrite target
 
 1. Parse CLI args (`--local`, `--clear-commands`).
 2. `CronHandler::new()` — creates and starts a `tokio_cron_scheduler::JobScheduler`.
-3. If `--clear-commands`: build a minimal client, delete all global commands and all
-   dev-guild (`GUILD_ID`) commands, then exit.
-4. Read `TOKEN` from env; `Database::connect()` opens `database.db` (created if missing).
-5. Create tables `guilds` and `cronjobs` if they don't exist (schema below).
-6. `db.migrate()` — one-time migration from a legacy `foxholewarbot` table (see below).
-7. Build the serenity `Client` with only `GatewayIntents::GUILDS` and the `Handler`.
-8. On `ready`:
-   - Set presence to "Watching Foxhole Wars", status idle.
-   - `save_maps_cache()` — refresh the per-shard map list cache.
-   - Register the 7 slash commands globally (or to `GUILD_ID` when `--local`).
-   - Start the daily map-list refresh job and restart persisted report jobs.
+3. Read `TOKEN` from env; `Database::connect()` opens `database.db` (created if missing).
+4. Create tables `guilds` and `cronjobs` if they don't exist (schema below).
+5. `db.migrate()` — one-time migration from a legacy `foxholewarbot` table (see below).
+6. Build the poise `Framework`:
+   - `FrameworkOptions { commands: vec![...7 commands...], on_error, .. }`.
+   - `setup` closure (runs **once**, after the gateway is ready):
+     - Set presence to "Watching Foxhole Wars", status idle.
+     - `save_maps_cache()` — refresh the per-shard map list cache.
+     - Register commands: `register_globally` (or `register_in_guild(GUILD_ID)` when `--local`).
+     - Start the daily map-list refresh job and restart persisted report jobs **once**.
+     - Return the shared `Data` (see below).
+7. `serenity::Client::builder(TOKEN, GatewayIntents::GUILDS).framework(framework)` and start.
+8. `--clear-commands`: build the framework with an empty command list and register it (globally
+   and to `GUILD_ID`), which clears all registered commands, then exit. (Alternatively call the
+   REST delete endpoints as today — either is acceptable.)
+
+> **Why this fixes QA C-6:** the `setup` closure runs a single time for the process, so the
+> daily map job and report-job restoration no longer re-run on every gateway reconnect. The old
+> `ready`-based `cron_jobs_restarted` local guard (a dead write) is retired entirely.
 
 ### Gateway intents
 Only `GUILDS`. The bot does **not** request message content or member intents; it operates
 purely through slash-command interactions and webhooks.
+
+## Command framework (poise)
+
+Poise is the "better slash-command workflow" the rewrite standardizes on.
+
+### Shared state — `Data`
+A single struct handed to every command via `ctx.data()`, replacing the fields threaded through
+the old `Handler` and its `.clone()`s:
+
+```rust
+pub struct Data {
+    pub db: Database,
+    pub cron: CronHandler,   // holds the JobScheduler (already Clone/Arc-backed)
+    pub local: bool,
+}
+type Error = Box<dyn std::error::Error + Send + Sync>;
+type Context<'a> = poise::Context<'a, Data, Error>;
+```
+
+### Command definition
+Each command is a plain async fn annotated with the macro; registration metadata lives on the
+attribute instead of a separate `register()` builder. One module per command under
+`src/commands/`, each exporting its command fn (collected into the `commands: vec![...]`).
+
+```rust
+/// Responds with an image of that Hex/Map chunk.
+#[poise::command(slash_command, guild_only)]
+pub async fn get_map(
+    ctx: Context<'_>,
+    #[description = "Name of the Hex you want displayed."]
+    #[autocomplete = "autocomplete_map"]
+    map_name: String,
+    #[description = "Render text labels for things on the map."]
+    draw_text: Option<bool>,
+) -> Result<(), Error> { /* ... */ }
+```
+
+Key mappings from the current raw-serenity code:
+
+| Concern | Current (raw serenity) | Rewrite (poise) |
+|---|---|---|
+| Dispatch | `match command.data.name` in `interaction_create` | framework routes to the fn |
+| Registration | per-command `register() -> CreateCommand` | attribute on the fn + `register_globally` |
+| Options | positional `interaction.data.options[i]` indexing | typed fn parameters (`Option<T>` = optional) |
+| Autocomplete | separate `autocomplete()` + manual dispatch | `#[autocomplete = "fn"]` on the parameter |
+| Guild-only | `interaction.guild_id.unwrap()` | `guild_only` on the macro (**fixes QA C-4**) |
+| Admin gate | `default_member_permissions(ADMINISTRATOR)` | `default_member_permissions = "ADMINISTRATOR"` |
+| Errors | `.unwrap()` in the `main.rs` match | central `on_error` hook (**helps QA C-3/C-12**) |
+| Shared state | `Handler { db, cron, local }.clone()` | `ctx.data()` |
+
+### Autocomplete
+An autocomplete handler is a fn referenced by name; it takes `Context` + the partial input and
+returns choices. It reads `ctx.data().db` for the guild's shard and the cached map list — same
+logic as today (substring filter, exclude `OriginHex`, strip `Hex`, cap 25), minus the manual
+`CreateAutocompleteResponse` plumbing.
+
+### Error handling
+`FrameworkOptions.on_error` is the single place transport/JSON/render failures surface. Commands
+return `Result<(), Error>`; a returned `Err` (or one bubbled with `?`) is reported to the user by
+the hook instead of panicking a spawned task. This is the mechanism the rewrite uses to retire
+the pervasive `.unwrap()` on network/JSON calls (QA C-3) and to guarantee a deferred interaction
+always gets a final reply (QA C-12).
+
+### Output visibility (ephemeral vs public)
+Unchanged contract, expressed in poise: read `guilds.show_command_output`, then call
+`ctx.defer_ephemeral()` (`0`) or `ctx.defer()` (`1`) at the top of the command, and send replies
+with `CreateReply`. `/set-guild-settings` stays always-ephemeral.
+
+### Dependency
+Add `poise = "0.6"` to `Cargo.toml`; it re-exports the compatible `serenity`, so the direct
+`serenity` dependency can be dropped or kept in sync via poise's re-export
+(`poise::serenity_prelude`).
 
 ## Shards (`Shard` enum, `src/utils/db.rs`)
 

@@ -6,7 +6,9 @@ recurring scheduled map reports via webhooks.
 
 ## Stack
 - Rust 2021 (`cargo`)
-- [serenity](https://crates.io/crates/serenity) `0.12` — Discord gateway + slash commands
+- [poise](https://crates.io/crates/poise) `0.6` — slash-command framework (rewrite target;
+  see `specs/architecture.md` → Command framework), built on
+  [serenity](https://crates.io/crates/serenity) `0.12` — Discord gateway
 - [sqlx](https://crates.io/crates/sqlx) `0.8` (SQLite) — guild settings + scheduled jobs
 - [tokio-cron-scheduler](https://crates.io/crates/tokio-cron-scheduler) `0.13` — scheduled reports
 - [image](https://crates.io/crates/image) / [imageproc](https://crates.io/crates/imageproc) / [ab_glyph](https://crates.io/crates/ab_glyph) — map rendering
@@ -38,7 +40,9 @@ recurring scheduled map reports via webhooks.
 - `GUILD_ID` — dev guild id, used by `--local` and `--clear-commands`
 
 ## Conventions
-- Each command module exposes `NAME`, `run`, `register`, and (where it has options) `autocomplete`.
+- Each command module exports a `#[poise::command(slash_command)]` async fn (typed params for
+  options, `#[autocomplete = "..."]` for autocomplete); all are collected into the framework's
+  `commands` list. Shared state (`db`, `cron`, `local`) is reached via `ctx.data()`.
 - Guild-scoped settings (shard + output visibility) live in the `guilds` table; a guild
   with no row is treated as "not set up" and prompts the user to run `/set-guild-settings`.
 - Foxhole API responses are cached to disk and revalidated with `If-None-Match` ETags
