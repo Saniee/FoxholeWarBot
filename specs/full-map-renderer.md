@@ -1,8 +1,9 @@
-# Full-map renderer (ACTIVE)
+# Full-map renderer
 
-Status: **proposed** — layout derived from a reference screenshot (foxholestats.com, WC137) and
-cross-checked 1:1 against `assets/Maps/`. Depends on `specs/rendering-placement.md`
-(the per-region placement primitive) landing first.
+Status: **shipped.** The layout was derived from a reference screenshot (foxholestats.com,
+WC137), cross-checked 1:1 against `assets/Maps/`, then verified against the alpha channel and a
+live render: all 53 hexes present, continuous coastlines. Builds on
+`specs/rendering-placement.md` (the per-region placement primitive).
 
 ## Summary
 Render the **entire world conquest map** as a single image: all 53 hex regions composited onto
@@ -213,7 +214,7 @@ itself is untouched**, so terrain still matches a standalone `/get-map` render.
 
 ### Performance
 This is 53× the work of a single hex — the reason scheduled full-map renders are gated
-(`specs/active/premium-full-map.md`):
+(`specs/premium-full-map.md`):
 - Fetch the 53 regions **concurrently but bounded at 8**, and **respect the API's cache
   headers/ETags** — the one explicit rule in the War API terms. The existing on-disk cache makes
   most ticks 304s. Implemented with `JoinSet` + a `Semaphore(8)` rather than
@@ -253,7 +254,7 @@ This is 53× the work of a single hex — the reason scheduled full-map renders 
   unreadable at the 0.2× composite scale, so a full-map render draws no text in v1. A dedicated
   "region name per hex" pass (drawn *after* downscale, at readable size) is the v2 approach.
 - **Command surface — a dedicated `/full-map` command.** Not an option on `/get-map`: the gating
-  (`specs/active/premium-full-map.md`) applies to the full map only, and `/get-map`'s required
+  (`specs/premium-full-map.md`) applies to the full map only, and `/get-map`'s required
   `map-name` + autocomplete would have to be made meaningless when a `full:true` flag was set.
   A separate command keeps both surfaces clean.
 

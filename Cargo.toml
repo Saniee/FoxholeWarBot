@@ -1,13 +1,13 @@
 [package]
 name = "FoxholeWarBot"
-version = "0.1.0"
+version = "2.0.0"
 edition = "2021"
 
 [dependencies]
 ab_glyph = "0.2.29"
 chrono = "0.4.39"
 # The IANA database chrono itself doesn't ship. Storing an offset instead would
-# be wrong for half the year (specs/active/schedule-input.md).
+# be wrong for half the year (specs/schedule-input.md).
 chrono-tz = "0.10"
 clap = { version = "4.5.31", features = ["derive"] }
 # The cron parser tokio-cron-scheduler already uses internally. Taken as a direct

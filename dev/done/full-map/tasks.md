@@ -1,6 +1,6 @@
 # Tasks: full-map renderer + scheduling gate
 
-## Phase 1 — renderer (`specs/active/full-map-renderer.md`)
+## Phase 1 — renderer (`specs/full-map-renderer.md`)
 - [x] Add grid coordinates to `regions.rs` (53 entries, `col`/`row`), with a pointer to the spec
 - [x] Canvas geometry constants in `RenderConfig`: column pitch, row pitch, odd-column offset,
       composite downscale factor (named, not literals)
@@ -35,9 +35,9 @@
 - [x] One shared HTTP client with timeouts (`utils::http`) — nothing had a request timeout
 - [x] **`/set_guild_settings` replies again.** Never diagnosed as such — it came back working
       after the HTTP timeout landed, which fits the "hung on a silent connection" candidate
-- [ ] Promote the spec out of `specs/active/`, reconcile it to shipped behavior
+- [x] Promote the spec out of `specs/active/`, reconcile it to shipped behavior
 
-## Phase 2 — gate (`specs/active/premium-full-map.md`)
+## Phase 2 — gate (`specs/premium-full-map.md`)
 - [x] `migrations/0003_full_map_gate.sql` — `guilds.full_map_approved` + `full_map_approved_at`;
       `full_map_requests` table (incl. `member_count` snapshot); `cronjobs.dormant_notified`;
       `cronjobs.map_name` nullable, NULL = the full map (no `is_full_map` flag beside it)
@@ -71,7 +71,7 @@
       reports a revocation
 - [x] `/request-full-map-schedule` replies in public, not ephemerally
 - [x] **Release test pass — walked, and it holds.** See the checklist below for what's left
-- [ ] Promote the spec out of `specs/active/`, reconcile to shipped behavior
+- [x] Promote the spec out of `specs/active/`, reconcile to shipped behavior
 
 ## Release checklist — full-map + gate
 **Walked by the user and it holds.** Boot and migration `0004`, the renderer and the tint
@@ -86,14 +86,14 @@ What that pass did *not* cover — the only things standing between here and a t
       true; the query is `purge_stale_full_map_requests`
 - [ ] **Peak memory during a full-map render** — never measured. 63.6 MP canvas, ~254 MB RGBA
       before downscale, and the container ceiling is not large
-- [ ] `cargo clippy` clean
-- [ ] `scripts/update_assets.py --audit` exits 0
-- [ ] Both `specs/active/` specs promoted out of `active/` and reconciled to shipped behavior
+- [ ] `cargo clippy` clean — the build is green (user), but clippy was never run from here
+- [x] `scripts/update_assets.py --audit` exits 0 — 53 regions, one file each, names exact
+- [x] Both specs promoted out of `specs/active/` and reconciled to shipped behavior
 
 Untested and low-stakes, worth knowing rather than doing: `REQUESTS_CHANNEL_ID` unset (should
 degrade to command-only review), and a two-reviewer race on one request (should answer "already
 decided by someone else").
 
-## Next up (`specs/active/schedule-input.md`) — moved out
-Picked up as its own task: `dev/active/schedule-input/`. It took migration `0005`, so the next
-free number here is **0006**.
+## Next up (`specs/schedule-input.md`) — moved out, and now shipped
+Ran as its own task: `dev/done/schedule-input/`. It took migration `0005`, so the next free
+number is **0006**.

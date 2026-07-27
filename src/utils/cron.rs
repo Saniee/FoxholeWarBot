@@ -284,7 +284,7 @@ async fn run_report(
 
     // The gate is re-read every tick, not trusted from when the schedule was
     // created: an approval that can't be taken back isn't a gate
-    // (`specs/active/premium-full-map.md`). Checked before the placeholder, so a
+    // (`specs/premium-full-map.md`). Checked before the placeholder, so a
     // dormant schedule posts the withdrawal notice and nothing else.
     if job.map_name.is_none() && !entitlement::scheduling().is_allowed(&guild).await {
         return go_dormant(http, db, job, &webhook).await;

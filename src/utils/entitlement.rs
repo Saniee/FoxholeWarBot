@@ -1,6 +1,6 @@
 //! Who may put a full-map report on a timer.
 //!
-//! See `specs/active/premium-full-map.md`. Today the answer is one boolean on
+//! See `specs/premium-full-map.md`. Today the answer is one boolean on
 //! the guild row, and this module exists purely so that stays true of *one*
 //! place. The rule is asked at two points that must never drift apart —
 //! `/schedule-report` when a schedule is created, and every tick of an existing

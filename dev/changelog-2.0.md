@@ -1,7 +1,10 @@
-# Changelog draft — the rewrite
+# Changelog — 2.0
 
 Written for the `#changelog` channel, in the style of the previous entries. Paste as-is.
-Date is a placeholder until it actually ships.
+**Set the date to the day it actually ships**; everything below is otherwise final.
+
+The version in `Cargo.toml` is `2.0.0` to match this heading — it isn't surfaced anywhere in the
+bot, so it exists purely so the tag, the crate and this post agree.
 
 ---
 

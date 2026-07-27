@@ -9,7 +9,7 @@
 //! The grid coordinates live here rather than beside the renderer so that a
 //! region Siege Camp ships is **one** edit, not two. They are a code constant on
 //! purpose: a new region needs new art in `assets/Maps/` anyway, so the layout
-//! can never change without a rebuild. See `specs/active/full-map-renderer.md`
+//! can never change without a rebuild. See `specs/full-map-renderer.md`
 //! for the derivation.
 
 /// One region of the world-conquest map.

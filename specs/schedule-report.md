@@ -23,7 +23,7 @@ to a channel via a webhook, on a cadence picked from a list and read in a chosen
 - Permissions: **`MANAGE_WEBHOOKS`** (`default_member_permissions`). The command creates and
   deletes webhooks, so that's the permission that matches what it actually does.
 
-**The bot writes the cron string; the user never does** (`specs/active/schedule-input.md`).
+**The bot writes the cron string; the user never does** (`specs/schedule-input.md`).
 `(frequency, at_time, day)` generates it as a total function — the only error an ordinary path
 can produce is a malformed `at_time`, and that message carries an example. Minutes and hours are
 written out in full (`0 30 3,9,15,21 * * *`) rather than as `*/6`, so nothing depends on how a
@@ -37,7 +37,7 @@ parser reads a step.
 1. Look up guild; if not set up → ephemeral prompt.
 2. Defer public/ephemeral per `show_command_output`.
 3. Full-map target with no approval → the request-form reply, never a bare refusal
-   (`specs/active/premium-full-map.md`).
+   (`specs/premium-full-map.md`).
 4. Resolve the timezone — the `timezone` option, else the guild's default — and store the
    resolved name on the row, so a later change to the guild default can't move this schedule.
 5. Generate the cron expression and the human label from the cadence.

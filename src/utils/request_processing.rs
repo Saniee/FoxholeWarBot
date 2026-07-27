@@ -84,7 +84,7 @@ pub struct RenderConfig {
     // --- full-map grid geometry -------------------------------------------
     // Ratios of the region footprint, not pixel literals, for the same reason
     // the sizes above are: the numbers only mean anything relative to a hex.
-    // See `specs/active/full-map-renderer.md` for the derivation.
+    // See `specs/full-map-renderer.md` for the derivation.
     /// Horizontal distance between adjacent columns, as a fraction of
     /// [`REGION_WIDTH`]. 3/4 is the flat-top hex packing: neighbouring columns
     /// overlap by a quarter of a hex, and the assets' transparent corners make

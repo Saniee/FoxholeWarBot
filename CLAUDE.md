@@ -57,7 +57,7 @@ recurring scheduled map reports via webhooks.
 - `DATABASE_URL` — Postgres connection string (required)
 - `POSTGRES_PASSWORD` — password for the docker-compose `db` service
 - `REQUESTS_CHANNEL_ID` — support-server channel for full-map schedule requests (optional;
-  see `specs/active/premium-full-map.md`)
+  see `specs/premium-full-map.md`)
 - `REVIEWER_IDS` — Discord user ids allowed to approve/deny those requests. One id, or several
   comma-separated. **The complete list — the app owner is not implicit and must list themselves.**
   Empty means nobody can review; the bot warns at startup
@@ -90,4 +90,5 @@ recurring scheduled map reports via webhooks.
 
 ## Specs
 Feature specs live in `specs/`. `specs/` documents current behavior (1:1 with the code);
-`specs/active/` holds specs for work that is planned or being reworked. See `specs/README.md`.
+`specs/active/` holds specs for work that is planned or being reworked, and is empty as of 2.0.
+See `specs/README.md`.

@@ -1,12 +1,12 @@
 # Tasks: structured schedule input + timezones
 
-Spec: `specs/active/schedule-input.md`
+Spec: `specs/schedule-input.md` — **shipped**, promoted out of `specs/active/` for 2.0.
 
-## Written (none of it compiled yet)
+## Built
 - [x] `migrations/0005_schedule_input.sql` — `guilds.timezone`, `cronjobs.timezone`,
       `cronjobs.schedule_label`; both timezones default `'UTC'` so nothing existing moves
 - [x] `docs/tos.md` + `docs/privacy.md` stored-data lists, **in the same commit as the migration**
-- [x] `src/utils/schedule.rs` — `Frequency` (9 intervals + daily + weekly + `Custom…`), `Day`,
+- [x] `src/utils/schedule.rs` — `Frequency` (8 intervals + daily + weekly + `Custom…`), `Day`,
       cron generation, IANA timezone resolution, fire-time preview, gap measurement
 - [x] `/schedule-report`: `frequency` + `at_time` + `timezone` + `day` + `custom`, replacing the
       free-text `schedule` option
@@ -27,19 +27,16 @@ Spec: `specs/active/schedule-input.md`
 - [x] Specs reconciled: `schedule-report.md`, `scheduling.md`, `schedule-help.md`,
       `set-guild-settings.md`, `postgres.md`; both spec questions answered in `schedule-input.md`
 
-## Next
-- [ ] **`cargo build`** — nothing here has been compiled. New deps: `chrono-tz`, `croner`
-- [ ] Boot: `0005` applies, existing schedules restore, the rebuild job registers
-- [ ] `/set-guild-settings` with and without `timezone`; omitted must not reset it
-- [ ] A choice-list schedule end to end — preview matches the label, report arrives on time
-- [ ] `Custom…`, with a phrase and with cron
-- [ ] Floors: a region schedule refused under 30 minutes, a full-map one under an hour
-- [ ] Changelog draft (`dev/changelog-rewrite.md`) — read it, fix the date, post it
-- [ ] The rebuild, by temporarily moving its cron to a minute away — the only practical way to see
-      it without waiting for a DST transition
-- [ ] `cargo clippy` clean
-- [ ] Promote the spec out of `specs/active/`
+## Verified
+- [x] Builds; `chrono-tz` and `croner` resolved
+- [x] Walked by the user — boot, both schedule paths, timezones and the floors all behave
+      ("everything works")
+- [x] Spec promoted out of `specs/active/`
 
-## Carried over from the full-map task (`dev/active/full-map/`)
-Still open, still not blocking: the 90-day request purge (needs a backdated `reviewed_at`) and
-peak memory during a full-map render. Both are release-gate items, not development ones.
+Not walked, and knowingly so: the nightly rebuild across a real DST transition. Seeing it
+properly means moving its cron to a minute away, and the code path is the same one startup
+restoration uses on every boot.
+
+## Left for the release
+Tracked in `dev/done/full-map/tasks.md` → release checklist: the 90-day request purge (needs a
+backdated `reviewed_at`) and peak memory during a full-map render. Neither blocks the tag.

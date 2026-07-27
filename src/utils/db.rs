@@ -52,7 +52,7 @@ pub struct GuildData {
     /// starts from it; `/schedule-report` can override it for one report.
     pub timezone: String,
     /// May this guild put a full-map report on a timer? Rendering one on demand
-    /// never consults this. See `specs/active/premium-full-map.md`.
+    /// never consults this. See `specs/premium-full-map.md`.
     pub full_map_approved: bool,
 }
 
@@ -163,7 +163,7 @@ pub struct FullMapRequest {
     pub guild_id: i64,
     pub requested_by: i64,
     /// Snapshot taken when the form was filed. Review context only — nothing
-    /// reads it to decide anything (`specs/active/premium-full-map.md`).
+    /// reads it to decide anything (`specs/premium-full-map.md`).
     pub member_count: Option<i32>,
     pub cadence: String,
     pub channel_id: i64,

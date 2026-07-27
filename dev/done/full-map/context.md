@@ -1,7 +1,7 @@
 # Context: full-map renderer + scheduling gate
 
-Specs: `specs/active/full-map-renderer.md` (what to draw)
-       `specs/active/premium-full-map.md` (who may schedule it, and the form)
+Specs: `specs/full-map-renderer.md` (what to draw)
+       `specs/premium-full-map.md` (who may schedule it, and the form)
 
 Taken together because they're one deliverable: the gate exists only to ration the renderer, and
 the renderer's cost is the gate's entire justification. Build in that order — the renderer first,
@@ -61,7 +61,7 @@ were rendering as `DebugIcon.png`.
   `--audit` alone cross-checks `assets/Maps/` and exits non-zero. `HAND_SOURCED` lists the 13
   icon types warapi doesn't ship, so only a real upstream rename is reported as UNEXPECTED.
 - `migrations/0003_full_map_gate.sql` — the gate. `0004_request_message.sql` — the review post's
-  message id. Next free number is **0005**, which `specs/active/schedule-input.md` now claims.
+  message id. Next free number is **0005**, which `specs/schedule-input.md` now claims.
   `0001_init.sql` has run against real databases and must not be edited.
 
 ## Decisions already settled (in the specs — don't re-litigate)
@@ -132,7 +132,7 @@ with no request timeout to cut it. If it ever returns, the other candidate was "
 `upsert_guild` failed", and `on_error`'s `command /… failed: …` line splits the two cleanly.
 
 ## Adjacent work raised this session
-`specs/active/schedule-input.md` — picked up as its own task; see `dev/active/schedule-input/`.
+`specs/schedule-input.md` — picked up as its own task; see `dev/active/schedule-input/`.
 It claimed migration `0005`, so the next free number is **0006**.
 
 ## Phase 2 decisions taken while building (not in the spec — worth keeping)
@@ -181,5 +181,5 @@ It claimed migration `0005`, so the next free number is **0006**.
 render memory), both of which are release-gate checks rather than development. Active work has
 moved to `dev/active/schedule-input/`.
 
-When those two are closed and both `specs/active/` specs are promoted, move
+When those two are closed and both `specs/` specs are promoted, move
 `dev/active/full-map/` to `dev/done/`.

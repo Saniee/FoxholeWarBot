@@ -10,7 +10,7 @@ use crate::{Context, Error};
 ///
 /// Ungated on purpose. A one-off render costs the host one burst of work that the
 /// user explicitly asked for; it is *scheduling* one that recurs forever, and
-/// that is what needs approval (`specs/active/premium-full-map.md`).
+/// that is what needs approval (`specs/premium-full-map.md`).
 #[poise::command(slash_command, guild_only)]
 pub async fn full_map(ctx: Context<'_>) -> Result<(), Error> {
     let Some(guild) = guild_settings(ctx).await? else {

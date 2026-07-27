@@ -192,7 +192,7 @@ type Tile = (&'static Region, Option<(DynamicMapData, StaticMapData)>);
 /// Renders every region of a shard's world map onto one hex-grid canvas.
 ///
 /// 53x the work of [`render_region`], which is the entire reason a *scheduled*
-/// full map needs approval (`specs/active/premium-full-map.md`). The fetches run
+/// full map needs approval (`specs/premium-full-map.md`). The fetches run
 /// concurrently but bounded; the compositing is one blocking task.
 pub async fn render_full_map(
     api_url: &str,

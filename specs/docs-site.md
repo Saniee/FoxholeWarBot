@@ -51,7 +51,7 @@ Settings → Pages → Source = "GitHub Actions".
 
 ## Out of scope
 - Monetization, donation or sponsorship language. The full-map gate is an approval form, not a
-  paid tier (`specs/active/premium-full-map.md`), so no payment wording belongs anywhere here.
+  paid tier (`specs/premium-full-map.md`), so no payment wording belongs anywhere here.
 - Legal review. These are plain-language docs for a free community tool.
 
 ## Acceptance criteria

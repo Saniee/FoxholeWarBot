@@ -1,6 +1,6 @@
 # Context: structured schedule input + timezones
 
-Spec: `specs/active/schedule-input.md`
+Spec: `specs/schedule-input.md`
 
 ## Current state
 **Written in full, compiled never.** Everything in the spec is implemented — migration `0005`,

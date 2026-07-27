@@ -74,9 +74,9 @@ CREATE TABLE cronjobs (
 Later migrations, in order (each is additive; `0001` has run against live databases and is never
 edited):
 - **`0002_faction_tint.sql`** — `guilds.full_map_faction_tint BOOLEAN NOT NULL DEFAULT FALSE`.
-  Per-guild opt-in for the full map's control wash (`specs/active/full-map-renderer.md`).
+  Per-guild opt-in for the full map's control wash (`specs/full-map-renderer.md`).
 - **`0003_full_map_gate.sql`** — the approval gate
-  (`specs/active/premium-full-map.md`): `guilds.full_map_approved` + `full_map_approved_at`; the
+  (`specs/premium-full-map.md`): `guilds.full_map_approved` + `full_map_approved_at`; the
   `full_map_requests` queue; `cronjobs.dormant_notified`; and `cronjobs.map_name` becomes
   **nullable**, where NULL means "this job renders the whole world map". There is deliberately no
   `is_full_map` boolean beside it — a flag and a nullable name are two facts that can disagree,
@@ -93,7 +93,7 @@ edited):
   the post lives wherever `REQUESTS_CHANNEL_ID` points now, and a per-row copy would be one more
   thing able to disagree with the truth.
 - **`0005_schedule_input.sql`** — structured schedule input and timezones
-  (`specs/active/schedule-input.md`): `guilds.timezone` and `cronjobs.timezone`, both
+  (`specs/schedule-input.md`): `guilds.timezone` and `cronjobs.timezone`, both
   `TEXT NOT NULL DEFAULT 'UTC'`, plus `cronjobs.schedule_label TEXT` (nullable) holding the
   cadence in words.
 

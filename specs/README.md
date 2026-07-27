@@ -10,7 +10,9 @@ shipped bot rather than the thing being replaced.
 
 - `specs/*.md` — **current-behavior specs.** Each describes a feature exactly as it works now.
 - `specs/active/` — **specs for work in flight**: planned or in-progress features, describing
-  *intended* behavior. A spec is promoted out of `active/` once it ships.
+  *intended* behavior. A spec is promoted out of `active/` once it ships. The directory is empty
+  as of 2.0: the full-map renderer, the scheduling gate and structured schedule input all shipped
+  and now sit alongside the rest.
 - `specs/architecture.md` — cross-cutting concerns shared by every command (shards, caching,
   database schema, rendering pipeline, scheduler, command framework).
 - `specs/postgres.md`, `specs/rendering-placement.md`, `specs/scheduling.md` — cross-cutting

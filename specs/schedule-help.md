@@ -18,7 +18,7 @@ The content is inline, not a link. The pre-rewrite version pointed at a `prnt.sc
 which made an external image host the sole documentation for the syntax.
 
 This page used to teach a syntax — the English phrases a free-text `schedule` box accepted. That
-box is gone (`specs/active/schedule-input.md`), so what remains worth explaining is what the
+box is gone (`specs/schedule-input.md`), so what remains worth explaining is what the
 frequencies *mean* and which clock they are read in, which is where the confusion actually was.
 
 Covered:

@@ -1,7 +1,7 @@
 # Rendering: icon & text placement
 
 Status: **shipped.** Documents the current per-region placement primitive, which the full-map
-renderer (`specs/active/full-map-renderer.md`) builds on unchanged.
+renderer (`specs/full-map-renderer.md`) builds on unchanged.
 
 ## Motivation
 `request_processing.rs::place_image_info` places icons and text with unnamed literal constants
@@ -101,7 +101,7 @@ today's flat black vanishes on dark hexes. Off by default to preserve current lo
 - The full-map renderer itself (stitching hex regions onto their hex-grid positions, the
   region→grid-position layout, and the total canvas size). This spec only makes the **per-region
   placement primitive** clean and parameterized so the full renderer can reuse it unchanged.
-  That renderer is specced in **`specs/active/full-map-renderer.md`** (layout table derived and
+  That renderer is specced in **`specs/full-map-renderer.md`** (layout table derived and
   verified against the assets), and it depends on this spec landing first.
 - Caching and ETag revalidation — that's the map pipeline's job
   (`architecture.md` → Map pipeline). The shared-output-file race this spec used to defer to

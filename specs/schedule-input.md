@@ -1,9 +1,8 @@
-# Schedule input: structured options and timezones (ACTIVE)
+# Schedule input: structured options and timezones
 
-Status: **built, unverified.** Written but never compiled or run — the boot, a schedule created
-on each path, and a DST rebuild are all still to be walked. Supersedes the free-text `schedule`
-option on `/schedule-report` (`specs/scheduling.md`, `specs/schedule-report.md`), which those two
-specs now describe as shipped.
+Status: **shipped.** Superseded the free-text `schedule` option on `/schedule-report`; the
+surface as built is described in `specs/schedule-report.md`, and the timezone machinery in
+`specs/scheduling.md`.
 
 Two reported problems, one root cause:
 1. **Users can't get a phrase accepted.** `/schedule-report schedule:` is free text handed to

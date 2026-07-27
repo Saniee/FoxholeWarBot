@@ -1,11 +1,13 @@
-# Gating: scheduled full-map renders (ACTIVE)
+# Gating: scheduled full-map renders
 
-Status: **proposed.** Primary mechanism (approval form) is ToS-clean and buildable now; any
-**paid/donation** tier is deferred pending Siege Camp confirmation (see ToS findings).
+Status: **shipped.** The approval form, the reviewer allow-list, the review post with its
+Approve/Deny/Withdraw/Revoke buttons, and tick-time dormancy are all live. Any **paid/donation**
+tier remains deferred pending Siege Camp confirmation (see ToS findings) — nothing here involves
+payment, and the user-facing wording says so.
 
 ## Gating model (locked)
 The **full-map renderer** (all 53 hex regions stitched together — see
-`specs/active/full-map-renderer.md`, built on `specs/rendering-placement.md`) is gated
+`specs/full-map-renderer.md`, built on `specs/rendering-placement.md`) is gated
 **whenever it is scheduled** — for every guild, regardless of size:
 
 | Path | Gated? |
@@ -225,7 +227,7 @@ a future entitlement source (sponsor role, donation tier) out of the command bod
 - **Reviewers are exactly the `REVIEWER_IDS` allow-list.** No implicit owner, and guild
   administrator grants nothing. See Config for why.
 - **On-demand render:** a dedicated `/full-map` command (see
-  `specs/active/full-map-renderer.md` → Decisions), free for everyone and ungated.
+  `specs/full-map-renderer.md` → Decisions), free for everyone and ungated.
 - **Monetization: none.** The form gate is the only mechanism. No paid tier, no vote-wall, no
   donation prompt ships with this feature. If hosting donations are ever added, they stay separate
   from the gate and follow a `code-talk` post to Siege Camp first (**recommended regardless**, as

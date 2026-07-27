@@ -127,7 +127,7 @@ const COMMON_TIMEZONES: [&str; 10] = [
 /// Autocomplete over the IANA timezone database.
 ///
 /// A timezone is exactly the class of input that must never be free text — the
-/// whole point of `specs/active/schedule-input.md` — so the picker is the only
+/// whole point of `specs/schedule-input.md` — so the picker is the only
 /// way a name is meant to arrive, and every name in it parses by construction.
 pub async fn autocomplete_timezone(
     ctx: Context<'_>,

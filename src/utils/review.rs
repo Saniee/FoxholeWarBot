@@ -4,7 +4,7 @@
 //! Both review paths land here. The channel post is the primary surface and
 //! `/full-map-requests` is the fallback, but they drive the same
 //! `review_full_map_request` call and render the same embed, so they cannot
-//! diverge (`specs/active/premium-full-map.md`).
+//! diverge (`specs/premium-full-map.md`).
 
 use std::collections::HashSet;
 use std::sync::OnceLock;

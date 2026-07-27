@@ -1,5 +1,5 @@
 //! The applicant side of the full-map scheduling gate
-//! (`specs/active/premium-full-map.md`).
+//! (`specs/premium-full-map.md`).
 
 use poise::serenity_prelude as serenity;
 // The trait, for `RequestModal::execute`. The derive below names its path in

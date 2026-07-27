@@ -1,5 +1,5 @@
 //! Turning a picked cadence into a cron expression, and a timezone name into a
-//! zone. See `specs/active/schedule-input.md`.
+//! zone. See `specs/schedule-input.md`.
 //!
 //! The rule this module exists to enforce: **the bot writes the cron string, the
 //! user never does.** Everything a user can supply here is either a choice from
@@ -28,7 +28,7 @@ pub const MIN_INTERVAL_MINUTES: i64 = 30;
 
 /// A full-map schedule may not fire more often than this.
 ///
-/// The approval queue (`specs/active/premium-full-map.md`) decides *whether* a
+/// The approval queue (`specs/premium-full-map.md`) decides *whether* a
 /// guild may schedule the world map, not how often — so without a floor, one
 /// approval can turn into 53 regions fetched and composited every five minutes,
 /// forever. An hour is generous next to a war that moves over days.
