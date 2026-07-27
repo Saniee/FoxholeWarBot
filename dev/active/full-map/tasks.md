@@ -14,13 +14,16 @@
 - [x] **Verify the geometry** — measured off the TGA alpha channel, not guessed: 0 uncovered
       pixels in the shared band, and a 53-hex composite with continuous coastlines. Still worth a
       glance at the *real* render (icons on, `image` crate's compositing) when you next build.
+- [x] Builds and renders live (user, Able) — first render was correct apart from two hexes
+- [x] Fix those two: lenient region matching, case-insensitive background retry, asset paths
+      resolved through the table, and a region the API doesn't list drawn as bare terrain
+- [ ] **Re-render and confirm Marban Hollow + Deadlands are back** — the fix is pushed, unverified
+- [ ] Judge icon legibility at 0.2x; if poor, raise `icon_size_ratio` for the full map (do **not**
+      touch the downscale)
+- [ ] Delete the stale `MapMarbanHollow.TGA` and `MapClahstraHexMap.TGA` — older art, no longer
+      reachable, still confusing
 - [ ] Optional faction tint behind a `RenderConfig` flag, OFF by default
 - [ ] Promote the spec out of `specs/active/`, reconcile it to shipped behavior
-
-### Waiting on a build
-Nothing here has been compiled — `cargo build`/`clippy` are yours to run. Most likely to need a
-nudge: the `image` 0.25 generic bounds on `resize`/`write_to`, and peak memory (a 254 MB RGBA
-canvas plus the resize target).
 
 ## Phase 2 — gate (`specs/active/premium-full-map.md`)
 - [ ] `migrations/0002_*.sql` — `guilds.full_map_approved` + `full_map_approved_at`;

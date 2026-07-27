@@ -8,23 +8,31 @@ the renderer's cost is the gate's entire justification. Build in that order — 
 ungated, then the gate around it.
 
 ## Current state
-**Phase 1 is written, not yet compiled.** `/full-map` renders all 53 hexes: grid table in
-`regions.rs`, geometry in `RenderConfig`, `render_full_map` in `map_render.rs`, command in
-`commands/full_map.rs`. Phase 2 (the gate) is untouched.
+**Phase 1 renders.** The user built and ran `/full-map` against live Able: geometry, icons,
+downscale and the Discord upload all worked on the first try. Phase 2 (the gate) is untouched.
+
+Commits on `feat/rewrite-overhaul` (PR #1): `5bff8b3` the renderer, `288182f` the identifier
+fixes, `82cf4e0` the log filter.
+
+**Open loop:** that first render came back with two hexes missing (below). The fix is pushed but
+**has not been re-rendered** — confirming Marban Hollow and Deadlands are back is the first thing
+to do next session.
 
 The user pushed new map art mid-work (`b6bcef1`, `307050c`) — same 1024 x 888 32-bit
 uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bold.ttf` into
 `assets/Maps/`, which broke both `include_bytes!` and `Dockerfile:18`; it has been moved back to
-`assets/`. Icons are the user's next art pass.
+`assets/`. **Icons are the user's next art pass** — the renderer resizes every icon to
+`icon_size_ratio` regardless of source dimensions, so new art needs no code change.
 
 ## Key files
 - `src/utils/request_processing.rs` — `RenderConfig` + per-region compositing. The full map is
   53 calls to `place_image_info` plus offsets; region-relative ratios already make a hex look the
   same standalone or tiled.
-- `src/utils/map_render.rs` — the fetch → ETag revalidate → render path for **one** region.
-  The full map needs the same shape fanned out 53×, sharing `conditional_get`/`resolve`.
-- `src/utils/regions.rs` — the 53 `(api_name, display_name)` pairs. The grid table is a third
-  column (`col`, `row`); keep it in this file so a new region is one edit, not two.
+- `src/utils/map_render.rs` — `fetch_region` (shared), `render_region` (one hex),
+  `render_full_map` (all 53), `composite_full_map` (the blocking half).
+- `src/utils/regions.rs` — the `Region` table: `api_name`, `display_name`, `col`, `row`, plus
+  `same_region`/`asset_name`, which are what keep the API's spelling and the assets' spelling
+  from being confused for each other. One edit adds a region.
 - `src/utils/cron.rs` — `ReportJob` gains the full-map marker; `run_report` gains the dormancy
   branch.
 - `src/utils/db.rs` — new columns and the `full_map_requests` table.
@@ -40,6 +48,9 @@ uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bol
   `/full-map-requests`.
 - No monetization ships. Faction tint off by default; per-hex name labels are v2.
 - `OriginHex` is already un-excluded (landed in the core rewrite).
+- Logs go to **stderr only**, no file; the default filter drops `tracing::span` (serenity's
+  per-heartbeat gateway spam). See `specs/architecture.md` → Logging. If the user asks for file
+  logging, it needs a rotation policy — the container disk is not large.
 
 ## Risks / gotchas
 - **Identifier drift is real, and it was silent.** The first live render came back with two holes:
@@ -72,6 +83,7 @@ uncompressed TGAs, now all under `assets/Maps/`. That move also swept `Inter-Bol
 - User compiles and runs locally; **don't run `cargo build`/`check`/`run`** unless told otherwise.
 
 ## Next steps
-Build and run `/full-map` once. Two things to look at in the output: whether the icons are still
-legible at the 0.2x downscale (the knob is `icon_size_ratio`, not the downscale — see the spec),
-and peak memory during the composite. Then Phase 2, starting with `migrations/0002_*.sql`.
+Re-render `/full-map` and confirm Marban Hollow and Deadlands are back — that's the one unverified
+fix. While looking at it: are the icons legible at the 0.2x downscale (the knob is
+`icon_size_ratio`, **not** the downscale factor), and what was peak memory? Then Phase 2, starting
+with `migrations/0002_*.sql`.
