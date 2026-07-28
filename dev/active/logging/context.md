@@ -73,10 +73,10 @@ weight against a curated list that goes stale into a DebugIcon on a live map.
 
 ## Next steps
 
+- **Logging is done.** The user confirms the verbose file is now a few KB, down from 65 MB. The
+  two serenity mutes were the whole problem; nothing of ours needed demoting.
 - **Unverified in production:** a `/full-map` should now emit no `no icon for …` at all. Check
-  the next verbose log.
-- Verbose file size after both mutes, and that a scheduled tick and a `/full-map` still leave a
-  useful trail in it.
+  the next verbose log, and that a tick and a `/full-map` still leave a useful trail in it.
 - **A separate finding, not acted on.** `ICON_SOURCES` names look stale: upstream now ships
   `MapIconMedical`/`Vehicle`/`Supplies`/`Manufacturing` where the table says
   `Hospital`/`VehicleFactory`/`SupplyStation`/`ManufacturingPlant`, so 11, 12, 14 and 16 are

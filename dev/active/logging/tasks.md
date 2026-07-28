@@ -85,8 +85,8 @@ Still 55.7 MB, now from **711 lines**: 80 KB a line.
       full-map render's 53 fetches looks like
 
 ### Still worth a look on the next live run
-- [ ] Confirm the verbose file is a sane size now, and that a scheduled tick and a `/full-map`
-      still leave a useful trail in it
+- [x] **Confirmed by the user: the verbose file is now a few KB.** From 65 MB, then 55.7 MB, to
+      kilobytes — the two serenity mutes were the whole problem, and nothing else needed touching
 - [x] **Not a logging issue, and now fixed.** The holes were never missing *structures* — every
       neutral icon was on disk. Foxhole ships one neutral icon per structure and tints it in
       game, so the faction files the renderer names (`13Colonials.png`) exist nowhere upstream to
