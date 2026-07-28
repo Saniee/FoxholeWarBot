@@ -341,7 +341,10 @@ async fn run_report(
                 &guild.shard_name,
                 map_name,
                 job.draw_text,
-                RenderConfig::default(),
+                RenderConfig {
+                    frontline: guild.frontline,
+                    ..RenderConfig::default()
+                },
             )
             .await
         }
@@ -352,6 +355,7 @@ async fn run_report(
                 job.draw_text,
                 RenderConfig {
                     faction_tint: guild.full_map_faction_tint,
+                    frontline: guild.frontline,
                     ..RenderConfig::default()
                 },
             )

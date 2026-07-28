@@ -104,6 +104,10 @@ edited):
   schedule already assumed, so nothing moves because this shipped. `cronjobs.schedule` keeps its
   meaning — a string the scheduler accepts — and now holds a generated cron expression for new
   rows; `schedule_label` is NULL for old ones, which display falls back from.
+- **`0006_frontline.sql`** — `guilds.frontline BOOLEAN NOT NULL DEFAULT FALSE`. Per-guild opt-in
+  for the frontline overlay (`specs/active/frontline.md`). Off and not backfilled, for the same
+  reason `0002` is: with the column false the render is byte-identical to what the guild already
+  gets. Applies to both map commands, unlike the tint.
 
 Constraint changes vs current SQLite schema:
 - `guilds.guild_id` gains `NOT NULL UNIQUE` → kills duplicate-row lookups (QA **C-10**) and

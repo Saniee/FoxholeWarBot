@@ -2,7 +2,8 @@
 
 ## Summary
 Admin command that sets the shard the guild pulls data from, whether command output is public or
-ephemeral, the full-map faction tint, and the server's default timezone for scheduled reports.
+ephemeral, the full-map faction tint, the frontline overlay, and the server's default timezone
+for scheduled reports.
 Creates the guild row on first use, updates it thereafter.
 
 ## Command surface
@@ -11,13 +12,18 @@ Creates the guild row on first use, updates it thereafter.
   - `shard` (**required**, choice) — `Able` | `Baker` | `Charlie`.
   - `show_messages` (boolean, **required**) — `true` = public, `false` = ephemeral.
   - `faction_tint` (boolean, optional) — shade each hex on `/full-map` by who holds it.
+  - `frontline` (boolean, optional) — draw the contested boundary between the factions. **Both**
+    `/get-map` and `/full-map`, unlike the tint: the tint answers "who holds this hex" at hex
+    resolution, and the frontline answers a sub-region question that the contested hex — the one
+    a player cares about most — is served worst by. See `specs/active/frontline.md`.
   - `timezone` (string, optional, autocomplete) — IANA name, the default new schedules inherit.
 - Permissions: `ADMINISTRATOR` (`default_member_permissions`).
 
-**The two optional settings mean "leave it alone" when omitted, not "reset it".** `shard` and
+**The three optional settings mean "leave it alone" when omitted, not "reset it".** `shard` and
 `show_messages` are required every time, so a server changing shards would otherwise silently
-lose its tint — and, worse, have its clock reset to UTC underneath every schedule that inherits
-from it. Only an insert falls back to a default (tint off, `UTC`).
+lose its tint or its frontline — and, worse, have its clock reset to UTC underneath every
+schedule that inherits from it. Only an insert falls back to a default (both overlays off,
+`UTC`).
 
 The shard is a Discord **choice list**, not free text with autocomplete. The pre-rewrite
 version accepted arbitrary strings and resolved anything unrecognized to Able, so a typo

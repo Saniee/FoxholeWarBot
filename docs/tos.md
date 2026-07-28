@@ -24,6 +24,7 @@ Exactly this, and nothing else:
 - The chosen shard (Able / Baker / Charlie) and its display name.
 - Whether command output is public or private.
 - Whether the full map is shaded by faction control.
+- Whether maps are drawn with the contested frontline.
 - The server's default timezone for scheduled reports (an IANA name such as `Europe/Berlin`).
 - Whether the server is approved to *schedule* full-map reports, and when that approval was
   granted.

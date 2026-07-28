@@ -9,9 +9,9 @@ Short version: the bot stores per-server settings and nothing about you personal
 # [](#header-2)What is collected
 
 - **Server settings.** The server (guild) ID, the shard it reads from, whether replies are
-  public or private, whether the full map is shaded by faction control, the server's default
-  timezone for scheduled reports, and whether the server is approved to *schedule* full-map
-  reports (plus when that approval was granted).
+  public or private, whether the full map is shaded by faction control, whether maps are drawn
+  with the contested frontline, the server's default timezone for scheduled reports, and whether
+  the server is approved to *schedule* full-map reports (plus when that approval was granted).
 - **Scheduled reports.** For each one: its name, when it runs (both the timing expression and the
   same cadence in words), the timezone it is read in, the webhook URL it posts to, the region —
   or a marker saying it's the whole world map — and whether labels are drawn.

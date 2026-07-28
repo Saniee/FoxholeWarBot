@@ -2,7 +2,8 @@
 
 Spec: `specs/active/frontline.md`. Context: `dev/active/frontline/context.md`.
 
-Ordered so each step is verifiable before the next depends on it. §1 is done; §2 is next.
+Ordered so each step is verifiable before the next depends on it. §1–§5 are done; §6 is
+next, and most of it needs a live war rather than more code.
 
 ## 1. Neighbours (no rendering involved) — **done**
 - [x] `regions::neighbours(&Region) -> Vec<&'static Region>` from odd-q `(col, row)` arithmetic
@@ -14,9 +15,11 @@ Ordered so each step is verifiable before the next depends on it. §1 is done; �
 ## 2. The field — `src/utils/frontline.rs`, no rendering in it
 - [x] World-space points: `grid_offset` + normalized item coords, **every faction-held structure**,
       neutral ones excluded; distances in canvas pixels (`sources_in`)
-- [x] `F(p) = Σ w/(d²+ε)` Colonial minus Warden, sampled on a coarse grid (`Field::sample`),
-      bilinear upsample (`Field::value_at`). Summed in `f64` — 2000 terms of ~1e-6 lose their tail
-      in `f32`, and the tail *is* the far field that decides the quiet stretches
+- [x] `F(p) = Σ w/(d²+ε)` Colonial minus Warden, sampled on a coarse grid (`Field::sample`).
+      Summed in `f64` — 2000 terms of ~1e-6 lose their tail in `f32`, and the tail *is* the far
+      field that decides the quiet stretches. **No bilinear upsample**: the spec asked for one,
+      but interpolation cannot invent a crossing inside a cell whose corners agree in sign, so
+      smoothing the traced polyline reaches the same curve with one grid instead of two
 - [x] Guard the degenerate case: `sample` returns `None` unless **both** sides have something.
       Covers "one faction holds it all" and "nothing here at all" in one check, and beats letting
       marching squares meet a cell that underflowed to exactly `0.0`
@@ -73,11 +76,15 @@ Ordered so each step is verifiable before the next depends on it. §1 is done; �
       criterion, measured. Contour runs x 234..1072 and y 392..944 against a 1024 x 888 hex, so
       the oversampling genuinely reaches past the silhouette
 
-## 5. The toggle — one commit, all of it
-- [ ] `migrations/` — `guilds.frontline`
-- [ ] `db.rs` — the column, and the "leave it alone" `Option<bool>` shape the tint already uses
-- [ ] `/set-guild-settings` — the option, and reporting what the guild actually has
-- [ ] **`docs/tos.md` + `docs/privacy.md` in the same commit** (repo rule; `specs/docs-site.md`)
+## 5. The toggle — **done**, one commit
+- [x] `migrations/0006_frontline.sql` — `guilds.frontline BOOLEAN NOT NULL DEFAULT FALSE`
+- [x] `db.rs` — the column, and the "leave it alone" `Option<bool>` shape the tint already uses
+- [x] `/set-guild-settings` — the option, reporting the stored value rather than "unchanged"
+- [x] **`docs/tos.md` + `docs/privacy.md` in the same commit** (repo rule; `specs/docs-site.md`)
+- [x] Honoured by all four render sites: `/get-map`, `/full-map`, and both branches of the
+      scheduled tick. Easy to wire three and forget the fourth — the cron tick builds its own
+      `RenderConfig` twice, once per branch
+- [x] `specs/set-guild-settings.md` and `specs/postgres.md` updated
 
 ## 6. Finishing
 - [ ] Validate against a live war — the line's quality is entirely the point set. If it sits

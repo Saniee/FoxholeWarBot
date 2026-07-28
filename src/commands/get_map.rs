@@ -34,7 +34,14 @@ pub async fn get_map(
         &guild.shard_name,
         &map_name,
         draw_text.unwrap_or(false),
-        RenderConfig::default(),
+        // The frontline is the one render setting a single hex honours. The
+        // tint deliberately isn't: at this scale the terrain is the point and a
+        // colour wash over it hurts more than it says, where the contested hex
+        // is exactly the one whose per-hex answer is least true.
+        RenderConfig {
+            frontline: guild.frontline,
+            ..RenderConfig::default()
+        },
     )
     .await
     {

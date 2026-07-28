@@ -32,7 +32,7 @@ impl From<ShardChoice> for Shard {
     }
 }
 
-/// Sets this server's shard, output visibility, timezone, and full-map tint.
+/// Sets this server's shard, output visibility, timezone, tint and frontline.
 //
 // Kept to one line on purpose: poise hands the doc comment to Discord as the
 // command description, and Discord rejects anything over 100 characters at
@@ -40,7 +40,9 @@ impl From<ShardChoice> for Shard {
 // like this one, which the macro never sees.
 //
 // The tint shades each hex on /full-map by whichever faction holds it; see
-// `utils::request_processing::controlling_team`.
+// `utils::request_processing::controlling_team`. The frontline traces the
+// contested boundary on both /get-map and /full-map; see
+// `specs/active/frontline.md`.
 #[poise::command(
     slash_command,
     guild_only,
@@ -55,6 +57,10 @@ pub async fn set_guild_settings(
     // guild keeps whatever it already chose (see `Database::upsert_guild`).
     #[description = "Shade each hex on /full-map by who controls it. Leave blank to keep current."]
     faction_tint: Option<bool>,
+    // Same rule again. Both maps, not just the full one — the contested hex is
+    // exactly where a per-hex answer is least useful.
+    #[description = "Draw the contested frontline on maps. Leave blank to keep current."]
+    frontline: Option<bool>,
     // Same "leave it alone" rule, and it matters more here: silently resetting a
     // server to UTC would move every schedule that inherits from it.
     #[description = "Default timezone for scheduled reports. Leave blank to keep current."]
@@ -115,6 +121,7 @@ pub async fn set_guild_settings(
             shard,
             show_messages,
             faction_tint,
+            frontline,
             timezone.as_deref(),
         )
         .await?;
@@ -132,10 +139,11 @@ pub async fn set_guild_settings(
     } else {
         "off"
     };
+    let front = if guild.frontline { "on" } else { "off" };
 
     ctx.say(format!(
         "{} — shard **{}**, command output {visibility}, full-map faction tint **{tint}**, \
-         timezone **{}**.",
+         frontline **{front}**, timezone **{}**.",
         if existed { "Updated" } else { "Created" },
         shard.as_str(),
         guild.timezone

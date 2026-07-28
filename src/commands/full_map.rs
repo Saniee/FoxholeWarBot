@@ -19,11 +19,13 @@ pub async fn full_map(ctx: Context<'_>) -> Result<(), Error> {
 
     defer_for(ctx, &guild).await?;
 
-    // The tint is the one render setting a guild owns, and it is honored here
-    // only: a single `/get-map` hex is looked at closely enough that a colour
-    // wash costs more than it tells you.
+    // The tint is honored here only: a single `/get-map` hex is looked at
+    // closely enough that a colour wash costs more than it tells you. The
+    // frontline is honored on both, because the contested hex is precisely the
+    // one a per-hex answer serves worst.
     let config = RenderConfig {
         faction_tint: guild.full_map_faction_tint,
+        frontline: guild.frontline,
         ..RenderConfig::default()
     };
 
