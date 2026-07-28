@@ -286,7 +286,9 @@ On a hex where a player already knows the war that reads fine; on `/full-map`, o
 opened cold, it is a stripe across a picture. This section is gated on the centring work above
 landing — a legend on a line that sits in the wrong place is worse than no legend.
 
-Two ways were asked for, and they are not exclusive:
+**Decided: A, the two-tone edge.** Both were asked for and both are written up below, because the
+argument for A is the reason to keep B available if it turns out not to be enough. B is not queued
+work — do not build it speculatively.
 
 **A. A two-tone edge.** The stroke already lays a wider halo down before the line. Give that halo a
 faction colour per side — `colonial_tint` on the Colonial flank, `warden_tint` on the Warden — and
@@ -321,9 +323,8 @@ without a caption. Costs more:
   machinery, and it reads at hex scale. It does not read at full-map scale, which argues for making
   it hex-only rather than for making it curved.
 
-**Recommendation: build A, and treat B as hex-only if A turns out not to be enough on its own.** A
-is continuous, cheap, scale-free and needs no space; B is a per-location annotation that has to
-compete with icons and region names for room. If both ship they are one setting, not two — the
+A is continuous, cheap, scale-free and needs no space; B is a per-location annotation that has to
+compete with icons and region names for room. If B ever does ship it is not a second setting — the
 guild has already opted into a frontline and should not have to opt into being told what it means.
 
 ## Command surface

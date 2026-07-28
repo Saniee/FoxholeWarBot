@@ -113,14 +113,15 @@ A bare line does not say whose ground is on either side of it. Spec section "Say
 which". **Do not start this until the centring is settled** — a legend on a misplaced line is worse
 than no legend.
 
-- [ ] **A: two-tone halo**, `colonial_tint` one flank, `warden_tint` the other. Recommended, and
-      the default assumption unless the user says otherwise. Reuses the per-segment rasteriser;
-      sizes backwards through `for_full_map` like every other width
+- [ ] **A: two-tone halo**, `colonial_tint` one flank, `warden_tint` the other. **Chosen by the
+      user 2026-07-28 — this is the one to build; do not re-open the comparison.** Reuses the
+      per-segment rasteriser; sizes backwards through `for_full_map` like every other width
 - [ ] **Get the side from the field, never from the polyline.** `chain` walks segments in whatever
       order it finds them, so a polyline's direction is arbitrary and inferring the flank from it
       will be right about half the time — the worst kind of bug to see in a screenshot. Step off
       the segment midpoint along its normal and evaluate `influence`: positive is Colonial
-- [ ] **B: text**, only if A is not enough. Prefer the horizontal `COLONIAL`/`WARDEN` pair offset
+- [ ] **B: text — not queued.** Kept written up only so the fallback is costed, not because it is
+      scheduled. Build it only if the user asks again after seeing A. Prefer the horizontal `COLONIAL`/`WARDEN` pair offset
       either side of the normal at intervals over glyphs rotated along the tangent — nothing in the
       crate rotates text today, and at 2048 a hex is ~205 px across, where curved text is a few
       pixels tall against a 19 px region-label floor. Hex-only if it ships
