@@ -16,7 +16,7 @@ use thiserror::Error;
 use crate::utils::api_definitions::foxhole::{
     DynamicMapData, MapMarkerType, StaticMapData, TeamId,
 };
-use crate::utils::frontline::{Point, Polyline};
+use crate::utils::frontline::{Edge, Point};
 
 /// Every `assets/Maps/Map*Hex.TGA` is 1024 x 888 (a regular flat-top hexagon:
 /// 1024/888 = 1.153 ~= 2/sqrt(3)).
@@ -240,13 +240,20 @@ pub struct RenderConfig {
     /// whether the line follows territory or building density.
     pub footing_cluster_ratio: f32,
     pub frontline_color: Rgba<u8>,
-    /// Wider under-stroke, laid down first.
-    ///
-    /// **Opaque on purpose.** Segments are stroked one at a time and overlap at
-    /// every vertex, so a semi-transparent halo would blend twice there and
-    /// bead visibly along the line. Opaque blending is idempotent.
-    pub frontline_halo: Option<Rgba<u8>>,
     /// Halo width as a multiple of the line width.
+    ///
+    /// The halo is the wider under-stroke the line sits on, and it is what
+    /// carries the faction colours: the core covers the middle of it, leaving a
+    /// band of [`RenderConfig::colonial_tint`] on the Colonial flank and
+    /// [`RenderConfig::warden_tint`] on the Warden one. So this ratio is also
+    /// how much colour is visible — at 3.0 each band is about as thick as the
+    /// line itself, which is what makes it read as a side rather than as a
+    /// fringe.
+    ///
+    /// The faction colours are **opaque**, and have to be. Segments are stroked
+    /// one at a time and overlap at every vertex, so a semi-transparent halo
+    /// blends twice there and beads visibly along the line; opaque blending is
+    /// idempotent.
     pub frontline_halo_ratio: f32,
     /// How far a tinted pixel moves toward the faction colour, 0.0 to 1.0.
     /// Low on purpose: the point is to read ownership at a glance without
@@ -310,15 +317,24 @@ impl Default for RenderConfig {
             // by construction — they answer different questions and should be
             // free to move apart.
             footing_cluster_ratio: 100.0 / REGION_WIDTH as f32,
-            // The label style, deliberately: light stroke over a dark halo. It
-            // is the one combination already shown to survive both Acrithia's
-            // pale desert and Deadlands' near-black, which is the same problem
-            // a line crossing 53 regions has. Separate fields from
-            // `text_color` all the same — the spec calls colour a knob, and a
-            // line is not a label.
+            // White core over a dark halo, which is the label style and the one
+            // combination already shown to survive both Acrithia's pale desert
+            // and Deadlands' near-black — the same problem a line crossing 53
+            // regions has. Separate from `text_color` all the same: the spec
+            // calls colour a knob, and a line is not a label.
+            //
+            // The halo used to be black and is now the two faction colours,
+            // which costs less contrast than it sounds like. Both tints are
+            // dark enough (luminance ~95 and ~90 against white's 255) to hold
+            // the core off pale terrain, and where they cannot — Deadlands,
+            // where they are close to the ground they sit on — what is left is
+            // a white line on near-black, which needed no halo to begin with.
             frontline_color: Rgba([255, 255, 255, 255]),
-            frontline_halo: Some(Rgba([0, 0, 0, 255])),
-            frontline_halo_ratio: 2.0,
+            // 3.0, not the 2.0 a plain halo wanted. Two thirds of the halo is
+            // now the only thing saying which side is which, and at 2.0 the
+            // visible band is half a line width — under a pixel once the full
+            // map is downscaled, which is a colour nobody can name.
+            frontline_halo_ratio: 3.0,
         }
     }
 }
@@ -473,7 +489,7 @@ pub fn place_image_info<P>(
     static_data: &StaticMapData,
     draw_text: bool,
     background_img_path: &P,
-    frontline: &[Polyline],
+    frontline: &[Edge],
     config: &RenderConfig,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, RenderError>
 where
@@ -598,7 +614,7 @@ fn tint_region(canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, color: Rgba<u8>, str
 /// exactly instead of stopping a stroke-width short of it.
 pub fn draw_frontline(
     canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
-    lines: &[Polyline],
+    lines: &[Edge],
     config: &RenderConfig,
 ) {
     if !config.frontline || lines.is_empty() {
@@ -607,11 +623,28 @@ pub fn draw_frontline(
 
     let width = config.frontline_width(canvas.width());
 
-    if let Some(halo) = config.frontline_halo {
-        stroke(canvas, lines, width * config.frontline_halo_ratio, halo);
-    }
+    stroke(
+        canvas,
+        lines,
+        width * config.frontline_halo_ratio,
+        Paint::Flanked {
+            colonial: config.colonial_tint,
+            warden: config.warden_tint,
+        },
+    );
 
-    stroke(canvas, lines, width, config.frontline_color);
+    stroke(canvas, lines, width, Paint::Flat(config.frontline_color));
+}
+
+/// How one stroke pass colours itself.
+#[derive(Debug, Clone, Copy)]
+enum Paint {
+    /// One colour for the whole stroke.
+    Flat(Rgba<u8>),
+    /// Each faction's colour on its own side of the line, split down the
+    /// segment. See [`Edge::colonial_side`] — the side comes from the field, and
+    /// the sign test below is the geometric half of that same convention.
+    Flanked { colonial: Rgba<u8>, warden: Rgba<u8> },
 }
 
 /// Paints polylines at a given width, masked by the canvas's own alpha.
@@ -626,17 +659,27 @@ pub fn draw_frontline(
 /// line's length rather than to the canvas.
 fn stroke(
     canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
-    lines: &[Polyline],
+    lines: &[Edge],
     width: f32,
-    color: Rgba<u8>,
+    paint: Paint,
 ) {
     let radius = (width / 2.0).max(0.5);
     let canvas_w = canvas.width() as i64;
     let canvas_h = canvas.height() as i64;
 
     for line in lines {
-        for pair in line.windows(2) {
+        for (index, pair) in line.points.windows(2).enumerate() {
             let (from, to) = (pair[0], pair[1]);
+            let (dx, dy) = (to.0 - from.0, to.1 - from.1);
+
+            // A zero-length segment has no sides to split, and painting it flat
+            // would put a disc of one faction's colour across both flanks. The
+            // segments either side of it cover the same pixels anyway.
+            if matches!(paint, Paint::Flanked { .. }) && dx * dx + dy * dy <= f32::EPSILON {
+                continue;
+            }
+
+            let colonial_side = line.colonial_side.get(index).copied().unwrap_or(true);
 
             // Clamped to the canvas rather than tested inside the loop, so a
             // segment belonging to a different hex costs nothing at all. On the
@@ -660,6 +703,22 @@ fn stroke(
                     if coverage <= 0.0 {
                         continue;
                     }
+
+                    let color = match paint {
+                        Paint::Flat(color) => color,
+                        Paint::Flanked { colonial, warden } => {
+                            // Positive is the `(-dy, dx)` side, which is the
+                            // side `Edge::colonial_side` is stated about.
+                            let side = dx * (y as f32 + 0.5 - from.1)
+                                - dy * (x as f32 + 0.5 - from.0);
+
+                            if (side > 0.0) == colonial_side {
+                                colonial
+                            } else {
+                                warden
+                            }
+                        }
+                    };
 
                     let pixel = canvas.get_pixel_mut(x as u32, y as u32);
                     let weight = coverage * (pixel.0[3] as f32 / 255.0)
@@ -989,8 +1048,15 @@ mod tests {
 
     /// Straight down the middle, running past the canvas at both ends the way
     /// a real contour is meant to.
-    fn line() -> Vec<Polyline> {
-        vec![vec![(32.0, -20.0), (32.0, 84.0)]]
+    ///
+    /// Walking downward with Colonial ground on the `(-dy, dx)` side puts them
+    /// on the left of the canvas: `d = (0, +104)`, so that side is `(-104, 0)`,
+    /// which points at decreasing x.
+    fn line() -> Vec<Edge> {
+        vec![Edge {
+            points: vec![(32.0, -20.0), (32.0, 84.0)],
+            colonial_side: vec![true],
+        }]
     }
 
     /// Width is pinned rather than taken from the default, so these tests keep
@@ -1056,6 +1122,60 @@ mod tests {
     }
 
     #[test]
+    fn each_faction_gets_the_flank_the_field_gave_it() {
+        let mut opaque = canvas(255);
+
+        draw_frontline(&mut opaque, &line(), &config());
+
+        // Six pixels of line on a 3.0 halo leaves nine either side of centre, so
+        // x = 26 and x = 38 are both inside the coloured band and clear of the
+        // white core.
+        let left = opaque.get_pixel(26, 32).0;
+        let right = opaque.get_pixel(38, 32).0;
+        let config = config();
+
+        assert_eq!(
+            [left[0], left[1], left[2]],
+            [
+                config.colonial_tint.0[0],
+                config.colonial_tint.0[1],
+                config.colonial_tint.0[2]
+            ],
+            "the Colonial side of the walk should carry the Colonial colour"
+        );
+        assert_eq!(
+            [right[0], right[1], right[2]],
+            [
+                config.warden_tint.0[0],
+                config.warden_tint.0[1],
+                config.warden_tint.0[2]
+            ],
+            "the other side should carry the Warden colour"
+        );
+    }
+
+    #[test]
+    fn reversing_the_walk_does_not_swap_the_factions() {
+        // The whole reason the side is carried rather than derived: `chain`
+        // hands back polylines pointing whichever way it happened to walk them.
+        // The same front described backwards has to paint the same picture.
+        let mut forward = canvas(255);
+        let mut backward = canvas(255);
+
+        draw_frontline(&mut forward, &line(), &config());
+        draw_frontline(
+            &mut backward,
+            &[Edge {
+                points: vec![(32.0, 84.0), (32.0, -20.0)],
+                colonial_side: vec![false],
+            }],
+            &config(),
+        );
+
+        assert_eq!(forward, backward);
+    }
+
+    #[test]
     fn the_full_map_sizes_its_stroke_backwards() {
         let config = RenderConfig::default();
         let scale = 0.2;
@@ -1069,3 +1189,4 @@ mod tests {
         assert!((finished - config.full_map_frontline_px).abs() < 0.5);
     }
 }
+

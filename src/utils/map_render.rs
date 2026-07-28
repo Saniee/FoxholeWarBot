@@ -24,7 +24,7 @@ use super::cache::{
 use super::db::Shard;
 use super::http;
 use super::regions::{self, Region, REGIONS};
-use super::frontline::{self, Polyline};
+use super::frontline::{self, Edge};
 use super::request_processing::{
     draw_frontline, draw_region_labels, load_background, place_image_info, RegionLabel,
     RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
@@ -209,7 +209,7 @@ async fn region_frontline(
     map_name: &str,
     own_data: &DynamicMapData,
     config: &RenderConfig,
-) -> Vec<Polyline> {
+) -> Vec<Edge> {
     if !config.frontline {
         return Vec::new();
     }
@@ -279,9 +279,15 @@ async fn region_frontline(
     };
 
     let lines = frontline::smooth(frontline::contour(&field), frontline::SMOOTHING_ROUNDS);
+    let edges = frontline::flanks(
+        lines,
+        &sources,
+        config.influence_model(),
+        config.field_spacing(),
+    );
     let (origin_x, origin_y) = config.grid_offset(region.col, region.row);
 
-    translate(&lines, origin_x, origin_y)
+    translate(&edges, origin_x, origin_y)
 }
 
 /// Fetches (revalidating against the on-disk cache) and renders one region.
@@ -559,7 +565,7 @@ fn world_frontline(
     canvas_w: u32,
     canvas_h: u32,
     config: &RenderConfig,
-) -> Vec<Polyline> {
+) -> Vec<Edge> {
     if !config.frontline {
         return Vec::new();
     }
@@ -594,17 +600,31 @@ fn world_frontline(
         return Vec::new();
     };
 
-    frontline::smooth(frontline::contour(&field), frontline::SMOOTHING_ROUNDS)
+    let lines = frontline::smooth(frontline::contour(&field), frontline::SMOOTHING_ROUNDS);
+
+    frontline::flanks(
+        lines,
+        &sources,
+        config.influence_model(),
+        config.field_spacing(),
+    )
 }
 
-/// The same polylines, moved from world space into a tile's own pixels.
-fn translate(lines: &[Polyline], origin_x: u32, origin_y: u32) -> Vec<Polyline> {
-    lines
+/// The same edges, moved from world space into a tile's own pixels.
+///
+/// A translation and nothing else, which is what lets the sides survive it: the
+/// flank each segment carries is a handedness, and a shift preserves it where a
+/// mirror would silently swap the two factions over.
+fn translate(edges: &[Edge], origin_x: u32, origin_y: u32) -> Vec<Edge> {
+    edges
         .iter()
-        .map(|line| {
-            line.iter()
+        .map(|edge| Edge {
+            points: edge
+                .points
+                .iter()
                 .map(|(x, y)| (x - origin_x as f32, y - origin_y as f32))
-                .collect()
+                .collect(),
+            colonial_side: edge.colonial_side.clone(),
         })
         .collect()
 }

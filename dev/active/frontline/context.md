@@ -7,16 +7,18 @@ same branch).
 
 ## Current state
 
-**§1–§5 done and pushed; §6 is under way against real feedback.** `/set-guild-settings` has a
+**§1–§7 done and pushed; only §8 (promotion) is left.** `/set-guild-settings` has a
 `frontline` option, off by default, honoured by `/get-map`, `/full-map` and both branches of the
-scheduled tick. Migration `0006` runs at startup. 22 tests; clippy clean but for the two
+scheduled tick. Migration `0006` runs at startup. 26 tests; clippy clean but for the two
 pre-existing warnings (`schedule_report.rs:24` too many arguments, `db.rs:202` large enum variant).
 
 Commits: `25c2b19` neighbours · `1e6909b` field · `90e0ddc` drawing · `fa44c0a` neighbour fetch ·
 `8c17de0` toggle · `fafaba7` state · `43682bd` falloff (superseded, see below) ·
-`c46ee0e` + `46ef743` the two-tone-edge spec · **footings (this one)**.
+`c46ee0e` + `46ef743` the two-tone-edge spec · `577df8d` footings · **the two-tone edge (this one)**.
 
-**Two rounds of live-war feedback are in. The answer is `footings` — one point per cluster of
+**Three rounds of live-war feedback are in, and the centring is accepted** — round 3 was
+"quicker, and looks passable" on both the full map and the Callahans Passage hex. The two rounds
+before it are what got there, and the answer was `footings` — one point per cluster of
 structures, not one per building.** Round 1: the line leaned onto the Colonial side, about a
 quarter of the way across instead of half. Round 2 ("not sure if it's better"): straighter on
 centring, but visibly *angular* — long flat runs with sharp steps, and boxy notches near Marban
@@ -43,9 +45,28 @@ not less, because it drops the friendly-neighbour count that closes them.
 the full-map field went 334 ms → 21 ms, clustering costing 0.2 ms. The headroom is deliberately not
 spent on finer sampling — that would undo the island suppression.
 
-**Next: round 3 of feedback on the clustered line.** If it still leans, `footing_cluster_ratio`
-(100 px) is the knob, not the exponent. If it looks like it ignores a fortified town, the answer is
-`weight = sqrt(count)` in `footings`, not a return to counting icons.
+If centring ever comes back as a complaint: `footing_cluster_ratio` (100 px) is the knob, not the
+exponent. If the line looks like it ignores a fortified town, the answer is `weight = sqrt(count)`
+in `footings`, not a return to counting icons.
+
+**§7, the two-tone edge, is built.** The halo is no longer black — it is `colonial_tint` on one
+flank and `warden_tint` on the other, with the white core covering the middle, so the line says
+whose ground is whose along its whole length at no cost in space. `frontline_halo_ratio` went to
+3.0 because two thirds of the halo now carries that answer and half a line width is sub-pixel once
+the full map is downscaled.
+
+**The one thing not to get wrong here: the side comes from the field, never from the polyline.**
+`chain` walks segments in whatever order it finds them and reverses them freely to attach, so a
+polyline's winding is an accident of iteration. `flanks` probes both sides of each segment midpoint
+and compares `influence` — two-sided, because Chaikin moves the line off `F = 0` by up to a cell and
+a single probe can land back across the contour. The answer rides in `Edge::colonial_side`, one flag
+per segment, and `translate` stays a pure shift so it cannot mirror them.
+`reversing_the_walk_does_not_swap_the_factions` is the test that would catch a regression.
+
+**Next: §8, promotion** — `specs/active/frontline.md` → `specs/`, update `specs/README.md` (it
+still says `specs/active/` is empty as of 2.0), move `dev/active/frontline/` → `dev/done/`. Worth
+one more live look at the coloured sides first, since nothing but a synthetic render has been seen
+of them.
 
 **The full-map draw-order question is settled: draw before the downscale**, as the spec always
 said. The region-name precedent does not transfer — what the downscale destroys is *internal*
@@ -57,7 +78,8 @@ corners are filled in by neighbours. Written into the spec. Do not reopen.
 The `frontline` module's surface, all of it world-space pixels in and out:
 `sources_in(region, dynamic, config) -> Vec<Source>` · `Bounds::around_region(region, config,
 margin)` · `footings(sources, radius) -> Vec<Source>` · `Field::sample(sources, bounds, spacing, Model)
--> Option<Field>` · `contour(&Field) -> Vec<Polyline>` · `smooth(lines, rounds)`.
+-> Option<Field>` · `contour(&Field) -> Vec<Polyline>` · `smooth(lines, rounds)` ·
+`flanks(lines, sources, Model, probe) -> Vec<Edge>`.
 `spacing`, `radius` and `Model` are parameters rather than config fields on purpose — the config
 wires `field_spacing()`, `footing_radius()` and `influence_model()` to them, and the module stays
 testable without a `RenderConfig` full of drawing knobs.

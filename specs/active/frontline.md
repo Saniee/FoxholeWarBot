@@ -203,10 +203,14 @@ that edge exactly as it would have without the feature, which is strictly better
    two rounds on a bending front: worst slope change 0.183 → 0.105 rad while the *total* turning
    is unchanged, which is corner cutting rather than straightening — the line stays where the
    field put it.
-3. **Draw.** Scale the polylines to canvas space and stroke at `frontline_width_ratio`, in
-   `frontline_color`, with the wider `frontline_halo` laid down first so the line survives on the
-   dark hexes (Deadlands, Umbral Wildwood) where a dark line on dark terrain would vanish.
-4. **Run the line to the hex edge, then mask.** The field is sampled over an area **larger than
+3. **Ask the field which side is whose**, once the line is smoothed and before it leaves world
+   space — `flanks`, one flag per segment. See "Saying which side is which" for why this cannot
+   come from the polyline's own direction.
+4. **Draw.** Scale the edges to canvas space and stroke at `frontline_width_ratio`, in
+   `frontline_color`, over a wider halo laid down first — split down the line into each faction's
+   colour — so the line survives on the dark hexes (Deadlands, Umbral Wildwood) where a dark line
+   on dark terrain would vanish.
+5. **Run the line to the hex edge, then mask.** The field is sampled over an area **larger than
    the hex** and the contour is traced across all of it; only then is the stroke masked by the
    background's own alpha.
 
@@ -264,8 +268,10 @@ particular are meant to be tuned by eye against a live render:
 | `influence_falloff: u32` | the `k` of `w / (d² + ε)^k` | `1` |
 | `footing_cluster_ratio: f32` | how close same-side structures merge into one footing | `100.0 / REGION_WIDTH` |
 | `frontline_color` | stroke | white |
-| `frontline_halo` | wider under-stroke | opaque black |
-| `frontline_halo_ratio: f32` | halo width as a multiple of the line | `2.0` |
+| `frontline_halo_ratio: f32` | halo width as a multiple of the line | `3.0` |
+
+The halo has no colour of its own: it is painted in `colonial_tint` and `warden_tint`, a side each,
+which is how the line says whose ground is whose. See "Saying which side is which".
 
 Six of these carry a reason beyond taste:
 
@@ -289,7 +295,7 @@ Six of these carry a reason beyond taste:
   should already have produced islands up to 113 px wide, and the live war produced none — real
   outposts sit closer to friendly support than the worst case assumes. It is a guide to which
   direction to move a knob, not a number to tune against.
-- **`frontline_halo` is opaque, not semi-transparent as first drafted.** Segments are stroked one
+- **The halo colours are opaque, not semi-transparent as first drafted.** Segments are stroked one
   at a time and overlap at every vertex, so a translucent halo blends twice there and beads
   visibly along the line. Opaque blending is idempotent.
 - **The colours are the label style**, light stroke over a dark halo. That combination is already
@@ -301,38 +307,51 @@ The reference measures 2 px on a 1024-wide hex, but it is a rough vision rather 
 specification and the user has asked for **somewhat wider**; 5 px is that, and it is a knob, not a
 conclusion.
 
-## Saying which side is which — **planned, not built**
+## Saying which side is which
 
 A bare line says *where* the boundary is and nothing about *whose* ground lies either side of it.
 On a hex where a player already knows the war that reads fine; on `/full-map`, or on a hex someone
-opened cold, it is a stripe across a picture. This section is gated on the centring work above
-landing — a legend on a line that sits in the wrong place is worse than no legend.
+opened cold, it is a stripe across a picture.
 
-**Decided: A, the two-tone edge.** Both were asked for and both are written up below, because the
-argument for A is the reason to keep B available if it turns out not to be enough. B is not queued
-work — do not build it speculatively.
+**Built: the two-tone edge.** The halo the line already sat on is now the two faction colours —
+`colonial_tint` on the Colonial flank, `warden_tint` on the Warden — so the answer is carried along
+the whole length of the boundary at no cost in space. It replaced the black halo rather than being
+added outside it, which keeps the line the same weight it was.
 
-**A. A two-tone edge.** The stroke already lays a wider halo down before the line. Give that halo a
-faction colour per side — `colonial_tint` on the Colonial flank, `warden_tint` on the Warden — and
-the answer is carried along the entire length of the boundary at no cost in space. This is the
-recommended default:
+- It reuses the per-segment rasteriser. Splitting a segment down the middle is the existing
+  distance-to-segment coverage test plus the sign of `dx·(py−y0) − dy·(px−x0)`, so it costs a
+  comparison per painted pixel, not a new renderer.
+- **Which flank is which is a question the field answers, never the polyline.** A polyline's
+  direction falls out of the order `chain` happened to walk the segments, and `chain` reverses
+  segments freely to attach them — so the winding is an accident of iteration, not a fact about the
+  war. Inferring the flank from it would be right about half the time, per polyline: correct in one
+  screenshot and inverted in the next. `flanks` steps off each segment midpoint along its normal in
+  both directions, evaluates `influence` at both, and records which side is the larger. The answer
+  travels with the geometry in `Edge::colonial_side`, one flag per segment, and `translate` is a
+  pure shift precisely so it cannot mirror them.
+- Sampled on **both** sides and compared, not tested for sign on one. The line sits where `F = 0`
+  and Chaikin then moves it by up to a cell, so a single probe can land back across the contour and
+  read the wrong side; the difference between two only flips if the probe overshoots the far side of
+  the front entirely. One field cell is the right step for the same reason — shorter is inside the
+  noise, much longer starts sampling where the front has curved away.
+- `frontline_halo_ratio` went 2.0 → 3.0 with it. Two thirds of the halo is now the only thing
+  saying which side is which, and at 2.0 the visible band is half a line width — under a pixel once
+  the full map is downscaled, which is a colour nobody can name. At 3.0 each band is about as thick
+  as the line itself.
+- **Losing the black halo costs less contrast than it sounds like.** Both tints are dark (luminance
+  ~95 and ~90 against white's 255), so they hold the white core off pale terrain the way black did.
+  Where they cannot — Deadlands, whose ground is about as dark as they are — what is left is a white
+  line on near-black, which never needed a halo.
+- It agrees with `faction_tint` by construction, reusing its two colours: the wash and the line now
+  answer the same question at different resolutions instead of contradicting each other on a
+  contested hex.
+- It survives the full map's downscale for the same reason the stroke does — a band has no internal
+  detail to lose — and is sized backwards through `for_full_map` along with the stroke it is a
+  multiple of.
 
-- It reuses the existing per-segment rasteriser. A band is the same distance-to-segment coverage
-  test with the sign of the offset taken into account, so it costs one extra pass, not a new
-  renderer.
-- **Which flank is which is a question the field already answers.** The polyline's own direction is
-  arbitrary — it falls out of the order `chain` happened to walk the segments — so orientation must
-  not be inferred from it. Step off the segment midpoint along its normal in both directions and
-  evaluate `influence` there: positive is Colonial. Two evaluations per segment against a few
-  hundred segments is free next to the field itself.
-- It survives the full map's downscale for the same reason the stroke does: a band has no internal
-  detail to lose. It does need sizing backwards through `for_full_map` like everything else.
-- It agrees with `faction_tint` by construction if it reuses the same two colours, and the two
-  features then answer the same question at different resolutions rather than contradicting each
-  other on a contested hex.
-
-**B. Text along the line.** More explicit, and the only option that survives being screenshotted
-without a caption. Costs more:
+**Rejected: text along the line.** Asked for as the alternative and written up here so the fallback
+stays costed, not because it is queued. Build it only if the two-tone edge turns out not to be
+enough:
 
 - Glyphs following a curve need per-glyph placement and rotation along the tangent. `ab_glyph` can
   transform an outline, but nothing in this crate does it today — every label the renderer draws is
@@ -345,9 +364,8 @@ without a caption. Costs more:
   machinery, and it reads at hex scale. It does not read at full-map scale, which argues for making
   it hex-only rather than for making it curved.
 
-A is continuous, cheap, scale-free and needs no space; B is a per-location annotation that has to
-compete with icons and region names for room. If B ever does ship it is not a second setting — the
-guild has already opted into a frontline and should not have to opt into being told what it means.
+Either way it is not a second setting — the guild has already opted into a frontline and should not
+have to opt into being told what it means.
 
 ## Command surface
 

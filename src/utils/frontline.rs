@@ -566,6 +566,78 @@ fn chaikin(line: Polyline) -> Polyline {
     cut
 }
 
+/// A traced boundary, with the faction whose ground lies on each side of it.
+///
+/// The sides are carried alongside the points because they **cannot be
+/// recovered from them**. [`chain`] walks segments in whatever order it finds
+/// them and reverses them freely to attach, so a polyline's direction is an
+/// accident of iteration order rather than anything about the war. Inferring
+/// the flank from the winding would be right about half the time — and per
+/// polyline, so it would look correct in one screenshot and inverted in the
+/// next, which is the worst way for this to be wrong.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Edge {
+    pub points: Polyline,
+    /// One entry per segment, so `points.len() - 1` long. `true` when Colonial
+    /// ground lies on the `(-dy, dx)` side of the walk from `points[i]` to
+    /// `points[i + 1]` — the side a renderer finds by the sign of
+    /// `dx * (py - y0) - dy * (px - x0)` being positive.
+    pub colonial_side: Vec<bool>,
+}
+
+/// Asks the field which flank is whose, one segment at a time.
+///
+/// Sampled on both sides and compared, rather than testing the sign of a single
+/// probe. The line sits where `F = 0` and Chaikin then moves it by up to a cell,
+/// so a lone sample can land back across the contour and read the wrong side;
+/// the *difference* between the two only flips if the probe overshoots the far
+/// side of the front entirely.
+///
+/// `probe` is that step, in world pixels. One field cell is the right size: the
+/// contour is located to about a cell, so anything shorter is inside the noise
+/// and anything much longer starts sampling a different part of the front where
+/// the line curves.
+///
+/// Per segment rather than per polyline, though the answer is constant along a
+/// connected walk: it costs a few thousand field evaluations against 21 ms of
+/// sampling, and it cannot be broken by a contour that pinches or by segments
+/// that arrive out of order.
+pub fn flanks(lines: Vec<Polyline>, sources: &[Source], model: Model, probe: f32) -> Vec<Edge> {
+    lines
+        .into_iter()
+        .map(|points| {
+            let mut colonial_side = Vec::with_capacity(points.len().saturating_sub(1));
+
+            for pair in points.windows(2) {
+                let ((from_x, from_y), (to_x, to_y)) = (pair[0], pair[1]);
+                let (dx, dy) = (to_x - from_x, to_y - from_y);
+                let length = (dx * dx + dy * dy).sqrt();
+
+                if length <= f32::EPSILON {
+                    // Marching squares can emit a crossing twice on a grid
+                    // corner. It has no sides; inherit the run it sits in so
+                    // the flags stay aligned with the segments.
+                    colonial_side.push(colonial_side.last().copied().unwrap_or(true));
+                    continue;
+                }
+
+                let (step_x, step_y) = (-dy / length * probe, dx / length * probe);
+                let (mid_x, mid_y) = ((from_x + to_x) / 2.0, (from_y + to_y) / 2.0);
+
+                colonial_side.push(
+                    influence(sources, mid_x + step_x, mid_y + step_y, model)
+                        > influence(sources, mid_x - step_x, mid_y - step_y, model),
+                );
+            }
+
+            Edge {
+                points,
+                colonial_side,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -834,6 +906,46 @@ mod tests {
             merged[0].weight, 1.0,
             "a town of four weighs the same as the lone base — one foothold"
         );
+    }
+
+    #[test]
+    fn the_flank_follows_the_field_and_not_the_winding() {
+        // Colonials west, Wardens east, so the line runs north-south and
+        // Colonial ground is on whichever side faces decreasing x.
+        let sources = vec![colonial(120.0, 250.0), warden(380.0, 250.0)];
+
+        let walks = [
+            vec![(250.0, 100.0), (250.0, 400.0)],
+            vec![(250.0, 400.0), (250.0, 100.0)],
+        ];
+
+        for points in walks {
+            let downward = points[1].1 > points[0].1;
+            let edges = flanks(vec![points], &sources, model(), 32.0);
+
+            // Walking down the map, `(-dy, dx)` points west; walking up, east.
+            // So a flag that reports the field faithfully has to flip with the
+            // direction, and one derived from the winding would not.
+            assert_eq!(
+                edges[0].colonial_side,
+                vec![downward],
+                "the Colonial flank moved when only the walk direction did"
+            );
+        }
+    }
+
+    #[test]
+    fn every_segment_gets_a_side() {
+        let edges = flanks(
+            vec![vec![(250.0, 100.0), (250.0, 250.0), (250.0, 400.0)]],
+            &contested(),
+            model(),
+            32.0,
+        );
+
+        // The renderer indexes the flags by segment. One short and the last
+        // segment silently falls back to a default.
+        assert_eq!(edges[0].colonial_side.len(), edges[0].points.len() - 1);
     }
 
     fn contested_wavy() -> Vec<Source> {

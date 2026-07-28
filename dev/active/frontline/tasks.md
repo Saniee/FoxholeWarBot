@@ -108,27 +108,33 @@ next, and most of it needs a live war rather than more code.
       `O(cells × points)` and 1995 points become 128
 - [x] Clustering runs across the whole collected point set, never per region — a town on a hex
       boundary is split across two API responses
-- [ ] **Round 3: feedback on the clustered line.** If it still leans, `footing_cluster_ratio`
-      (100 px) is the knob, **not** `influence_falloff` — that has now been the wrong answer once.
-      If it looks like it ignores a fortified town, `weight = sqrt(count)` in `footings`, not a
-      return to counting icons
+- [x] **Round 3: "quicker, and looks passable."** Centring accepted on both `/full-map` and the
+      Callahans Passage hex, which settles §6 and unblocks §7. If it ever comes back,
+      `footing_cluster_ratio` (100 px) is still the knob, **not** `influence_falloff` — that has
+      been the wrong answer once. If it looks like it ignores a fortified town,
+      `weight = sqrt(count)` in `footings`, not a return to counting icons
 - [x] Acceptance criteria measured so far: off ⇒ byte-identical; the line reaches the silhouette
       with no gap (13 edge pixels painted at each end it exits by); nothing lands in the
       transparent corners. The rest need real data
 - [x] `cargo clippy` clean (the two pre-existing warnings excepted) — keep it that way
-## 7. Saying which side is which — **gated on §6, requested 2026-07-28**
+## 7. Saying which side is which — **done**
 
-A bare line does not say whose ground is on either side of it. Spec section "Saying which side is
-which". **Do not start this until the centring is settled** — a legend on a misplaced line is worse
-than no legend.
-
-- [ ] **A: two-tone halo**, `colonial_tint` one flank, `warden_tint` the other. **Chosen by the
-      user 2026-07-28 — this is the one to build; do not re-open the comparison.** Reuses the
-      per-segment rasteriser; sizes backwards through `for_full_map` like every other width
-- [ ] **Get the side from the field, never from the polyline.** `chain` walks segments in whatever
-      order it finds them, so a polyline's direction is arbitrary and inferring the flank from it
-      will be right about half the time — the worst kind of bug to see in a screenshot. Step off
-      the segment midpoint along its normal and evaluate `influence`: positive is Colonial
+- [x] **Two-tone halo**, `colonial_tint` one flank, `warden_tint` the other. **Replaces** the black
+      halo rather than sitting outside it, so the line keeps the weight it had. Reuses the
+      per-segment rasteriser — the split is the sign of `dx·(py−y0) − dy·(px−x0)` against a flag,
+      one comparison per painted pixel — and sizes backwards through `for_full_map` as a multiple
+      of the stroke
+- [x] **The side comes from the field, never from the polyline.** `frontline::flanks` steps off
+      each segment midpoint along its normal *both* ways and compares `influence`; the answer rides
+      along in `Edge::colonial_side`, one flag per segment. Two-sided rather than one-sided because
+      Chaikin moves the line off `F = 0` by up to a cell, and a single probe can land back across
+      the contour. `translate` is a pure shift so it cannot mirror the flags
+- [x] `frontline_halo_ratio` 2.0 → 3.0: two thirds of the halo is now the only thing carrying the
+      answer, and at 2.0 the visible band is half a line width — sub-pixel after the full-map
+      downscale
+- [x] Pinned by tests: the two flanks get the right colours, and **the same front walked backwards
+      renders identically** — the one that would have caught the winding bug. Eyeballed on a
+      synthetic wavy front before the scratch render was deleted
 - [ ] **B: text — not queued.** Kept written up only so the fallback is costed, not because it is
       scheduled. Build it only if the user asks again after seeing A. Prefer the horizontal `COLONIAL`/`WARDEN` pair offset
       either side of the normal at intervals over glyphs rotated along the tangent — nothing in the
