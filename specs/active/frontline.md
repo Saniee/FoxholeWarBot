@@ -279,6 +279,53 @@ The reference measures 2 px on a 1024-wide hex, but it is a rough vision rather 
 specification and the user has asked for **somewhat wider**; 5 px is that, and it is a knob, not a
 conclusion.
 
+## Saying which side is which — **planned, not built**
+
+A bare line says *where* the boundary is and nothing about *whose* ground lies either side of it.
+On a hex where a player already knows the war that reads fine; on `/full-map`, or on a hex someone
+opened cold, it is a stripe across a picture. This section is gated on the centring work above
+landing — a legend on a line that sits in the wrong place is worse than no legend.
+
+Two ways were asked for, and they are not exclusive:
+
+**A. A two-tone edge.** The stroke already lays a wider halo down before the line. Give that halo a
+faction colour per side — `colonial_tint` on the Colonial flank, `warden_tint` on the Warden — and
+the answer is carried along the entire length of the boundary at no cost in space. This is the
+recommended default:
+
+- It reuses the existing per-segment rasteriser. A band is the same distance-to-segment coverage
+  test with the sign of the offset taken into account, so it costs one extra pass, not a new
+  renderer.
+- **Which flank is which is a question the field already answers.** The polyline's own direction is
+  arbitrary — it falls out of the order `chain` happened to walk the segments — so orientation must
+  not be inferred from it. Step off the segment midpoint along its normal in both directions and
+  evaluate `influence` there: positive is Colonial. Two evaluations per segment against a few
+  hundred segments is free next to the field itself.
+- It survives the full map's downscale for the same reason the stroke does: a band has no internal
+  detail to lose. It does need sizing backwards through `for_full_map` like everything else.
+- It agrees with `faction_tint` by construction if it reuses the same two colours, and the two
+  features then answer the same question at different resolutions rather than contradicting each
+  other on a contested hex.
+
+**B. Text along the line.** More explicit, and the only option that survives being screenshotted
+without a caption. Costs more:
+
+- Glyphs following a curve need per-glyph placement and rotation along the tangent. `ab_glyph` can
+  transform an outline, but nothing in this crate does it today — every label the renderer draws is
+  axis-aligned.
+- It needs room. At `full_map_long_edge` 2048 a hex is about 205 px across, so a word set along the
+  line inside one hex is a handful of pixels tall. Region labels are already at 19 px there and
+  that is the floor of legibility.
+- A cheaper variant drops the curve: place a horizontal `COLONIAL` / `WARDEN` pair, offset either
+  side of the line's normal, at a few points spaced along it. No glyph rotation, no new text
+  machinery, and it reads at hex scale. It does not read at full-map scale, which argues for making
+  it hex-only rather than for making it curved.
+
+**Recommendation: build A, and treat B as hex-only if A turns out not to be enough on its own.** A
+is continuous, cheap, scale-free and needs no space; B is a per-location annotation that has to
+compete with icons and region names for room. If both ship they are one setting, not two — the
+guild has already opted into a frontline and should not have to opt into being told what it means.
+
 ## Command surface
 
 - A `guilds.frontline` boolean, set through `/set-guild-settings` alongside the faction tint, so

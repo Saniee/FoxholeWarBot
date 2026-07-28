@@ -107,5 +107,26 @@ next, and most of it needs a live war rather than more code.
       with no gap (13 edge pixels painted at each end it exits by); nothing lands in the
       transparent corners. The rest need real data
 - [x] `cargo clippy` clean (the two pre-existing warnings excepted) — keep it that way
+## 7. Saying which side is which — **gated on §6, requested 2026-07-28**
+
+A bare line does not say whose ground is on either side of it. Spec section "Saying which side is
+which". **Do not start this until the centring is settled** — a legend on a misplaced line is worse
+than no legend.
+
+- [ ] **A: two-tone halo**, `colonial_tint` one flank, `warden_tint` the other. Recommended, and
+      the default assumption unless the user says otherwise. Reuses the per-segment rasteriser;
+      sizes backwards through `for_full_map` like every other width
+- [ ] **Get the side from the field, never from the polyline.** `chain` walks segments in whatever
+      order it finds them, so a polyline's direction is arbitrary and inferring the flank from it
+      will be right about half the time — the worst kind of bug to see in a screenshot. Step off
+      the segment midpoint along its normal and evaluate `influence`: positive is Colonial
+- [ ] **B: text**, only if A is not enough. Prefer the horizontal `COLONIAL`/`WARDEN` pair offset
+      either side of the normal at intervals over glyphs rotated along the tangent — nothing in the
+      crate rotates text today, and at 2048 a hex is ~205 px across, where curved text is a few
+      pixels tall against a 19 px region-label floor. Hex-only if it ships
+- [ ] One setting, not two. A guild that opted into a frontline should not also have to opt into
+      being told what it means
+
+## 8. Promotion
 - [ ] Promote `specs/active/frontline.md` → `specs/`, update `specs/README.md`, move
       `dev/active/frontline/` → `dev/done/`
