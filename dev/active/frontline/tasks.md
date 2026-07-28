@@ -2,7 +2,7 @@
 
 Spec: `specs/active/frontline.md`. Context: `dev/active/frontline/context.md`.
 
-Ordered so each step is verifiable before the next depends on it. Nothing below is started.
+Ordered so each step is verifiable before the next depends on it. §1 is done; §2 is next.
 
 ## 1. Neighbours (no rendering involved) — **done**
 - [x] `regions::neighbours(&Region) -> Vec<&'static Region>` from odd-q `(col, row)` arithmetic
@@ -28,7 +28,14 @@ Ordered so each step is verifiable before the next depends on it. Nothing below 
 - [ ] **Sample past the hex bounds, then mask by the background's alpha** — reaches the silhouette
       with no gap, and nothing lands in the transparent corners
 - [ ] Tune width and colour by eye on a live render; the spec's values are starting points
-- [ ] `/full-map`: draw on the full-res composite, width sized backwards from the finished image
+- [ ] `/full-map`: **decide draw-before or draw-after the downscale first** — the region-name work
+      changed what the cheaper option is, see context.md. Before ⇒ width sized backwards via
+      `full_map_frontline_px`; after ⇒ the contour is scaled and stroked at final width, and
+      `for_full_map` needs nothing
+- [ ] Verify by rendering locally, the way the labels were: a `#[cfg(test)]` render to
+      `scratchpad/`, no API and no Discord. `composite_full_map` takes `Vec<Tile>` with `None`
+      data, and `place_image_info` takes hand-built `DynamicMapData` — synthetic structures on
+      two sides are exactly what a contour test wants
 
 ## 4. Fetching
 - [ ] `/get-map` fetches neighbours' dynamic data; a failed neighbour warns and does not fail

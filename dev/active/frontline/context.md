@@ -7,7 +7,12 @@ same branch).
 
 ## Current state
 
-**Spec reviewed and approved by the user. No code yet — start at `tasks.md` §1.**
+**§1 done and pushed** (`25c2b19`): `regions::neighbours` + four unit tests. Nothing else started.
+**Next is `tasks.md` §2, the field.**
+
+Two unrelated pieces of work landed on this branch in between and both touch code this feature
+will edit — read the notes below before assuming the files look like the spec describes:
+`8161a36` (offline/unreachable shards) and `cc9a0cf` (full-map region names, one label style).
 
 ## Decisions already made (user's calls, don't re-ask)
 
@@ -22,11 +27,13 @@ same branch).
 
 ## Established by measurement, not assumed
 
-- **Neighbours are derivable, no table needed.** `regions.rs` is a flat-top **odd-q** offset grid
-  (odd columns half a hex lower). The six-neighbour arithmetic in the spec was checked against the
-  shipped table: symmetric for all 53 regions, degrees 2–6, and it reproduces real geography
-  (Deadlands ↔ Callahans Passage, Umbral Wildwood, Linn of Mercy, Loch Mór, Marban Hollow,
-  Drowned Vale). This belongs in a unit test.
+- **Neighbours are derivable, no table needed** — now shipped and tested, not just believed.
+  `regions.rs` is a flat-top **odd-q** offset grid (odd columns half a hex lower). Symmetric for
+  all 53, degrees 2–6, reproduces real geography.
+  **`REGIONS` is a `const`, so `ptr::eq` is not a valid identity test on regions** — each use
+  site can be handed its own promoted copy. The symmetry test failed on its first run against
+  arithmetic that was already right; compare `api_name`. Anything in §2 that wants a set or a
+  lookup of regions hits the same trap.
 - **Measured off the user's reference render** (one hex of Endless Shore, exactly 1024 × 888 —
   the same footprint the renderer uses): 2 px wide, plain black, unbroken edge to edge, smooth
   (max slope change 1.0 px/px, mean 0.39), stopping ~2 px inside the hex silhouette.
@@ -38,15 +45,55 @@ same branch).
   structures is 2×10⁹ ops. Sample at ~1/32 (~62k cells, ~10⁸ ops, a few hundred ms) and truncate
   influence with spatial binning if that isn't enough.
 
+## What the region-name work changed for this feature
+
+Three things, all of them useful, one of them a decision that has to be re-made.
+
+- **There is now a precedent for drawing at final size, after the downscale.** Region names are
+  drawn on the *scaled* image because text on a 1024 px tile is resampled with the terrain and
+  arrives as a smudge. A thin line has the same problem, so `/full-map`'s frontline is now an
+  open choice rather than the settled one in the spec: draw on the full-res composite and size
+  the width backwards (`full_map_frontline_px`, what the spec says), or scale the contour and
+  stroke it at final width afterwards (simpler, and `for_full_map` needs no new field). **Decide
+  this before writing §3**, and update the spec either way.
+- **`draw_haloed_text` in `request_processing.rs` is the halo the spec asks for**, already
+  written: a full square ring whose thickness scales with the feature (`px / 12`, min 1), not
+  four cardinal offsets — those leave the diagonals bare where a stroke is thinnest. The
+  frontline's halo should follow it rather than invent a second one.
+- **Order on the full map is now: tiles → downscale → region names.** The line goes *under* the
+  names, which is right — but it means "draw the frontline last" is no longer available on the
+  full map, and `composite_full_map` has a second post-downscale step to slot into.
+
+Also worth knowing: `text_color`/`text_outline` defaults changed (white on a dark halo), and hex
+labels now drop clear of the icon they'd otherwise cover. Neither affects the frontline, but the
+"off ⇒ byte-identical output" acceptance criterion is against **today's** renders, not the ones
+from before those commits.
+
+## Verifying without the API
+
+The API is blocked from this environment (`403` through the agent proxy) and was for the whole
+of the label work — which turned out not to matter, and the same trick serves the contour:
+
+- `composite_full_map(tiles, false, &config)` with every tile `(region, None)` renders the whole
+  world from local art alone.
+- `place_image_info` takes hand-built `DynamicMapData` / `StaticMapData`, so structures can be
+  placed exactly where a test wants them — two clusters either side of a hex is precisely the
+  input the field needs to be checked against.
+- Write the PNG into the scratchpad from a `#[cfg(test)]` module and look at it. **Delete the
+  module before committing**; two were written and removed this way already.
+
+This is faster than a live war for everything except the last question, "does the line sit where
+a player would draw it", which genuinely needs real data (§6).
+
 ## Key files (expected)
 
 - `src/utils/request_processing.rs` — `RenderConfig` gains the frontline ratios; `grid_offset` is
   the world-space anchor; `tint_region` is the precedent for alpha-aware compositing.
   `controlling_team` / `CONTROL_ICON_TYPES` are **neighbours of this work, not its basis** — see
   the model section for why their rule doesn't carry over.
-- `src/utils/regions.rs` — neighbour arithmetic from `(col, row)`.
-- `src/utils/map_render.rs` — `composite_full_map` draws at full res *before* the downscale, which
-  is where the line goes; `render_region` gains the neighbour fetches.
+- `src/utils/regions.rs` — **done.** `neighbours()` is there and tested.
+- `src/utils/map_render.rs` — `composite_full_map` now draws tiles, downscales, *then* labels via
+  `region_labels()`; `render_region` gains the neighbour fetches.
 - `src/utils/db.rs`, `migrations/`, `src/commands/set_guild_settings.rs`, `docs/` — the toggle.
 
 ## The model, and two rejected ones
@@ -85,10 +132,15 @@ judgement call most likely to be wrong — check it against a live war first.
 
 ## Next steps
 
-**Start `tasks.md` §1: `regions::neighbours` and its unit test.** It is the one piece verifiable
-with no rendering, no API and no database — the arithmetic and the four hand-checked adjacencies
-are already in the spec, so it can be written and proven in one sitting.
+**Start `tasks.md` §2: the field**, and finish it before touching §3. A contour can be checked as
+numbers long before it is checked as pixels, and no amount of visual tuning in §3 rescues a field
+that is wrong underneath it.
 
-Then §2 (the field) before §3 (drawing): a contour can be checked as numbers long before it is
-checked as pixels, and the visual tuning in §3 is worthless if the field underneath it is wrong.
-Leave §5 (migration + `docs/`) whole — it is one commit by repo rule.
+Concretely: world-space points from every faction-held structure, `F = Σ w/(d²+ε)` Colonial minus
+Warden, sampled coarsely, then marching squares at zero. Assert on the numbers — a hex held by one
+side has no zero crossing; two clusters either side produce one crossing between them, not several
+— before rendering anything. The degenerate case (no structures at all) is a guard, not a thing
+to let marching squares decide.
+
+Then §3, whose first act is the draw-before/draw-after decision above. Leave §5 (migration +
+`docs/`) whole — it is one commit by repo rule.
