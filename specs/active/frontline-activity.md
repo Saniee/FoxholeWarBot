@@ -1,7 +1,7 @@
 # Activity as tint intensity
 
-**Status: option C tried and rejected; B and A not started, and not recommended.** The apparatus is
-in the code behind a default-off flag; nothing user-facing changed. See "What the experiment found".
+**Status: option C tried and rejected; B and A not started, and not recommended.** Nothing of this
+is in the code — the experiment was reverted once it had answered. See "What the experiment found".
 
 Part 2 of the request that produced `specs/frontline-territory.md`, which shipped. That one decides
 *which* colour a pixel gets; this decides *how strong* it is: a region where the war is actually
@@ -112,10 +112,10 @@ be "close enough".
 
 ## What the experiment found
 
-Option C shipped as far as a render and no further: `RenderConfig::faction_tint_activity`, off by
-default and reachable from no command. Footing count per region, normalized against the busiest,
-spread across the map by `Field::with_activity`. Run against a live Able shard, it fails on both
-halves at once.
+Option C was built as far as a render and no further: a second value per cell on the influence grid,
+carrying each region's footing count normalized against the busiest, interpolated per pixel by the
+same pass that reads `F` and multiplied into the wash strength. Run against a live Able shard, it
+fails on both halves at once.
 
 **The proxy does not track the front.** The ranking is the finding, and it needs no interpretation:
 
@@ -149,11 +149,19 @@ policy, a docs change and a fresh-deployment fallback to find out.
 the drawn line already marks where the fighting is. Reopen this only if a live map is looked at and
 the flat wash is what is missing from it.
 
-The apparatus is kept rather than reverted — `Field::with_activity`, `Row::activity` and the two
-config knobs — because all three options are the same rendering change downstream of a different
-number, and B would rebuild exactly this. It is dead in production by construction: nothing sets the
-flag, and with the field carrying no readings `Row::activity` returns 1.0, so the wash is arithmetic
-identical to the one that shipped.
+**The apparatus was reverted with the result.** Keeping it was tempting — all three options are the
+same rendering change downstream of a different number, so B would rebuild it — but it was dead by
+construction, wired to no command and no setting, and a rejected experiment left in the tree is
+something every later reader has to work out the status of. This section is the durable part; the
+code was half a day and is described well enough here to redo.
+
+What it took, if it is ever redone: a second `Vec<f32>` on `Field` filled at the same grid points by
+normalized inverse-distance from the per-region figures (`Σ v/(d²+r²) / Σ 1/(d²+r²)`, with `r` about
+half a region across — plain IDW makes every hex centre a bullseye), read back by the same bilinear
+walk that reads `F`, and multiplied into the wash strength as `floor + (1-floor) × activity`. The
+two tests worth writing again are the ones that hold the one rule: assert the traced contour is
+*equal* before and after, and walk between two readings bounding the largest single step against the
+total, so the intensity can never come back as a hex lattice.
 
 ## The thing to get right: this reintroduces hex edges
 
@@ -179,6 +187,6 @@ So the intensity has to be a *field*, not a lookup:
 accuracy.** All three are the same rendering change downstream of a different number, so the
 experiment is not wasted whichever way it goes.
 
-C was done on those terms and came back negative, and the sentence above turned out to be the useful
-part of it: what the experiment left behind is the rendering change, ready for a better number if one
-is ever wanted.
+C was done on those terms and came back negative. The sentence above is still true and is why the
+rendering recipe is written down rather than kept as code: a better number would reuse the shape, not
+the lines.

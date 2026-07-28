@@ -13,11 +13,10 @@ request; Part 1 shipped the same day (`specs/frontline-territory.md`,
 Part 1 decides *which* colour a pixel gets. This decides *how strong* it is: a region where the war
 is being fought washes darker, a quiet backline washes faint.
 
-In the code, off by default and reachable from no command: `Field::with_activity` /
-`Row::activity` in `frontline.rs`, `activity_readings` in `map_render.rs`,
-`faction_tint_activity` + `faction_tint_activity_floor` in `RenderConfig`. Kept rather than
-reverted because B would rebuild exactly it; the only thing that would change is the number going
-in. With no readings, `Row::activity` returns 1.0 and the wash is arithmetic identical to shipped.
+**Nothing of it is in the code.** The experiment was reverted once it had answered — it was wired to
+no command and no setting, and a rejected experiment sitting in the tree is a status question for
+every later reader. `frontline.rs`, `map_render.rs` and `request_processing.rs` are exactly as the
+territory tint left them. The spec carries the recipe if it is ever redone.
 
 **The finding, in one line:** footing count does not track the front (both contested hexes rank
 below deep-backline ones) and its 3x spread is invisible at a safe floor. Turning the floor down far
