@@ -23,7 +23,8 @@ use super::db::Shard;
 use super::http;
 use super::regions::{self, Region, REGIONS};
 use super::request_processing::{
-    load_background, place_image_info, RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
+    draw_region_labels, load_background, place_image_info, RegionLabel, RenderConfig, RenderError,
+    REGION_HEIGHT, REGION_WIDTH,
 };
 
 /// Region fetches in flight at once during a full-map render.
@@ -340,6 +341,11 @@ fn composite_full_map(
     let scale = config.full_map_scale(canvas_w, canvas_h);
     let tile_config = config.for_full_map(scale);
 
+    // Taken before the loop consumes the tiles. Every region gets a name,
+    // including one drawn as bare terrain — a hex whose data didn't arrive is
+    // the one a user most needs identified.
+    let labels = region_labels(&tiles, scale, config);
+
     for (region, data) in tiles {
         let background = background_path(region.api_name);
 
@@ -360,7 +366,7 @@ fn composite_full_map(
         }
     }
 
-    let scaled = if scale < 1.0 {
+    let mut scaled = if scale < 1.0 {
         let width = ((canvas_w as f32 * scale).round() as u32).max(1);
         let height = ((canvas_h as f32 * scale).round() as u32).max(1);
 
@@ -369,7 +375,41 @@ fn composite_full_map(
         canvas
     };
 
+    // The last thing to touch the image, deliberately. Names are the layer the
+    // user reads the map *by*, so nothing is drawn over them and nothing
+    // resamples them.
+    if config.full_map_region_labels {
+        draw_region_labels(&mut scaled, &labels, config)?;
+    }
+
     encode_png(&scaled)
+}
+
+/// Where each region's name goes on the finished image, and how much room it
+/// has.
+///
+/// A hex is at its widest across its own vertical centre, and that is also the
+/// one height at which the neighbouring columns' art does not reach it: their
+/// centres sit half a hex above and below, so at this line they are at their
+/// own flat top or bottom edge, which spans only the middle half of their
+/// width. The two footprints meet exactly and never overlap — which is what
+/// makes a centred name safe at most of the hex's width.
+fn region_labels(tiles: &[Tile], scale: f32, config: &RenderConfig) -> Vec<RegionLabel> {
+    tiles
+        .iter()
+        .map(|(region, _)| {
+            let (x, y) = config.grid_offset(region.col, region.row);
+
+            RegionLabel {
+                text: region.display_name.to_string(),
+                center: (
+                    (x as f32 + REGION_WIDTH as f32 / 2.0) * scale,
+                    (y as f32 + REGION_HEIGHT as f32 / 2.0) * scale,
+                ),
+                max_width: REGION_WIDTH as f32 * scale * config.full_map_label_width_ratio,
+            }
+        })
+        .collect()
 }
 
 /// The canvas the placed tiles need, derived from the tiles themselves rather

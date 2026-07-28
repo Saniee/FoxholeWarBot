@@ -27,8 +27,10 @@ pub async fn full_map(ctx: Context<'_>) -> Result<(), Error> {
         ..RenderConfig::default()
     };
 
-    // No labels: at the composite's downscale, in-region text is a smudge. A
-    // per-hex region name drawn *after* the downscale is the v2 answer.
+    // Still no *in-region* labels: town and field names drawn on a 1024 px tile
+    // are resampled along with the terrain and arrive as a smudge. Region names
+    // are a different thing and are on — one per hex, drawn after the downscale
+    // at its final size (`specs/full-map-renderer.md` → Region names).
     let rendered = match render_full_map(&guild.shard, &guild.shard_name, false, config).await {
         Ok(rendered) => rendered,
         // Every failure path replies. A deferred interaction that never gets a

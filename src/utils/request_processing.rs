@@ -75,10 +75,30 @@ pub struct RenderConfig {
     /// so the two marker types are finally distinguishable — the API has always
     /// told us which is which, the old renderer just ignored it.
     pub minor_text_ratio: f32,
+    /// Fill for every label the bot draws — region names on the full map, and
+    /// the API's own town and field labels on a hex.
+    ///
+    /// Light fill over a dark halo, and one style for both, because the problem
+    /// is the same in both places: the terrain runs from Acrithia's pale desert
+    /// to Deadlands' near-black, and a label has to survive being drawn over an
+    /// icon as well as over open ground.
     pub text_color: Rgba<u8>,
-    /// 1 px outline for legibility over dark terrain. `None` preserves the
-    /// pre-rewrite flat-black look.
+    /// Halo laid down under the fill. `None` gives the pre-rewrite flat-black
+    /// text, which is unreadable the moment it crosses a dark icon — the reason
+    /// hex labels looked like they were *behind* the icons rather than on top
+    /// of them, which is where they have always actually been drawn.
     pub text_outline: Option<Rgba<u8>>,
+    /// Gap between an icon and the label sitting under it, as a fraction of the
+    /// region height.
+    ///
+    /// A town's name and its base icon arrive from the API on the *same*
+    /// coordinate, and both were drawn centred on it — so the label landed
+    /// squarely on top of the icon and hid it. Labels are drawn after icons, so
+    /// what was lost was the icon: the map's actual data, covered by its own
+    /// caption. The name now sits clear of the icon, which is the ordinary map
+    /// convention and costs nothing, since the label was never legible on top
+    /// of an icon anyway.
+    pub label_icon_clearance_ratio: f32,
     pub resample: FilterType,
     pub anchor: Anchor,
 
@@ -119,6 +139,27 @@ pub struct RenderConfig {
     /// 5 px — which is why the first full render looked like bare terrain.
     /// [`RenderConfig::for_full_map`] sizes source icons backwards from this.
     pub full_map_icon_px: u32,
+    /// Write each region's name across its hex on the full map.
+    ///
+    /// Only the full map, and nothing to do with [`place_image_info`]'s
+    /// `draw_text`: that draws the API's in-region labels (town names, fields)
+    /// onto a 1024 px tile, which the downscale reduces to a smudge. This is
+    /// one name per hex, drawn on the finished image at a size chosen for it.
+    pub full_map_region_labels: bool,
+    /// Cap height for those names in the *finished* full-map PNG, in pixels.
+    ///
+    /// Absolute for the same reason [`RenderConfig::full_map_icon_px`] is:
+    /// legibility is measured in screen pixels, and a ratio of the 63.6 MP
+    /// composite means nothing once it has been scaled to a fifth of its size.
+    pub full_map_label_px: f32,
+    /// Widest a name may be, as a fraction of its hex's finished width. Longer
+    /// names shrink to fit rather than run into the next hex.
+    ///
+    /// Colour is not repeated here: region names use
+    /// [`RenderConfig::text_color`] and [`RenderConfig::text_outline`] like
+    /// every other label, so there is one style to change rather than two that
+    /// can drift apart.
+    pub full_map_label_width_ratio: f32,
     /// Wash each hex in its controlling faction's colour. Off unless a guild
     /// opts in (`guilds.full_map_faction_tint`), and only ever set for the full
     /// map — see [`controlling_team`] for what "controlling" means.
@@ -137,8 +178,9 @@ impl Default for RenderConfig {
             icon_size_ratio: 24.0 / REGION_WIDTH as f32,
             major_text_ratio: 25.0 / REGION_HEIGHT as f32,
             minor_text_ratio: 20.0 / REGION_HEIGHT as f32,
-            text_color: Rgba([0, 0, 0, 255]),
-            text_outline: None,
+            text_color: Rgba([255, 255, 255, 255]),
+            text_outline: Some(Rgba([0, 0, 0, 220])),
+            label_icon_clearance_ratio: 3.0 / REGION_HEIGHT as f32,
             resample: FilterType::Lanczos3,
             anchor: Anchor::Center,
             column_pitch_ratio: 3.0 / 4.0,
@@ -147,6 +189,12 @@ impl Default for RenderConfig {
             full_map_long_edge: 2048,
             full_map_resample: FilterType::Triangle,
             full_map_icon_px: 12,
+            full_map_region_labels: true,
+            // 15 px on the 2048-wide render. A hex finishes about 205 px
+            // across there, so this is a name spanning roughly two thirds of
+            // its own hex — findable at a glance without becoming the map.
+            full_map_label_px: 19.0,
+            full_map_label_width_ratio: 0.82,
             faction_tint: false,
             // Faction greens and blues, muted. Saturated versions of these read
             // as UI chrome laid over the map rather than as the map's own
@@ -466,6 +514,7 @@ fn draw_labels(
     canvas_h: u32,
 ) -> Result<(), RenderError> {
     let font = font()?;
+    let icon_size = config.icon_size(canvas_w);
 
     for map_text in &static_data.map_text_items {
         let px = config.text_size(canvas_h, &map_text.map_marker_type);
@@ -481,18 +530,115 @@ fn draw_labels(
             canvas_h,
             config.anchor,
         );
-        let (x, y) = (x as i32, y as i32);
 
-        if let Some(outline) = config.text_outline {
-            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-                draw_text_mut(canvas, outline, x + dx, y + dy, scale, font, &map_text.text);
+        // Down by half an icon plus half the text, so the label clears an icon
+        // centred on the same point instead of covering it. Only meaningful
+        // for a centred anchor: `Anchor::TopLeft` exists to reproduce the
+        // pre-rewrite output, and moving its labels would defeat the one thing
+        // it is for.
+        let drop = match config.anchor {
+            Anchor::Center => {
+                (icon_size + text_h) as f32 / 2.0
+                    + canvas_h as f32 * config.label_icon_clearance_ratio
             }
-        }
+            Anchor::TopLeft => 0.0,
+        };
 
-        draw_text_mut(canvas, config.text_color, x, y, scale, font, &map_text.text);
+        let (x, y) = (x as i32, y as i32 + drop.round() as i32);
+
+        draw_haloed_text(canvas, &map_text.text, x, y, scale, font, config);
     }
 
     Ok(())
+}
+
+/// One region name to write on the finished full map.
+///
+/// Geometry is settled by the caller, which is the only place that knows the
+/// grid and the downscale; this module knows fonts.
+pub struct RegionLabel {
+    pub text: String,
+    /// Where the name is centered, in finished-image pixels.
+    pub center: (f32, f32),
+    /// Widest it may be, in the same pixels, before it has to shrink.
+    pub max_width: f32,
+}
+
+/// Writes region names across the finished full map.
+///
+/// **After the downscale, never before.** Text drawn on a 1024 px tile and then
+/// scaled to a fifth is unreadable — the reason `/full-map` has always passed
+/// `draw_text: false` — and no amount of choosing a bigger size on the tile
+/// fixes it, because the glyphs are resampled along with the terrain. Drawn
+/// here the text is rendered once, at its final size, on its final pixels.
+pub fn draw_region_labels(
+    canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    labels: &[RegionLabel],
+    config: &RenderConfig,
+) -> Result<(), RenderError> {
+    let font = font()?;
+
+    for label in labels {
+        // Measure at the wanted size, then shrink to fit. "Onyx" and "The Linn
+        // of Mercy" are the same hex's worth of room, so a single size either
+        // wastes most of it or runs the long names into the next region.
+        let mut px = config.full_map_label_px;
+        let (text_w, _) = text_size(PxScale { x: px, y: px }, font, &label.text);
+
+        if text_w as f32 > label.max_width && text_w > 0 {
+            px *= label.max_width / text_w as f32;
+        }
+
+        // Under this the glyphs are a texture rather than a word, and a
+        // smaller one is not a smaller improvement — it is clutter.
+        if px < 6.0 {
+            continue;
+        }
+
+        let scale = PxScale { x: px, y: px };
+        let (text_w, text_h) = text_size(scale, font, &label.text);
+
+        let x = (label.center.0 - text_w as f32 / 2.0).round() as i32;
+        let y = (label.center.1 - text_h as f32 / 2.0).round() as i32;
+
+        draw_haloed_text(canvas, &label.text, x, y, scale, font, config);
+    }
+
+    Ok(())
+}
+
+/// Draws one string with its halo underneath it.
+///
+/// The halo is a full square ring, not the four cardinal offsets the labels
+/// originally used: a four-neighbour outline leaves the diagonals bare, and a
+/// glyph's thinnest strokes are exactly where it then breaks up — which is the
+/// case that matters, because thin strokes over a busy icon are what goes
+/// unreadable first.
+///
+/// Its thickness scales with the text. A fixed 1 px ring vanishes under 25 px
+/// glyphs and swallows 8 px ones.
+fn draw_haloed_text(
+    canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    text: &str,
+    x: i32,
+    y: i32,
+    scale: PxScale,
+    font: &FontRef<'static>,
+    config: &RenderConfig,
+) {
+    if let Some(outline) = config.text_outline {
+        let weight = (scale.y / 12.0).round().max(1.0) as i32;
+
+        for dy in -weight..=weight {
+            for dx in -weight..=weight {
+                if (dx, dy) != (0, 0) {
+                    draw_text_mut(canvas, outline, x + dx, y + dy, scale, font, text);
+                }
+            }
+        }
+    }
+
+    draw_text_mut(canvas, config.text_color, x, y, scale, font, text);
 }
 
 /// Loads a region's background TGA on its own.

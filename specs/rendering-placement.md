@@ -94,8 +94,28 @@ Major vs Minor labels size off `major_text_ratio` / `minor_text_ratio` (and opti
 instead of a single 25 px for both. This is currently parsed and thrown away.
 
 ### 5. Contrast for text
-Optional 1 px outline (`text_outline`) so labels stay legible over both light and dark terrain —
-today's flat black vanishes on dark hexes. Off by default to preserve current look.
+Every label the bot draws is **light fill over a dark halo** — `text_color` white, `text_outline`
+a near-opaque black — and both the API's in-region labels and the full map's region names go
+through the same `draw_haloed_text`. One style, one place to change it.
+
+The halo is a full square ring whose thickness scales with the text (`px / 12`, minimum 1), not
+the four cardinal offsets this spec originally proposed: a four-neighbour outline leaves the
+diagonals bare, and a glyph's thinnest strokes are exactly where it breaks up — which is the case
+that matters, since thin strokes crossing a busy icon are the first thing to become unreadable.
+
+The original flat black with no outline is still reachable (`text_outline: None`), but it is no
+longer the default. It vanished on dark hexes, and the moment it crossed an icon it read as
+though the label were behind the icon rather than on top of it, which is where labels have always
+actually been drawn.
+
+### 6. Keep labels off the icons
+A town's name and its base icon arrive from the API on the **same coordinate**, so centring both
+put the label squarely over the icon. Labels are drawn last, so what was lost was the icon — the
+map's real data, hidden by its own caption.
+
+Labels centred by `Anchor::Center` therefore drop by half an icon plus half the text, plus
+`label_icon_clearance_ratio`. `Anchor::TopLeft` is left exactly as it was: it exists to reproduce
+the pre-rewrite output, and moving its labels would defeat the only thing it is for.
 
 ## Non-goals (this spec)
 - The full-map renderer itself (stitching hex regions onto their hex-grid positions, the
@@ -116,3 +136,4 @@ today's flat black vanishes on dark hexes. Off by default to preserve current lo
 - A region renders identically standalone and as a tile of the stitched full map (only its pixel
   offset differs) — the placement primitive needs no changes to serve the full renderer.
 - Major and Minor labels render at distinct sizes.
+- A label whose coordinate carries an icon does not cover that icon, and stays legible over it.

@@ -191,7 +191,35 @@ rendered, which handles stubs generically without a special case.
    (`specs/rendering-placement.md` — background + icons at region-relative sizes), then
    `overlay` the result at its `(x, y)` grid offset. Region-relative sizing means a hex looks
    identical standalone or tiled; only the offset differs.
-4. Downscale the finished composite (see below) and encode PNG.
+4. Downscale the finished composite (see below).
+5. **Write the region names on the downscaled image**, then encode PNG.
+
+### Region names (drawn after the downscale)
+Each hex carries its `display_name`, centred, so a reader can orient themselves — the whole point
+of a world map being one image.
+
+**After the downscale, never before**, and this is the crux: text drawn on a 1024 px tile is
+resampled along with the terrain and arrives as a smudge, which is why `/full-map` has always
+passed `draw_text: false`. Choosing a bigger size on the tile does not fix it — the glyphs still
+go through the filter. Drawn afterwards they are rendered once, at final size, on final pixels.
+It is also the last thing to touch the image: names are the layer the map is read *by*, so
+nothing is drawn over them.
+
+`full_map_label_px` (default **19**) states the cap height wanted in the finished PNG, for the
+same reason `full_map_icon_px` does. A name too long for its hex shrinks to
+`full_map_label_width_ratio` (0.82) of the hex's finished width rather than running into its
+neighbour; at 19 px nothing currently needs to, so the fit rule is a safety net and not a routine
+step. Colour and halo come from `text_color` / `text_outline` — the same style as every other
+label (`specs/rendering-placement.md` → Contrast for text).
+
+**Centring is safe at most of the hex's width**, and not by luck: a flat-top hex is widest across
+its own vertical centre, and that is exactly the height at which the neighbouring columns' art
+does not reach it. Their centres sit half a hex above and below, so at this line they are at
+their own flat top or bottom edge, which spans only the middle half of their width. The two
+footprints meet and never overlap.
+
+Every region is named, including one drawn as bare terrain because its fetch failed — the hex a
+user most needs identified is the one with no data on it.
 
 ### Downscaling (required)
 10240 × 6216 is far past Discord's attachment limit as a PNG. Scale the **composite** uniformly —
@@ -266,4 +294,7 @@ This is 53× the work of a single hex — the reason scheduled full-map renders 
 - The output attaches successfully to a Discord message (within upload limits).
 - One failing region degrades that hex only; the rest of the map still renders.
 - Region fetches are concurrent and ETag-revalidated; compositing does not block the runtime.
-- No stats/banner/log furniture is drawn — hexes only.
+- Every hex carries its region name, centred, legible at the finished resolution and over both
+  the palest and the darkest terrain; a name never strays onto a neighbouring hex.
+- A region whose data failed to fetch is still named.
+- No stats/banner/log furniture is drawn — hexes and their names only.
