@@ -80,9 +80,19 @@ can't leave them pointing at nothing.
 - Nothing here is fatal. A log directory that can't be created is a warning on a console that is
   already working, the same rule the on-disk cache follows.
 
-The directory is a **mounted volume** (`fwb_logs`, or a bind mount for reading them from the
-host), for the same reason the cache is: a container rebuilt on every deploy otherwise takes the
-record of what happened with it.
+The directory is a **mounted volume** (`fwb_logs`) for the same reason the cache is: a container
+rebuilt on every deploy otherwise takes the record of what happened with it. A named volume is
+not a host directory, so the files are *not* in `./logs` when the bot runs in Docker —
+`compose.override.example.yaml` swaps in a bind mount for anyone who wants them there, and
+`compose.override.yaml` is loaded automatically without flags.
+
+Two things exist because that distinction is easy to trip over, both of which turn "it says it's
+logging and the folder is empty" into an answer at startup:
+- The directory is **canonicalized before it is announced**, so the startup line names an absolute
+  path rather than a `./logs` whose meaning depends on the working directory it was read in.
+- The directory is **probed for writability** during `init`. `fern::DateBased` opens its file
+  lazily on the first record and has nowhere to report a failure to, so an unwritable mount would
+  otherwise be perfectly silent: a working console, and a directory that never fills.
 
 ### Gateway intents
 Only `GUILDS`. The bot does **not** request message content or member intents; it operates

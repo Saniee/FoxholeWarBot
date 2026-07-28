@@ -1,0 +1,20 @@
+# Local logs. Copy this to `compose.override.yaml` and `docker compose up -d`
+# again — compose loads a file by that name automatically, on top of
+# `compose.yaml`, with no extra flags:
+#
+#   cp compose.override.example.yaml compose.override.yaml
+#   docker compose up -d
+#
+# It replaces the `fwb_logs` named volume with a bind mount, so the log files
+# appear in ./logs next to this file instead of inside Docker's volume
+# directory. Nothing else changes: same filenames, same rotation, same
+# retention. `compose.override.yaml` is not tracked, so your local choice
+# doesn't follow the repository around.
+#
+# To go back, delete `compose.override.yaml` and `docker compose up -d`. The
+# named volume still holds whatever was written before the switch.
+
+services:
+  bot:
+    volumes:
+      - ./logs:/app/logs

@@ -25,7 +25,14 @@ there is a real log to point at.
       the 2.0 sweep)
 
 ### To verify on the first build
-- [ ] Compiles — `fern` 0.7 / `env_filter` 0.1 API shapes are the likely first failure
+- [x] Compiles — `cargo check` and `cargo clippy` clean (the two clippy warnings that remain,
+      `schedule_report`'s argument count and `Revoked`'s variant sizes, both predate this and are
+      untouched)
+- [x] Directory canonicalized before it's announced, and probed for writability at `init` — the
+      first live run had an empty `./logs` on the host because the container was writing to the
+      `fwb_logs` volume, which is the expected behaviour and now says so
+- [x] `compose.override.example.yaml` — copy to `compose.override.yaml` for logs in `./logs`;
+      README, `compose.yaml` and the spec all point at it
 - [ ] `logs/` appears; both files written; console quiet; verbose file has the serenity/sqlx
       traffic
 - [ ] `RUST_LOG=info` still puts everything back on the console

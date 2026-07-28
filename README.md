@@ -43,6 +43,23 @@ Note: `docker compose down -v` removes the database volume. Use `docker compose 
 
 ### Logs
 
+> **In Docker, the log files are not in `./logs`.** They are written inside the container, at
+> `/app/logs`, which is the `fwb_logs` **named volume** — Docker keeps it under
+> `/var/lib/docker/volumes/`, not next to this README. A `./logs` directory in the repository is
+> what a *local* `cargo run` writes to, and it stays empty while the bot runs in Docker. The bot
+> prints the absolute directory it is using at startup; that line is the answer to "where are
+> they".
+>
+> To get them beside the compose file instead, copy the override in and bring the bot back up:
+>
+> ```sh
+> cp compose.override.example.yaml compose.override.yaml
+> docker compose up -d
+> ```
+>
+> `compose.override.yaml` is loaded automatically, needs no flags, and is untracked — it swaps the
+> named volume for a `./logs` bind mount and changes nothing else.
+
 The bot writes two files a day into `LOG_DIR` (`/app/logs` in the container, on the `fwb_logs`
 volume):
 
@@ -59,13 +76,6 @@ when something has already gone wrong.
 docker compose logs -f bot                      # the quiet stream
 docker compose exec bot sh -c 'ls /app/logs'     # both files
 docker compose exec bot sh -c 'tail -f /app/logs/foxholewarbot-verbose.*.log'
-```
-
-To read them straight from the host instead, swap the volume for a bind mount in `compose.yaml`:
-
-```yaml
-    volumes:
-      - ./logs:/app/logs
 ```
 
 Files older than `LOG_RETENTION_DAYS` (default 14) are deleted at startup and nightly. Raise the

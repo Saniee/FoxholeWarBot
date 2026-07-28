@@ -206,7 +206,44 @@ fn log_dir() -> Option<PathBuf> {
         return None;
     }
 
+    // Absolute from here on. `./logs` is only meaningful next to the working
+    // directory it was read in, and "it says it's logging but the folder is
+    // empty" is almost always two different folders — a container writing to
+    // its own filesystem, or a process started from somewhere else.
+    let dir = fs::canonicalize(&dir).unwrap_or(dir);
+
+    // Prove the directory is writable now, rather than discovering it isn't
+    // when the first record is dropped. `fern::DateBased` opens its file lazily
+    // on the first write and has nowhere to report a failure to, so a
+    // permissions problem on a mounted volume is otherwise perfectly silent:
+    // the console keeps working and the directory stays empty.
+    if let Err(err) = probe(&dir) {
+        eprintln!(
+            "the log directory {} is not writable: {err} — logging to the console only",
+            dir.display()
+        );
+        return None;
+    }
+
     Some(dir)
+}
+
+/// Creates and removes a file in `dir`, to find out whether the log files will
+/// be writable before anything depends on them being written.
+fn probe(dir: &Path) -> std::io::Result<()> {
+    let path = dir.join(".write-probe");
+
+    fs::OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&path)?;
+
+    // Best-effort: a probe file left behind is untidy, not broken, and it must
+    // not turn a writable directory into an unwritable one.
+    let _ = fs::remove_file(&path);
+
+    Ok(())
 }
 
 fn retention_days() -> u64 {

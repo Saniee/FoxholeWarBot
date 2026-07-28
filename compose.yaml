@@ -46,10 +46,12 @@ services:
       LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-}
     volumes:
       - fwb_cache:/app/cache
-      # Named volume so logs survive `docker compose up --build`. To read them
-      # from the host directly, swap it for a bind mount — `./logs:/app/logs` —
-      # and the files appear beside the compose file. Either way the bot prunes
-      # them to LOG_RETENTION_DAYS.
+      # Named volume, so logs survive `docker compose up --build`. Note that
+      # this means they are NOT in ./logs on the host — that directory belongs
+      # to a local `cargo run`, and stays empty while the bot runs here. To put
+      # them beside this file instead, copy compose.override.example.yaml to
+      # compose.override.yaml, which swaps this for a bind mount. Either way the
+      # bot prunes them to LOG_RETENTION_DAYS.
       - fwb_logs:/app/logs
 
 volumes:
