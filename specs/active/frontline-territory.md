@@ -200,34 +200,42 @@ accumulated over a war rather than a snapshot of one. The casualty fields in tha
 the reference screenshot's per-hex `220k 250k` pair exactly, which is what confirms those tiles are
 war-report casualties and not something we cannot get.
 
-**Whether `totalEnlistments` is per-region or war-global is unsettled, and the endpoint does not
-answer it.** Coming back from a per-hex request proves nothing: `dayOfWar` and `version` sit in that
-same payload and are certainly war-global, so the response demonstrably mixes scopes.
+**`totalEnlistments` is per-region — settled by two samples**, against a plausible-sounding
+argument that it would be global (enlisting is joining a faction for the war, which is not something
+a player does per hex). Two regions of the same war disagree, so the word was misleading and the
+data is not: 22,656 in a contested hex against 10,354 in Deadlands, with `version` differing too
+(135 against 101) while `dayOfWar` stays 500 across both. The response mixes scopes; enlistments and
+casualties are on the per-region side of that line, `dayOfWar` on the other.
 
-The reasoning leans **global**, on the word rather than the number. Enlisting in Foxhole is joining
-a faction for the war — a war-level act, not something a player does per hex — and 22,656 enlisted
-players over a 500-day war is an entirely ordinary figure, where 22,656 enlistments *into one hex*
-would have to mean something the game does not really model. Treat that as a lean, not a finding.
+**But the same two samples argue against using enlistments as the intensity**, which is the opposite
+of what being per-region first suggested:
 
-**Settle it before building on it, and it is free to settle:** `/war-report` already displays Total
-Enlistments per region. Run it on two different hexes. Identical means global, different means
-per-region.
+| | enlistments | casualties | casualties per enlistment |
+|---|---|---|---|
+| contested hex | 22,656 | 470,272 | 20.8 |
+| Deadlands, well behind the line | 10,354 | 44,468 | 4.3 |
+| **ratio** | **2.2x** | **10.6x** | 4.8x |
 
-The answer decides which number Part 2 can use:
+Casualties separate a hot hex from a quiet one about five times more sharply than enlistments do.
+For a signal whose whole job is to drive a *visible* difference in wash strength, that dynamic range
+is the property that matters, and enlistments barely have it — a 2.2x spread across the sharpest
+contrast on the map would map to a wash that looks flat. **Use casualties.**
 
-- **Global** — enlistments carry no per-region signal at all, being the same constant everywhere,
-  and casualties are the only usable field in the response.
-- **Per-region** — enlistments differenced over time are the **better** of the two signals, and the
-  one to reach for first. Enlistments per hour measures people arriving; casualties per hour
-  measures people dying, which over-reads a stalemate where two sides feed a meat grinder for days
-  without moving, and under-reads a front collapsing so fast nobody is dying to hold it. Same
-  polling cost, same history table — so the choice is free once either is stored.
+Two cautions on that table before it gets treated as settled. These are cumulative figures, so they
+describe the whole war rather than the present, and rates could well spread differently — the
+comparison to make is between *rates*, once any history exists. And it is two regions, chosen as
+the extremes; it says the spread exists, not what its distribution looks like across all 53.
+
+It does cross-check nicely against our own render, though. Deadlands sits well behind the Colonial
+line in the map we draw from this same war, the reference shows it at `0/hr`, and its cumulative
+casualties are a tenth of the contested hex's. The activity signal really does track the front,
+which is the assumption Part 2 rests on.
 
 So what is actually available is:
 
 - **Per-region cumulative casualties per faction, right now** — one fetch per region, already
-  modelled in `api_definitions::foxhole`, already cached by `/war-report`. Free. Cumulative
-  enlistments come in the same response, at no extra cost, subject to the scope question above.
+  modelled in `api_definitions::foxhole`, already cached by `/war-report`. Free. Per-region
+  cumulative enlistments come in the same response, at no extra cost, and are the weaker signal.
 - **Rates** — only by keeping history. Two polls of every region and the difference between them,
   which is state this bot does not store today.
 
@@ -244,9 +252,10 @@ war *has been* rather than where it is. By late war most of the front is dark an
 discriminating. **Usable as a first cut precisely because it is cheap and cannot mislead about
 territory** — it is only ever intensity — but it answers a different question than the one asked.
 
-**B. A rate, by differencing polls — enlistments if they are per-region, casualties otherwise.**
-The kind of number the reference actually shows, and the one that means "where the war is right
-now". It needs history: a table of `(shard, region, timestamp,
+**B. Casualty rate, by differencing polls.** The kind of number the reference actually shows, and
+the one that means "where the war is right now". Casualties rather than enlistments on the evidence
+above — both are per-region and free, and casualties carry roughly five times the contrast between
+a contested hex and a quiet one. It needs history: a table of `(shard, region, timestamp,
 colonial_casualties, warden_casualties)`, written by a background poll or on each render, read back
 as a delta over a window.
 

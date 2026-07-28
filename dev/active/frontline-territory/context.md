@@ -44,21 +44,29 @@ already model and cache `WarReport { total_enlistments, colonial_casualties, war
 day_of_war, version }` per region — so cumulative totals are free, and rates need history we do not
 store (a table, a retention policy, and a docs change).
 
-`totalEnlistments` is **not** a live player count — a real sample reads 22,656 against 470,272
-casualties in the same region, ~21 deaths per enlistment, so it is cumulative like everything else
-in that response. **Open: whether it is per-region or war-global**, and the fact that it came from
-a per-hex request does *not* answer it — `dayOfWar` and `version` are in the same payload and are
-certainly global, so the response mixes scopes.
+`totalEnlistments` is **not** a live player count — a contested hex reads 22,656 against 470,272
+casualties, ~21 deaths per enlistment, so it is cumulative like the rest of that response.
 
-Current lean is **global**, on the word: enlisting is joining a faction for the war, not something
-done per hex, and 22,656 enlisted players over 500 days is an ordinary war-level figure. A lean,
-not a finding. **Free to settle — `/war-report` already prints Total Enlistments per region, so run
-it on two hexes and compare.** If global, enlistments are a constant and Part 2 has to use
-casualties; if per-region, enlistments/hr beats casualties/hr, since it measures people arriving
-rather than dying and so does not over-read a stalemate.
+**It is per-region, settled by two samples**, against a reasonable-sounding argument that it would
+be war-global. Callahans-shaped hex 22,656, Deadlands 10,354, `version` 135 against 101, while
+`dayOfWar` is 500 in both — so the payload mixes scopes, with enlistments and casualties per-region
+and `dayOfWar` global. The endpoint being per-hex proves nothing on its own; that was the trap.
 
-The same sample's casualty fields match the reference screenshot's per-hex `220k 250k` pair, which
-is what confirms those tiles are war-report casualties.
+**Use casualties as the intensity anyway.** The same two samples:
+
+| | enlistments | casualties |
+|---|---|---|
+| contested hex | 22,656 | 470,272 |
+| Deadlands, behind the line | 10,354 | 44,468 |
+| ratio | 2.2x | 10.6x |
+
+Casualties separate a hot hex from a quiet one ~5x more sharply, and dynamic range is the whole
+point of a signal that drives visible wash strength. Caveats: cumulative, not rates; two regions,
+chosen as extremes.
+
+Cross-check worth keeping: Deadlands sits behind the Colonial line in our own render of this war,
+the reference shows it at `0/hr`, and its casualties are a tenth of the contested hex's. The signal
+tracks the front, which is what Part 2 assumes.
 
 Spec's recommendation: ship Part 1, look at it, and only then try structure density as a free
 stand-in before paying for the polling history.

@@ -53,7 +53,9 @@ Do not start without a live look at Part 1 first. The order if it is wanted, fro
 - [ ] Structure density as a free stand-in, to find out whether varying intensity is worth having
       at all before paying for data
 - [ ] Casualty **rate** if it is — history table, retention policy, and `docs/tos.md` +
-      `docs/privacy.md` in the same commit
+      `docs/privacy.md` in the same commit. **Casualties, not enlistments**: both are per-region
+      (settled) and free, but casualties carry ~5x the contrast between a hot hex and a quiet one,
+      and dynamic range is the whole point here
 - [ ] Cumulative casualties only if cheapness beats accuracy; they describe the whole war rather
       than the present, and by late war most of the front is dark
 - [ ] Whichever number it is, it has to be interpolated across the map, not looked up per hex —
