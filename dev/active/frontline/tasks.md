@@ -10,17 +10,21 @@ Ordered so each step is verifiable before the next depends on it. Nothing below 
       adjacencies from the spec
 
 ## 2. The field
-- [ ] World-space control points: `grid_offset` + normalized item coords, `CONTROL_ICON_TYPES`
-      only, **no** structure tiebreak
-- [ ] Label grid (Colonial / Warden / Neutral) with a claim radius, distances in canvas pixels
-- [ ] Two-pass chamfer distance transform for the full-map path; naive is fine for one hex
-- [ ] Marching squares → polylines, Colonial-vs-Warden edges only
+- [ ] World-space points: `grid_offset` + normalized item coords, **every faction-held structure**,
+      neutral ones excluded; distances in canvas pixels
+- [ ] `F(p) = Σ w/(d²+ε)` Colonial minus Warden, sampled on a coarse grid, bilinear upsample
+- [ ] Guard the degenerate case: no structures ⇒ no contour, not whatever marching squares does
+- [ ] Full-map cost: sample at ~1/32; if still slow, truncate influence + spatially bin the points
+- [ ] Marching squares on `F = 0` → polylines, then Chaikin smoothing (target: ≤1 px/px slope
+      change, matching the reference)
 
 ## 3. Drawing
-- [ ] `RenderConfig` gains `frontline`, `claim_radius_ratio`, `field_resolution_ratio`,
-      `frontline_width_ratio`, `frontline_color`, `frontline_outline` — all ratios, no literals
-- [ ] Stroke with an outline underneath, after the tint and before the icons
-- [ ] `/full-map`: draw on the full-res composite so the downscale antialiases it
+- [ ] `RenderConfig` gains `frontline`, `field_resolution_ratio`, `frontline_width_ratio`,
+      `full_map_frontline_px`, `frontline_color`, `frontline_halo`, `influence_epsilon` — ratios,
+      no literals
+- [ ] Halo stroke first, then black line; after the tint, before the icons
+- [ ] **Clip to the background's alpha** so nothing lands in the transparent hex corners
+- [ ] `/full-map`: draw on the full-res composite, width sized backwards from the finished image
 
 ## 4. Fetching
 - [ ] `/get-map` fetches neighbours' dynamic data; a failed neighbour warns and does not fail
@@ -35,8 +39,9 @@ Ordered so each step is verifiable before the next depends on it. Nothing below 
 - [ ] **`docs/tos.md` + `docs/privacy.md` in the same commit** (repo rule; `specs/docs-site.md`)
 
 ## 6. Finishing
-- [ ] Validate against a live war — the line's quality is entirely the control-point set, and
-      `claim_radius_ratio` is the first thing to tune
+- [ ] Validate against a live war — the line's quality is entirely the point set. If it sits
+      wrong, try `CONTROL_ICON_TYPES` only, or per-type weights, **before** touching resolution or
+      smoothing; those cannot fix a bad input
 - [ ] Check the acceptance criteria in the spec, especially "off ⇒ byte-identical output"
 - [ ] `cargo clippy` clean (the two pre-existing warnings excepted)
 - [ ] Promote `specs/active/frontline.md` → `specs/`, update `specs/README.md`, move
