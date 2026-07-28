@@ -24,6 +24,7 @@ Exactly this, and nothing else:
 - The chosen shard (Able / Baker / Charlie) and its display name.
 - Whether command output is public or private.
 - Whether the full map is shaded by faction control.
+- Whether maps are drawn with the contested frontline.
 - The server's default timezone for scheduled reports (an IANA name such as `Europe/Berlin`).
 - Whether the server is approved to *schedule* full-map reports, and when that approval was
   granted.
@@ -58,6 +59,10 @@ submits a full-map request, and only because the answer has to reach them.
 The bot also keeps an on-disk cache of Foxhole War API responses, so it doesn't re-request data
 the game hasn't changed. That cache holds game data only — nothing about you or your server.
 
+It writes operational logs too — a running account of what it did and what failed, kept on the
+machine it runs on and deleted on a rolling window (14 days by default). See the
+[Privacy Policy](privacy) for what they contain.
+
 # [](#header-4)Scheduling a full map
 
 Rendering the whole world map on demand with `/full-map` is **free for every server**, needs no
@@ -89,6 +94,8 @@ approval is withdrawn, its request falls under the same 90-day deletion.
 
 A request that hasn't been answered yet can be taken back at any time by whoever filed it — run
 `/request-full-map-schedule` again and use the **Withdraw request** button on the reply.
+
+Operational logs are deleted on their own rolling window, independently of all of the above.
 
 # [](#header-6)Availability
 

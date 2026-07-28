@@ -36,28 +36,32 @@ parser reads a step.
 ## Behavior
 1. Look up guild; if not set up → ephemeral prompt.
 2. Defer public/ephemeral per `show_command_output`.
-3. Full-map target with no approval → the request-form reply, never a bare refusal
+3. If the submitted `map_name` is the `NO_CHOICE` placeholder, say so and stop. This matters more
+   here than on the one-shot commands: accepting it would write a row and register a cron job
+   whose every firing renders a region that does not exist, posting a failure to the channel on a
+   timer until somebody deletes it.
+4. Full-map target with no approval → the request-form reply, never a bare refusal
    (`specs/premium-full-map.md`).
-4. Resolve the timezone — the `timezone` option, else the guild's default — and store the
+5. Resolve the timezone — the `timezone` option, else the guild's default — and store the
    resolved name on the row, so a later change to the guild default can't move this schedule.
-5. Generate the cron expression and the human label from the cadence.
-6. **Compute the next three fire times and show them in the reply.** Nothing is stored until they
+6. Generate the cron expression and the human label from the cadence.
+7. **Compute the next three fire times and show them in the reply.** Nothing is stored until they
    are on screen: an expression that parses can still mean something the user didn't intend
    (`every 6 hours` is absolute clock times, not six hours from now), and three real timestamps
    are what catch that. Rendered as `<t:epoch:F>`, so each reader sees their own timezone.
-7. **Minimum interval: 30 minutes for any schedule, 60 for a full-map one.** Measured from the
+8. **Minimum interval: 30 minutes for any schedule, 60 for a full-map one.** Measured from the
    gaps between those same fire times, so `Custom…` is held to it too. The global floor is a
    courtesy limit — a report arriving every few minutes reads as spam in the channel it lands in,
    and `/get-map` covers wanting a hex *now*. The full map's hour is on top of it: the approval
    queue decides *whether* a guild may schedule the world map, not how often.
-8. Reject a `schedule_name` already used **in this guild**. The `UNIQUE (guild, job_name)`
+9. Reject a `schedule_name` already used **in this guild**. The `UNIQUE (guild, job_name)`
    constraint is the real guard; this check exists to produce a friendlier message.
-9. Find or create a webhook named "Scheduled Map Report Webhook" in `report_channel`. Missing
+10. Find or create a webhook named "Scheduled Map Report Webhook" in `report_channel`. Missing
    permission replies with what to grant.
-10. **Schedule first, persist second.** Register the job with the scheduler, then insert the
+11. **Schedule first, persist second.** Register the job with the scheduler, then insert the
     `cronjobs` row carrying the scheduler UUID. If the insert fails, the job is unscheduled
     again — no orphan rows, and no reports posting that nothing knows about.
-11. Reply confirming: the cadence in words, its timezone, the channel, the next three runs, and
+12. Reply confirming: the cadence in words, its timezone, the channel, the next three runs, and
     **that nothing posts on creation** — the first report is the first of those three. Said next
     to the timestamp that proves it, because "I made a schedule and nothing happened" is the
     support question this prevents.

@@ -15,10 +15,13 @@ Everything below is state at the time the release was prepped. Tick as you go.
       as built
 
 ## Left — do these before tagging
-- [ ] **Commit an updated `Cargo.lock`.** The tracked one predates `chrono-tz` and `croner` as
-      direct dependencies; your local build has already regenerated it. Until it's committed,
-      `cargo build --locked` and the Docker build resolve from a stale lock
-- [ ] `cargo clippy` clean
+- [x] **Commit an updated `Cargo.lock`.** Done — `chrono-tz` 0.10.4 and `croner` 2.1.0, and as of
+      the logging work `fern` 0.7.1 and `env_filter` 0.1.4 with `env_logger` gone
+- [ ] `cargo clippy` clean. Currently **two warnings, both long-standing and both judgment calls
+      rather than defects**: `schedule_report.rs:24` takes 10 arguments where clippy wants 7, and
+      `db.rs:202` has a large size difference between enum variants. Decide whether to fix, `allow`
+      with a reason, or accept — but decide, rather than leaving the box unticked because the
+      output is noisy
 - [ ] Tag `v2.0.0` and deploy: `docker compose up -d --build` (**never** `down -v` — it wipes
       the database)
 - [ ] Post `dev/changelog-2.0.md` with the real date
@@ -37,7 +40,23 @@ Everything below is state at the time the release was prepped. Tick as you go.
 - `REQUESTS_CHANNEL_ID` unset (should degrade to command-only review) and a two-reviewer race on
   one request (should answer "already decided by someone else") are both untested and low-stakes
 
+## After 2.0
+**Landed since this list was written, and therefore part of the 2.0 tag:**
+- **Logging** (`dev/done/logging/`) — log files, a verbose second stream, and a mounted log
+  volume. Touches no migration and no command surface
+- **The frontline overlay** (`specs/frontline.md`) — migration `0006` adds `guilds.frontline`, and
+  `docs/tos.md` + `docs/privacy.md` were updated in the same commit as the repo rule requires
+- **The territory tint** (`specs/frontline-territory.md`) — the world map's faction colouring now
+  follows the front rather than the hex. Config-only, no migration
+- **The full-map status message** and **hex borders** (`specs/full-map-renderer.md`) — both
+  config-only, no migration, no new command options
+
+Not built, and deliberately: **activity as tint intensity**
+(`specs/active/frontline-activity.md`) — tried as structure density, measured, rejected, reverted.
+The reasoning is in the spec so it does not get re-proposed from scratch.
+
 ## Migrations in this release
-`0001`–`0005`, applied at startup by `sqlx::migrate!`. `0005` adds `guilds.timezone`,
-`cronjobs.timezone` and `cronjobs.schedule_label`, all defaulting so existing schedules keep
-firing exactly as they did. Next free number is **0006**.
+`0001`–`0006`, applied at startup by `sqlx::migrate!`. `0005` adds `guilds.timezone`,
+`cronjobs.timezone` and `cronjobs.schedule_label`; `0006` adds `guilds.frontline`. All default, so
+existing guilds and schedules keep behaving exactly as they did — the frontline is off until a
+guild asks for it. Next free number is **0007**.

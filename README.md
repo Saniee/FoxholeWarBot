@@ -41,6 +41,55 @@ cargo run -- --clear-commands
 
 Note: `docker compose down -v` removes the database volume. Use `docker compose down`.
 
+### Logs
+
+> **In Docker, the log files are not in `./logs`.** They are written inside the container, at
+> `/app/logs`, which is the `fwb_logs` **named volume** — Docker keeps it under
+> `/var/lib/docker/volumes/`, not next to this README. A `./logs` directory in the repository is
+> what a *local* `cargo run` writes to, and it stays empty while the bot runs in Docker. The bot
+> prints the absolute directory it is using at startup; that line is the answer to "where are
+> they".
+>
+> To get them beside the compose file instead, copy the override in and bring the bot back up:
+>
+> ```sh
+> cp compose.override.example.yaml compose.override.yaml
+> docker compose up -d
+> ```
+>
+> `compose.override.yaml` is loaded automatically, needs no flags, and is untracked — it swaps the
+> named volume for a `./logs` bind mount and changes nothing else.
+
+The bot writes two files a day into `LOG_DIR` (`/app/logs` in the container, on the `fwb_logs`
+volume):
+
+| File | Holds |
+|---|---|
+| `foxholewarbot.<date>.log` | what the console shows: the bot's own messages, plus any warning |
+| `foxholewarbot-verbose.<date>.log` | the same, plus everything serenity, poise, reqwest and sqlx say — every Discord HTTP request, every SQL statement, every connection |
+
+Serenity's **gateway and HTTP** targets are the exception: they're muted even in the verbose file.
+Their instrumentation puts whole structures on one line — a gateway event is the entire guild, and
+an HTTP request is its body as a list of individual bytes, so posting a map PNG writes a log line
+several megabytes long. Measured: 65 MB in two hours from the gateway, then 55.7 MB from 711 HTTP
+lines once the gateway was muted. Reconnects, failures and rate limits still appear; they're
+warnings, and warnings survive the mute. To get the firehose back for an evening:
+`LOG_VERBOSE_FILTER=debug,tracing::span=off`.
+
+The console deliberately shows only the first. The dependencies' chatter is worth keeping and
+worth not reading: it buries a dozen useful lines a day under thousands, and it is wanted exactly
+when something has already gone wrong.
+
+```sh
+docker compose logs -f bot                      # the quiet stream
+docker compose exec bot sh -c 'ls /app/logs'     # both files
+docker compose exec bot sh -c 'tail -f /app/logs/foxholewarbot-verbose.*.log'
+```
+
+Files older than `LOG_RETENTION_DAYS` (default 14) are deleted at startup and nightly. Raise the
+console's verbosity temporarily with `RUST_LOG=info` — see `specs/architecture.md` → Logging for
+the filters and the other two overrides.
+
 ### Updating map and icon art
 
 Artwork tracks [`clapfoot/warapi`](https://github.com/clapfoot/warapi). With a clone of it on
@@ -50,6 +99,7 @@ disk:
 scripts/update_assets.py --warapi ../warapi --dry-run   # see what would change
 scripts/update_assets.py --warapi ../warapi
 scripts/update_assets.py --audit                        # check what's on disk, copy nothing
+scripts/update_assets.py --derive-icons                 # faction icons from the neutral art
 ```
 
 It renames as it copies, because upstream and the renderer disagree about names in ways that fail
@@ -64,6 +114,14 @@ misnamed, or leftover file. Worth running after any art drop.
 Some icons aren't in warapi at all and are sourced by hand — the script lists those as expected
 and never touches them. If it reports an **UNEXPECTED** icon type instead, upstream renamed the
 file: add the new name to `ICON_SOURCES` rather than renaming anything by hand.
+
+**Faction icons are generated, not copied.** Upstream mostly ships one *neutral* icon per
+structure and Foxhole tints it in game, so `MapIconStorageFacilityColonial.TGA` doesn't exist —
+but the renderer asks for `33Colonials.png` by name and falls back to the debug icon when it's
+missing. `--derive-icons` fills that in by tinting each `<n>None.png` into its two faction
+siblings with a linear burn, which leaves the black outline untouched; it runs automatically as
+part of a normal `--warapi` update, needs no source of its own, and never overwrites art that is
+already on disk. So a new structure type only needs its *neutral* icon added by hand.
 
 ---
 

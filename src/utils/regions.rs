@@ -95,6 +95,42 @@ pub const REGIONS: &[Region] = &[
     region("PipersEnclaveHex", "Pipers Enclave", 12, 4),
 ];
 
+/// The six grid steps to a hex's neighbours, as `(col, row)` deltas.
+///
+/// The grid is flat-top **odd-q offset**: odd columns sit half a hex lower than
+/// even ones (see `Region::col`), so the two diagonal pairs shift by one row
+/// depending on the column's parity. The vertical pair never does.
+const fn neighbour_deltas(col: u32) -> [(i64, i64); 6] {
+    if col % 2 == 1 {
+        [(0, -1), (0, 1), (-1, 0), (-1, 1), (1, 0), (1, 1)]
+    } else {
+        [(0, -1), (0, 1), (-1, -1), (-1, 0), (1, -1), (1, 0)]
+    }
+}
+
+/// The regions sharing an edge with this one.
+///
+/// Derived from `(col, row)` rather than tabulated, for the same reason the grid
+/// coordinates live in this file at all: a region Siege Camp ships should be one
+/// edit. A neighbour column would be a second, and the kind that fails quietly —
+/// a stale entry renders a map that is merely slightly wrong.
+///
+/// The world is not a filled rectangle, so degree runs 2–6: the coastal and
+/// corner regions simply have fewer grid slots occupied around them.
+pub fn neighbours(region: &Region) -> Vec<&'static Region> {
+    neighbour_deltas(region.col)
+        .iter()
+        .filter_map(|(d_col, d_row)| {
+            let col = u32::try_from(i64::from(region.col) + d_col).ok()?;
+            let row = u32::try_from(i64::from(region.row) + d_row).ok()?;
+
+            REGIONS
+                .iter()
+                .find(|candidate| candidate.col == col && candidate.row == row)
+        })
+        .collect()
+}
+
 /// Looks a region up by its API identifier.
 pub fn find(api_name: &str) -> Option<&'static Region> {
     REGIONS.iter().find(|region| same_region(region.api_name, api_name))
@@ -157,4 +193,91 @@ fn split_camel_case(s: &str) -> String {
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn names_of(region: &Region) -> Vec<&'static str> {
+        let mut names: Vec<_> = neighbours(region)
+            .iter()
+            .map(|region| region.display_name)
+            .collect();
+        names.sort_unstable();
+        names
+    }
+
+    /// Regions are compared by `api_name`, not by address: `REGIONS` is a
+    /// `const`, so every use site may get its own promoted copy and `ptr::eq`
+    /// reports two references to the same region as different.
+    fn is(a: &Region, b: &Region) -> bool {
+        a.api_name == b.api_name
+    }
+
+    /// If A borders B then B borders A. This is what actually catches a wrong
+    /// parity rule: get the odd/even split backwards and the diagonals stop
+    /// agreeing with each other, everywhere at once.
+    #[test]
+    fn adjacency_is_symmetric() {
+        for region in REGIONS {
+            for neighbour in neighbours(region) {
+                assert!(
+                    neighbours(neighbour).iter().any(|back| is(back, region)),
+                    "{} lists {} as a neighbour, but not the reverse",
+                    region.display_name,
+                    neighbour.display_name,
+                );
+            }
+        }
+    }
+
+    /// No region is isolated, none exceeds six, and none is its own neighbour.
+    #[test]
+    fn degrees_are_plausible() {
+        for region in REGIONS {
+            let found = neighbours(region);
+
+            assert!(
+                (2..=6).contains(&found.len()),
+                "{} has {} neighbours, expected 2-6",
+                region.display_name,
+                found.len(),
+            );
+            assert!(
+                !found.iter().any(|other| is(other, region)),
+                "{} is its own neighbour",
+                region.display_name,
+            );
+        }
+    }
+
+    /// Hand-checked against the in-game map. Deadlands is the useful case: it is
+    /// interior, so all six slots are filled, and its ring is well known.
+    #[test]
+    fn matches_the_real_map() {
+        let deadlands = find("DeadLandsHex").expect("Deadlands is in the table");
+
+        assert_eq!(
+            names_of(deadlands),
+            [
+                "Callahans Passage",
+                "Loch Mór",
+                "Marban Hollow",
+                "The Drowned Vale",
+                "The Linn of Mercy",
+                "Umbral Wildwood",
+            ],
+        );
+    }
+
+    /// The edges of the world, where the grid runs out rather than the map.
+    #[test]
+    fn edges_of_the_map_have_fewer() {
+        let enclave = find("PipersEnclaveHex").expect("Pipers Enclave is in the table");
+        assert_eq!(names_of(enclave), ["The Fingers", "Tyrant Foothills"]);
+
+        let olavis = find("OlavisWakeHex").expect("Olavis Wake is in the table");
+        assert_eq!(names_of(olavis), ["Palantine Berm", "Pari Peak"]);
+    }
 }

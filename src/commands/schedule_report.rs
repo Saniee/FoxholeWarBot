@@ -2,7 +2,7 @@ use poise::serenity_prelude as serenity;
 
 use crate::commands::common::{
     autocomplete_schedule_target, autocomplete_timezone, defer_for, guild_settings,
-    FULL_MAP_TARGET,
+    placeholder_submitted, FULL_MAP_TARGET,
 };
 use crate::utils::cron::ReportJob;
 use crate::utils::db::NewJob;
@@ -47,6 +47,14 @@ pub async fn schedule_report(
     };
 
     defer_for(ctx, &guild).await?;
+
+    // Worth more here than on the one-shot commands: accepting the placeholder
+    // would write a row and register a cron job whose every firing renders a
+    // region that doesn't exist, posting a failure to the channel on a timer
+    // until somebody deletes it.
+    if placeholder_submitted(ctx, &map_name).await? {
+        return Ok(());
+    }
 
     let data = ctx.data();
 

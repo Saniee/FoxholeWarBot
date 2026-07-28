@@ -15,7 +15,14 @@ clap = { version = "4.5.31", features = ["derive"] }
 # the job — a preview from a different implementation is a guess.
 croner = "2.0.5"
 dotenv = "0.15.0"
-env_logger = "0.11.6"
+# `RUST_LOG` syntax, parsed the same way env_logger parses it — the crate it was
+# extracted from. Kept so the filter strings in `utils::logging` mean exactly
+# what they meant when env_logger was reading them.
+env_filter = "0.1"
+# Three sinks from one facade: a quiet console and two date-rotated files
+# (`utils::logging`). env_logger writes to one target, which is what made the
+# console and the record of what happened the same stream.
+fern = { version = "0.7", features = ["date-based"] }
 image = { version = "0.25.5", features = ["serde"] }
 imageproc = "0.25.0"
 log = "0.4.25"

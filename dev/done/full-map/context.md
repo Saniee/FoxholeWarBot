@@ -176,6 +176,18 @@ It claimed migration `0005`, so the next free number is **0006**.
   and an `Option` would have had the command report "nothing to withdraw" right after withdrawing
   it.
 
+## Added later
+
+**A status message on `/full-map`** (2026-07-28). The command deferred and then went quiet for 53
+fetches and a 63.6 MP composite, which reads as a silent failure. It now posts one message before
+the render and edits that same message into the finished map, or into the error.
+
+**One message, never a moving one.** A throttled progress bar was built and thrown away on the
+user's call: editing an interaction response counts against Discord's rate limits, and the render
+passes through ~110 reportable moments. `specs/full-map-renderer.md` → Saying what it is doing has
+the argument, and "exactly one message and one edit per invocation" is an acceptance criterion so it
+cannot quietly grow back into a loop.
+
 ## Next steps
 **This task is finished bar the two unverified items in `tasks.md`** (the 90-day purge and peak
 render memory), both of which are release-gate checks rather than development. Active work has

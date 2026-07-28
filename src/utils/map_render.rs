@@ -18,12 +18,16 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use super::api_definitions::foxhole::{DynamicMapData, StaticMapData};
-use super::cache::{load_dynamic_cache, load_maps, load_static_cache, save_map_cache};
+use super::cache::{
+    load_dynamic_cache, load_maps, load_static_cache, save_dynamic_cache, save_map_cache,
+};
 use super::db::Shard;
 use super::http;
 use super::regions::{self, Region, REGIONS};
+use super::frontline::{self, Edge};
 use super::request_processing::{
-    load_background, place_image_info, RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
+    draw_frontline, draw_hex_borders, draw_region_labels, load_background, place_image_info, Ground,
+    RegionLabel, RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
 };
 
 /// Region fetches in flight at once during a full-map render.
@@ -157,6 +161,159 @@ async fn fetch_region(
     Ok((dynamic_data, static_data))
 }
 
+/// Fetches just the dynamic half of a region.
+///
+/// The frontline needs where the structures are, not what the towns are called,
+/// and the two halves have always been revalidated against separate ETags and
+/// separate cache files — so asking for one is the existing model, not a
+/// shortcut around it. Halves the request count of the neighbour fan-out.
+async fn fetch_dynamic(
+    client: &reqwest::Client,
+    api_url: &str,
+    shard_name: &str,
+    map_name: &str,
+) -> Result<DynamicMapData, MapError> {
+    let cached = load_dynamic_cache(map_name, shard_name).await;
+
+    let response = conditional_get(
+        client,
+        format!("{api_url}/worldconquest/maps/{map_name}/dynamic/public"),
+        cached.as_ref().map(|d| d.version),
+    )
+    .await?;
+
+    let (data, is_fresh): (DynamicMapData, bool) = resolve(response, cached).await?;
+
+    if is_fresh {
+        save_dynamic_cache(&data, map_name, shard_name).await;
+    }
+
+    Ok(data)
+}
+
+/// The frontline through one region, in that region's own pixels.
+///
+/// **Fetches the up-to-six adjacent regions**, because a single hex's line is
+/// wrong at its own edges without them: the field outside the hex is what the
+/// contour needs in order to reach the silhouette at all, and there is none
+/// without the neighbours' structures. A neighbour that fails is skipped with a
+/// warning — the line then degrades near that one edge exactly as it would have
+/// without the feature, which is strictly better than refusing to render.
+///
+/// Empty whenever there is nothing to draw, which includes the ordinary case of
+/// a hex where only one faction holds anything.
+async fn region_frontline(
+    client: &reqwest::Client,
+    api_url: &str,
+    shard_name: &str,
+    map_name: &str,
+    own_data: &DynamicMapData,
+    config: &RenderConfig,
+) -> Front {
+    if !config.frontline {
+        return Front::default();
+    }
+
+    let Some(region) = regions::find(map_name) else {
+        log::warn!("{map_name} has no grid position, so it gets no frontline");
+        return Front::default();
+    };
+
+    let mut sources = frontline::sources_in(region, own_data, config);
+
+    // The API's spelling for the API's URLs, the table's for everything else —
+    // conflating the two is what lost Marban Hollow. An empty list means the
+    // cache is cold rather than that the war has no regions.
+    let listed = load_maps(Shard::from_str(shard_name)).await;
+    let live = (!listed.is_empty()).then_some(listed);
+
+    let mut fetches = JoinSet::new();
+
+    for neighbour in regions::neighbours(region) {
+        let Some(fetch_name) = live_name(&live, neighbour) else {
+            continue;
+        };
+
+        let fetch_name = fetch_name.to_string();
+        let client = client.clone();
+        let api_url = api_url.to_string();
+        let shard_name = shard_name.to_string();
+
+        fetches.spawn(async move {
+            (
+                neighbour,
+                fetch_dynamic(&client, &api_url, &shard_name, &fetch_name).await,
+            )
+        });
+    }
+
+    while let Some(joined) = fetches.join_next().await {
+        match joined {
+            Ok((neighbour, Ok(dynamic))) => {
+                sources.extend(frontline::sources_in(neighbour, &dynamic, config));
+            }
+            Ok((neighbour, Err(err))) => log::warn!(
+                "frontline: no data for {}, so the line may drift at that edge: {err}",
+                neighbour.api_name
+            ),
+            Err(_) => log::warn!("frontline: a neighbour fetch panicked, skipping it"),
+        }
+    }
+
+    let bounds = frontline::Bounds::around_region(region, config, config.frontline_margin());
+
+    // After the neighbours are in, never per region: a town sitting on a hex
+    // boundary has its structures split across two API responses, and
+    // clustering each response on its own would leave it as two footings on
+    // exactly the ground where the line is most sensitive.
+    let sources = frontline::footings(&sources, config.footing_radius());
+
+    let Some(field) = frontline::Field::sample(
+        &sources,
+        bounds,
+        config.field_spacing(),
+        config.influence_model(),
+    ) else {
+        log::debug!("no frontline in {map_name}: only one faction holds anything nearby");
+        return Front::default();
+    };
+
+    let lines = frontline::smooth(frontline::contour(&field), frontline::SMOOTHING_ROUNDS);
+    let edges = frontline::flanks(
+        lines,
+        &sources,
+        config.influence_model(),
+        config.field_spacing(),
+    );
+    let (origin_x, origin_y) = config.grid_offset(region.col, region.row);
+
+    Front {
+        edges: translate(&edges, origin_x, origin_y),
+        field: Some(field),
+        origin: (origin_x as f32, origin_y as f32),
+    }
+}
+
+/// What one pass of the frontline model produces: the traced boundary, and the
+/// field it was traced from.
+///
+/// The field travels with the line because the territory wash is coloured by it
+/// (`specs/active/frontline-territory.md`), and the two have to come from the
+/// same evaluation or the wash and the line disagree about where the front is.
+#[derive(Default)]
+struct Front {
+    /// Already in the target canvas's own pixels for a single region; still in
+    /// world space for the full map, where each of the 53 tiles translates it
+    /// for itself.
+    edges: Vec<Edge>,
+    /// `None` when there is no boundary at all — the feature is off, or one
+    /// faction holds everything the API told us about.
+    field: Option<frontline::Field>,
+    /// Where the canvas `edges` are stated in sits in world space, which is what
+    /// lets a canvas pixel be turned back into a field sample.
+    origin: (f32, f32),
+}
+
 /// Fetches (revalidating against the on-disk cache) and renders one region.
 pub async fn render_region(
     api_url: &str,
@@ -173,10 +330,33 @@ pub async fn render_region(
     let last_updated = dynamic_data.last_updated;
     let background = background_path(map_name);
 
+    let frontline = region_frontline(
+        &client,
+        api_url,
+        shard_name,
+        map_name,
+        &dynamic_data,
+        &config,
+    )
+    .await;
+
     // Compositing is CPU-bound and would otherwise stall the async runtime for
     // the duration of the render (QA L-8).
     let png = tokio::task::spawn_blocking(move || {
-        let img = place_image_info(&dynamic_data, &static_data, draw_text, &background, &config)?;
+        let ground = frontline.field.as_ref().map(|field| Ground {
+            field,
+            origin: frontline.origin,
+        });
+
+        let img = place_image_info(
+            &dynamic_data,
+            &static_data,
+            draw_text,
+            &background,
+            &frontline.edges,
+            ground,
+            &config,
+        )?;
 
         encode_png(&img)
     })
@@ -340,19 +520,65 @@ fn composite_full_map(
     let scale = config.full_map_scale(canvas_w, canvas_h);
     let tile_config = config.for_full_map(scale);
 
+    // Taken before the loop consumes the tiles. Every region gets a name,
+    // including one drawn as bare terrain — a hex whose data didn't arrive is
+    // the one a user most needs identified.
+    let labels = region_labels(&tiles, scale, config);
+
+    // Taken here for the same reason the labels are — the loop consumes the
+    // tiles — and in finished-image pixels, because that is where the borders
+    // are drawn.
+    let origins: Vec<(f32, f32)> = tiles
+        .iter()
+        .map(|(region, _)| {
+            let (x, y) = config.grid_offset(region.col, region.row);
+            (x as f32 * scale, y as f32 * scale)
+        })
+        .collect();
+
+    // One field over the whole world, traced once. Per-region would break the
+    // line at every seam, because a region's front depends on the bases in the
+    // regions beside it.
+    let frontline = world_frontline(&tiles, canvas_w, canvas_h, config);
+
     for (region, data) in tiles {
         let background = background_path(region.api_name);
+        let (x, y) = config.grid_offset(region.col, region.row);
+
+        // Every tile is handed the whole contour, shifted into its own pixels.
+        // `stroke` clips per segment, so the 52 regions' worth that miss this
+        // hex cost nothing — and the ones that overhang it are exactly what
+        // carries the line to the silhouette instead of stopping short.
+        let local = translate(&frontline.edges, x, y);
+
+        // The same field for every tile, read at the tile's own place in the
+        // world. One field for the world is what keeps the wash continuous
+        // across a seam, exactly as it keeps the line continuous.
+        let ground = frontline.field.as_ref().map(|field| Ground {
+            field,
+            origin: (x as f32, y as f32),
+        });
 
         let hex = match data {
-            Some((dynamic, statics)) => {
-                place_image_info(&dynamic, &statics, draw_text, &background, &tile_config)
-            }
-            None => load_background(&background),
+            Some((dynamic, statics)) => place_image_info(
+                &dynamic,
+                &statics,
+                draw_text,
+                &background,
+                &local,
+                ground,
+                &tile_config,
+            ),
+            // No icons to sit under here, so the order the overlay cares about
+            // is moot; the alpha mask still keeps it inside the hexagon.
+            None => load_background(&background).map(|mut bare| {
+                draw_frontline(&mut bare, &local, &tile_config);
+                bare
+            }),
         };
 
         match hex {
             Ok(hex) => {
-                let (x, y) = config.grid_offset(region.col, region.row);
                 overlay(&mut canvas, &hex, x as i64, y as i64);
             }
             // Missing art for one region shouldn't cost the other 52 either.
@@ -360,7 +586,7 @@ fn composite_full_map(
         }
     }
 
-    let scaled = if scale < 1.0 {
+    let mut scaled = if scale < 1.0 {
         let width = ((canvas_w as f32 * scale).round() as u32).max(1);
         let height = ((canvas_h as f32 * scale).round() as u32).max(1);
 
@@ -369,7 +595,135 @@ fn composite_full_map(
         canvas
     };
 
+    // Under the names and over everything else. A hex boundary is the frame the
+    // map is divided by, so it goes on top of the terrain and the icons — but a
+    // region's name is what the frame is *for*, and a black line through a
+    // label would cost more legibility than the border buys.
+    if config.full_map_hex_borders {
+        draw_hex_borders(&mut scaled, &origins, scale, config);
+    }
+
+    // The last thing to touch the image, deliberately. Names are the layer the
+    // user reads the map *by*, so nothing is drawn over them and nothing
+    // resamples them.
+    if config.full_map_region_labels {
+        draw_region_labels(&mut scaled, &labels, config)?;
+    }
+
     encode_png(&scaled)
+}
+
+/// The frontline across the whole world, in world pixels.
+///
+/// Empty whenever there is nothing to draw: the feature is off, or the field
+/// has no zero crossing because one side holds everything the API told us
+/// about. Both are ordinary states, not failures.
+fn world_frontline(
+    tiles: &[Tile],
+    canvas_w: u32,
+    canvas_h: u32,
+    config: &RenderConfig,
+) -> Front {
+    // The wash needs the field even when the line is not drawn. Computing it
+    // only for `frontline` would mean a guild that turned the tint on kept
+    // getting the old per-hex answer until it also turned the line on, which is
+    // a coupling nobody asked for — and at 21 ms on the real composite it is
+    // affordable to just have it.
+    if !config.frontline && !config.faction_tint {
+        return Front::default();
+    }
+
+    let sources: Vec<_> = tiles
+        .iter()
+        .filter_map(|(region, data)| data.as_ref().map(|(dynamic, _)| (region, dynamic)))
+        .flat_map(|(region, dynamic)| frontline::sources_in(region, dynamic, config))
+        .collect();
+
+    // Across the whole world, not per tile, for the reason `region_frontline`
+    // gives: a town on a hex boundary is split between two responses.
+    let sources = frontline::footings(&sources, config.footing_radius());
+
+    // Past the canvas on every side, for the same reason a single hex is
+    // oversampled: a contour that stops at the edge stops a stroke short of it.
+    let margin = config.frontline_margin();
+    let bounds = frontline::Bounds {
+        min_x: -margin,
+        min_y: -margin,
+        max_x: canvas_w as f32 + margin,
+        max_y: canvas_h as f32 + margin,
+    };
+
+    let Some(field) = frontline::Field::sample(
+        &sources,
+        bounds,
+        config.field_spacing(),
+        config.influence_model(),
+    ) else {
+        log::debug!("no frontline to draw: only one faction holds anything on this map");
+        return Front::default();
+    };
+
+    let lines = frontline::smooth(frontline::contour(&field), frontline::SMOOTHING_ROUNDS);
+    let edges = frontline::flanks(
+        lines,
+        &sources,
+        config.influence_model(),
+        config.field_spacing(),
+    );
+
+    Front {
+        edges,
+        field: Some(field),
+        // World space *is* the full map's canvas space, so a tile's own offset
+        // is the whole of the conversion.
+        origin: (0.0, 0.0),
+    }
+}
+
+/// The same edges, moved from world space into a tile's own pixels.
+///
+/// A translation and nothing else, which is what lets the sides survive it: the
+/// flank each segment carries is a handedness, and a shift preserves it where a
+/// mirror would silently swap the two factions over.
+fn translate(edges: &[Edge], origin_x: u32, origin_y: u32) -> Vec<Edge> {
+    edges
+        .iter()
+        .map(|edge| Edge {
+            points: edge
+                .points
+                .iter()
+                .map(|(x, y)| (x - origin_x as f32, y - origin_y as f32))
+                .collect(),
+            colonial_side: edge.colonial_side.clone(),
+        })
+        .collect()
+}
+
+/// Where each region's name goes on the finished image, and how much room it
+/// has.
+///
+/// A hex is at its widest across its own vertical centre, and that is also the
+/// one height at which the neighbouring columns' art does not reach it: their
+/// centres sit half a hex above and below, so at this line they are at their
+/// own flat top or bottom edge, which spans only the middle half of their
+/// width. The two footprints meet exactly and never overlap — which is what
+/// makes a centred name safe at most of the hex's width.
+fn region_labels(tiles: &[Tile], scale: f32, config: &RenderConfig) -> Vec<RegionLabel> {
+    tiles
+        .iter()
+        .map(|(region, _)| {
+            let (x, y) = config.grid_offset(region.col, region.row);
+
+            RegionLabel {
+                text: region.display_name.to_string(),
+                center: (
+                    (x as f32 + REGION_WIDTH as f32 / 2.0) * scale,
+                    (y as f32 + REGION_HEIGHT as f32 / 2.0) * scale,
+                ),
+                max_width: REGION_WIDTH as f32 * scale * config.full_map_label_width_ratio,
+            }
+        })
+        .collect()
 }
 
 /// The canvas the placed tiles need, derived from the tiles themselves rather
@@ -402,3 +756,5 @@ fn encode_png(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>, RenderErr
 
     Ok(buf)
 }
+
+

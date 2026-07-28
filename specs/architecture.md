@@ -23,7 +23,7 @@ Shared machinery every command depends on.
        Best-effort: a failure here is logged, never fatal, since tidying the dev guild is not a
        reason to refuse to start in production. Not done in reverse — a `--local` run leaves
        global commands alone, or dev would deregister production.
-     - Start the daily map-list refresh job and restart persisted report jobs **once**.
+     - Start the hourly map-list refresh job and restart persisted report jobs **once**.
      - Return the shared `Data` (see below).
 6. `serenity::ClientBuilder::new(TOKEN, GatewayIntents::GUILDS).framework(framework)` and start.
 
@@ -31,21 +31,103 @@ Shared machinery every command depends on.
 client) and sets both the global and dev-guild command lists to empty, then exits.
 
 > **Why this structurally fixes QA C-6:** the `setup` closure runs a single time per process, so
-> the daily map job and report-job restoration cannot re-run on a gateway reconnect. The old
+> the map-refresh job and report-job restoration cannot re-run on a gateway reconnect. The old
 > `ready`-based `cron_jobs_restarted` local guard (a dead write) is gone, and poise offers no
 > place to reintroduce it.
 
-### Logging
-`env_logger`, initialised first thing in `main`, writing to **stderr** — nothing is written to a
-file, so capture is the caller's job (`docker compose logs`, or a redirect).
+### Logging (`src/utils/logging.rs`)
 
-Default filter: `info,tracing::span=off`. The second half is not optional noise-trimming. Serenity
-is instrumented with `tracing`, whose `log` bridge emits a record for every span it opens; on a
-live gateway that is `recv;`, `do_heartbeat;` and `recv_event;` several times a second, forever,
-each carrying no information beyond its own name. They arrive under the `tracing::span` target, so
-they can be dropped without touching serenity's real messages, which keep their own targets.
+`fern`, initialised first thing in `main`, fanning one `log` facade out to **three sinks**: stderr
+and two date-rotated files. Filters are `RUST_LOG` syntax throughout, parsed by `env_filter` — the
+crate `env_logger` was built on, so the strings mean exactly what they used to.
 
-`RUST_LOG` overrides the whole string when something needs watching.
+| Sink | Default filter | Env override |
+|---|---|---|
+| stderr | `warn`, this crate at `info` | `RUST_LOG` |
+| `logs/foxholewarbot.<date>.log` | the same | `LOG_FILE_FILTER` |
+| `logs/foxholewarbot-verbose.<date>.log` | `debug`, this crate at `trace` | `LOG_VERBOSE_FILTER` |
+
+**The console carries this crate and warnings, and nothing else.** Serenity and poise log every
+HTTP request, every gateway event and every dispatch; sqlx logs every statement it runs, at
+`info`. All of it is real information and none of it is what someone tailing `docker compose logs`
+is looking for — it buries the bot's own dozen-a-day lines. The split keeps it, in the verbose
+file, rather than filtering it away: it is the only record of what the bot asked Discord for and
+what came back, and it is wanted precisely when something has already gone wrong.
+
+The plain file is the console's **twin**, not a middle verbosity. Its job is "what did it say last
+Tuesday" for someone who wasn't watching the terminal, and a stream that reads differently from
+the one they know is a worse answer than the same one, kept.
+
+#### The gateway is muted, and why level filtering couldn't do it
+Serenity is instrumented with `tracing`, whose `log` bridge emits **two** kinds of record, and the
+distinction is load-bearing:
+
+- **Span enter/exit**, under the `tracing::span` target. Pure noise — `recv;`, `do_heartbeat;`,
+  several a second, forever, carrying nothing beyond a name. `tracing::span=off` is in every
+  filter, including the verbose one, and drops these.
+- **Span creation, under the instrumented module's own target**, with the span's fields inline.
+  `tracing::span=off` never touched these, which is what buried the console before the split: at a
+  global `info`, every heartbeat and every gateway event was on it.
+
+The second kind is also enormous, because the field *is* the payload:
+`handle_event; event=Ok(Dispatch(N, GuildCreate(GuildCreateEvent { guild: Guild { .. } })))` is an
+entire guild — every channel, role and emoji — `Debug`-formatted onto one line. Measured on a live
+run: **1,837 lines over 2h05m, 65 MB, of which 1,695 lines came from `serenity::gateway::shard`
+and `serenity::gateway::ws`.** An average line of 36 KB, and ~750 MB a day — 10 GB across the
+retention window.
+
+So those two targets are muted at `warn` in the verbose filter. **Muting is blunt on purpose: no
+level separates the noise from the signal here**, because the noise is `INFO` while the little
+worth keeping under the same targets (`Received a Hello`, `Sending presence update`) is `DEBUG`.
+What actually matters about the gateway — reconnects, resumes, failures — is `WARN` from these
+targets and from `shard_runner`, `shard_manager` and `shard_queuer`, none of which are touched.
+
+**`serenity::http` is muted for the same reason and by the same measurement.** With the gateway
+silenced the next sample was still **55.7 MB from 711 lines** — 80 KB a line — because
+`build; self=Request { body: Some([N, N, N, ..` is the request body as a decimal list, one element
+per byte. A map PNG posted to a webhook is megabytes, so one scheduled tick writes one log line of
+megabytes. Method, route and status are not worth that, and a 429 or a failed request is `WARN`,
+which survives.
+
+Everything else stays at `debug` on the evidence rather than on suspicion: `h2`, `rustls`,
+`hyper_util` and `tungstenite` were 16, 8, 7 and 2 lines in the first sample. They were the prime
+suspects before the log was read, and they are not the problem — `hyper_util`'s connection pooling
+is the largest of them at 227 small lines, which is what a full-map render's 53 fetches looks like
+and is worth having.
+
+Nothing of **this crate's** logging was demoted for volume. Across both samples it contributed a
+handful of lines, and the one place it repeated was a fact rather than an event: see the
+per-process de-duplication in Map rendering below.
+
+Filters name this crate by `module_path!()`'s root rather than by a string literal, so a rename
+can't leave them pointing at nothing.
+
+#### Files, rotation, retention
+- `LOG_DIR` (default `./logs`, `/app/logs` in the container) is created at startup. **Empty means
+  console-only** — one variable to say it, rather than a second flag that can disagree with the
+  first.
+- Rotation is daily, by `fern::DateBased`: the date is in the filename, so nothing renames or
+  reopens anything.
+- `LOG_RETENTION_DAYS` (default 14, `0` keeps everything) is enforced by `logging::prune`, run
+  **at startup and by a daily job at 03:50 UTC**. Both, because a bot restarted often would never
+  reach the nightly job and one that never restarts would only ever prune from it. It deletes only
+  files matching its own two prefixes — the directory may be a bind mount with other things in it.
+- Nothing here is fatal. A log directory that can't be created is a warning on a console that is
+  already working, the same rule the on-disk cache follows.
+
+The directory is a **mounted volume** (`fwb_logs`) for the same reason the cache is: a container
+rebuilt on every deploy otherwise takes the record of what happened with it. A named volume is
+not a host directory, so the files are *not* in `./logs` when the bot runs in Docker —
+`compose.override.example.yaml` swaps in a bind mount for anyone who wants them there, and
+`compose.override.yaml` is loaded automatically without flags.
+
+Two things exist because that distinction is easy to trip over, both of which turn "it says it's
+logging and the folder is empty" into an answer at startup:
+- The directory is **canonicalized before it is announced**, so the startup line names an absolute
+  path rather than a `./logs` whose meaning depends on the working directory it was read in.
+- The directory is **probed for writability** during `init`. `fern::DateBased` opens its file
+  lazily on the first record and has nowhere to report a failure to, so an unwritable mount would
+  otherwise be perfectly silent: a working console, and a directory that never fills.
 
 ### Gateway intents
 Only `GUILDS`. The bot does **not** request message content or member intents; it operates
@@ -105,6 +187,14 @@ returns `Vec<AutocompleteChoice>`. The map-name handler lives once in
 `/schedule-report`: it reads `ctx.data().db` for the guild's shard, loads the cached region
 list, matches case-insensitively against both the display name and the API id, and caps at 25.
 Labels come from `utils::regions::display_name`; `OriginHex` is not excluded.
+
+**An empty result is never returned.** A guild with no settings, and a shard whose cached region
+list is empty, each get a single placeholder choice explaining why — Discord renders an empty
+response as "No options matched your search", which reads as a typo and sends the user hunting
+for a spelling mistake that isn't there. The placeholder's value is the `NO_CHOICE` sentinel,
+and every command taking a map name checks for it before rendering: it is selectable like any
+other option, and treating it as a region name produces "if `-` should exist, please report it",
+which asks the user to file a bug for clicking the only thing they were offered.
 
 ### Error handling
 `FrameworkOptions.on_error` is the single place transport/JSON/render failures surface. Commands
@@ -214,7 +304,15 @@ Created lazily under `./cache/`:
 - `cache/static/Static_<map>-<Shard>.json` — last `StaticMapData`.
 - `cache/war_reports/Report_<map>-<Shard>.json` — last `WarReport`.
 
-`save_maps_cache()` refreshes all three shards' map lists (skipping shards that return 503).
+`save_maps_cache()` refreshes all three shards' map lists by calling `refresh_maps(shard)`, which
+also reports a `ShardHealth` — `Ready(n)`, `NoRegions`, `Unavailable(status)`, or `Unreachable`.
+`/set-guild-settings` uses the same function as its validation probe, so the check and the cache
+fill are one request rather than two, and `ShardHealth::explain` is the one place the wording for
+each failure lives.
+
+**An empty list is not written over a list already held.** A shard between wars would otherwise
+erase a good list, blanking every autocomplete for it until its next war starts. A stale list
+costs at most a few fetches that render as bare terrain, which is by far the cheaper mistake.
 
 ## Map rendering (`src/utils/request_processing.rs::place_image_info`)
 
@@ -224,9 +322,24 @@ footprint. Detail and the anchoring decision: `specs/rendering-placement.md`.
 Inputs: `DynamicMapData`, `StaticMapData`, `draw_text: bool`, background path, `&RenderConfig`.
 1. Open `assets/Maps/Map<name>.TGA` as RGBA; a failure is a typed `RenderError`.
 2. For each dynamic `map_item`: load `assets/MapIcons/<icon_type><TeamId>.png`
-   (e.g. `12Colonials.png`, `40None.png`). Missing icon → fall back to `DebugIcon.png`.
+   (e.g. `12Colonials.png`, `40None.png`). Missing icon → fall back to `DebugIcon.png`, warned
+   **once per icon type per process**. The fact is about the asset set, not about this render: a
+   type Foxhole ships before we do is missing for every structure of that type, in every region,
+   on every render — one measured full-map render produced 113 identical warnings from two types,
+   which buries a real signal (art needs updating) under its own repetition. Per process rather
+   than per render, since the answer only changes when someone deploys new art.
    Each icon is resized to `icon_size_ratio × region width` and overlaid at the position given
    by `place()`, which honors the config's `Anchor`.
+
+   The faction art mostly does not exist upstream to be copied — Foxhole ships one *neutral*
+   icon per structure and tints it in game — so `scripts/update_assets.py --derive-icons`
+   generates `<icon_type>{Colonials,Wardens}.png` from `<icon_type>None.png` by linear burn
+   (`out = neutral + faction − 255`, clamped, alpha untouched). That operation is not a taste
+   call: the faction icons drawn by hand years ago are exactly it, matching pixel for pixel on
+   38 of the 66 pairs on disk, and the two colours (Colonial `101,135,94`, Warden `72,125,169`)
+   were recovered from that fit as what pure white maps to. The black outline survives because
+   black clamps to itself; a blend would wash it grey and cost the icon its edge on a dark hex.
+   Existing art always wins — nothing hand-made is overwritten by a generated approximation.
 3. If `draw_text`: render each `map_text_item.text` in Inter-Bold at
    `major_text_ratio`/`minor_text_ratio` × region height, per its `MapMarkerType`.
 4. Return the composited `ImageBuffer`.
@@ -248,7 +361,13 @@ concurrent renders can no longer collide (C-1).
 
 See `specs/scheduling.md` for the full subsystem.
 
-- `start_map_update_job` — cron `0 0 0 * * *` (daily at 00:00) refreshes the region lists.
+- `start_map_update_job` — cron `0 0 * * * *` (hourly) refreshes the region lists. Hourly rather
+  than daily because this is also the recovery path: a shard that was down when its list was
+  last fetched has nothing cached, so every autocomplete for it is empty until the next run.
+  Daily made that window most of a day.
+- `start_log_prune_job` — cron `0 50 3 * * *` deletes log files past `LOG_RETENTION_DAYS`
+  (see Logging). Twenty minutes after the request purge, so the two aren't doing filesystem work
+  in the same minute.
 - `restore_jobs` — runs once from `setup`; joins every `cronjobs` row to its owning guild so each
   restores against its own shard (C-7), and skips-and-logs any row it can't restore (C-8).
 - `schedule` — registers a job with the scheduler and returns its UUID. It does **not** touch the

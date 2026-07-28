@@ -48,6 +48,10 @@ pub struct GuildData {
     pub shard_name: String,
     pub show_command_output: bool,
     pub full_map_faction_tint: bool,
+    /// Draw the contested boundary between the factions. Unlike the tint, this
+    /// applies to `/get-map` as well: it answers a sub-region question, and the
+    /// hex a player cares about most is the contested one.
+    pub frontline: bool,
     /// This server's default timezone, as an IANA name. Every new schedule
     /// starts from it; `/schedule-report` can override it for one report.
     pub timezone: String,
@@ -279,7 +283,7 @@ impl Database {
     /// sense: `/set-guild-settings` requires the shard every time, so a guild
     /// changing shards would silently lose its tint setting if an absent option
     /// meant `FALSE`. `None` keeps whatever is already there, and only an insert
-    /// falls back to off.
+    /// falls back to off. `frontline` is optional in exactly the same sense.
     /// `timezone` is optional in the same "leave it alone" sense as `tint`, and
     /// for the same reason: a server changing shards must not have its clock
     /// quietly reset to UTC underneath its existing schedules.
@@ -289,18 +293,22 @@ impl Database {
         shard: Shard,
         show: bool,
         tint: Option<bool>,
+        frontline: Option<bool>,
         timezone: Option<&str>,
     ) -> Result<GuildData, sqlx::Error> {
         sqlx::query_as(
             "INSERT INTO guilds \
-                 (guild_id, shard, shard_name, show_command_output, full_map_faction_tint, timezone) \
-             VALUES ($1, $2, $3, $4, COALESCE($5::BOOLEAN, FALSE), COALESCE($6::TEXT, 'UTC')) \
+                 (guild_id, shard, shard_name, show_command_output, full_map_faction_tint, \
+                  frontline, timezone) \
+             VALUES ($1, $2, $3, $4, COALESCE($5::BOOLEAN, FALSE), \
+                     COALESCE($6::BOOLEAN, FALSE), COALESCE($7::TEXT, 'UTC')) \
              ON CONFLICT (guild_id) DO UPDATE \
              SET shard = EXCLUDED.shard, \
                  shard_name = EXCLUDED.shard_name, \
                  show_command_output = EXCLUDED.show_command_output, \
                  full_map_faction_tint = COALESCE($5::BOOLEAN, guilds.full_map_faction_tint), \
-                 timezone = COALESCE($6::TEXT, guilds.timezone) \
+                 frontline = COALESCE($6::BOOLEAN, guilds.frontline), \
+                 timezone = COALESCE($7::TEXT, guilds.timezone) \
              RETURNING *",
         )
         .bind(guild_id)
@@ -308,6 +316,7 @@ impl Database {
         .bind(shard.as_str())
         .bind(show)
         .bind(tint)
+        .bind(frontline)
         .bind(timezone)
         .fetch_one(&self.conn)
         .await

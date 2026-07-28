@@ -1,6 +1,8 @@
 use poise::serenity_prelude as serenity;
 
-use crate::commands::common::{autocomplete_map, defer_for, guild_settings};
+use crate::commands::common::{
+    autocomplete_map, defer_for, guild_settings, placeholder_submitted,
+};
 use crate::utils::format_timestamp;
 use crate::utils::map_render::{render_region, MapError};
 use crate::utils::regions::display_name;
@@ -23,12 +25,23 @@ pub async fn get_map(
 
     defer_for(ctx, &guild).await?;
 
+    if placeholder_submitted(ctx, &map_name).await? {
+        return Ok(());
+    }
+
     let rendered = match render_region(
         &guild.shard,
         &guild.shard_name,
         &map_name,
         draw_text.unwrap_or(false),
-        RenderConfig::default(),
+        // The frontline is the one render setting a single hex honours. The
+        // tint deliberately isn't: at this scale the terrain is the point and a
+        // colour wash over it hurts more than it says, where the contested hex
+        // is exactly the one whose per-hex answer is least true.
+        RenderConfig {
+            frontline: guild.frontline,
+            ..RenderConfig::default()
+        },
     )
     .await
     {
@@ -36,8 +49,12 @@ pub async fn get_map(
         // Every failure path replies. A deferred interaction that never gets a
         // final response leaves the user staring at a spinner forever (QA C-12).
         Err(MapError::ApiUnavailable) => {
-            ctx.say("The Foxhole API is not responding right now. Try again shortly.")
-                .await?;
+            ctx.say(format!(
+                "Shard **{}** isn't responding right now. Try again shortly, or switch shards \
+                 with `/set-guild-settings`.",
+                guild.shard_name
+            ))
+            .await?;
             return Ok(());
         }
         Err(err @ MapError::Render(_)) => {

@@ -12,6 +12,7 @@ use super::cache::save_maps_cache;
 use super::db::Database;
 use super::entitlement::{self, FullMapScheduling};
 use super::format_timestamp;
+use super::logging::{self, LogFiles};
 use super::map_render::{render_full_map, render_region};
 use super::request_processing::RenderConfig;
 use super::regions::display_name;
@@ -60,12 +61,22 @@ impl CronHandler {
         Ok(CronHandler { scheduler })
     }
 
-    /// Refreshes the cached per-shard region lists once a day.
+    /// Refreshes the cached per-shard region lists, hourly.
+    ///
+    /// Daily was the recovery time for an outage, not the refresh rate for a
+    /// region list. A shard that was down when the list was last fetched has
+    /// nothing cached, every autocomplete for it is empty, and none of that
+    /// mends itself until the next run — so a shard could come back and stay
+    /// unusable for most of a day. Hourly is three requests an hour against an
+    /// API with no published rate limit, and it caps that window at an hour.
     pub async fn start_map_update_job(&self) -> Result<(), JobSchedulerError> {
-        let job = Job::new_async("0 0 0 * * *", |_uuid, _lock| {
+        let job = Job::new_async("0 0 * * * *", |_uuid, _lock| {
             Box::pin(async move {
                 save_maps_cache().await;
-                log::info!("refreshed the cached region lists");
+                // Hourly now, so this goes to the verbose log rather than the
+                // console. Anything actually wrong is warned about by
+                // `save_maps_cache` itself and still shows.
+                log::debug!("refreshed the cached region lists");
             })
         })?;
 
@@ -92,6 +103,27 @@ impl CronHandler {
 
         self.scheduler.add(job).await?;
         log::info!("started the full-map request retention job");
+
+        Ok(())
+    }
+
+    /// Keeps the log directory to its retention window, daily.
+    ///
+    /// Rotation only decides what the files are called; without this the mounted
+    /// volume grows for as long as the bot runs. Twenty minutes after the
+    /// request purge, so the two aren't doing filesystem work at the same
+    /// minute.
+    pub async fn start_log_prune_job(&self, logs: LogFiles) -> Result<(), JobSchedulerError> {
+        let job = Job::new_async("0 50 3 * * *", move |_uuid, _lock| {
+            let logs = logs.clone();
+
+            Box::pin(async move {
+                logging::prune_and_report(&logs);
+            })
+        })?;
+
+        self.scheduler.add(job).await?;
+        log::info!("started the log retention job");
 
         Ok(())
     }
@@ -309,7 +341,10 @@ async fn run_report(
                 &guild.shard_name,
                 map_name,
                 job.draw_text,
-                RenderConfig::default(),
+                RenderConfig {
+                    frontline: guild.frontline,
+                    ..RenderConfig::default()
+                },
             )
             .await
         }
@@ -320,6 +355,7 @@ async fn run_report(
                 job.draw_text,
                 RenderConfig {
                     faction_tint: guild.full_map_faction_tint,
+                    frontline: guild.frontline,
                     ..RenderConfig::default()
                 },
             )

@@ -1,7 +1,9 @@
 use poise::serenity_prelude as serenity;
 use reqwest::StatusCode;
 
-use crate::commands::common::{autocomplete_map, defer_for, guild_settings};
+use crate::commands::common::{
+    autocomplete_map, defer_for, guild_settings, placeholder_submitted, unreachable_message,
+};
 use crate::utils::api_definitions::foxhole::WarReport;
 use crate::utils::cache::{load_war_report, save_war_report};
 use crate::utils::http;
@@ -22,9 +24,17 @@ pub async fn war_report(
 
     defer_for(ctx, &guild).await?;
 
+    if placeholder_submitted(ctx, &map_name).await? {
+        return Ok(());
+    }
+
     let cached = load_war_report(&map_name, &guild.shard_name).await;
 
-    let response = http::client()
+    // Not `?`. A shard that has gone offline since it was set up fails here at
+    // the transport layer, and propagating that reaches the user as "Something
+    // went wrong running that command" — true, unactionable, and identical to
+    // the message for a genuine bug.
+    let response = match http::client()
         .get(format!(
             "{}/worldconquest/warReport/{map_name}",
             guild.shard
@@ -34,14 +44,29 @@ pub async fn war_report(
             format!("\"{}\"", cached.as_ref().map_or(0, |r| r.version)),
         )
         .send()
-        .await?;
+        .await
+    {
+        Ok(response) => response,
+        Err(err) => {
+            log::warn!("could not reach shard {} for a war report: {err}", guild.shard_name);
+            ctx.say(unreachable_message(&guild.shard_name)).await?;
+            return Ok(());
+        }
+    };
 
     let report = match response.status() {
         StatusCode::NOT_MODIFIED => match cached {
             Some(report) => report,
             // Our cache went away between the read and the request; refetch
             // unconditionally rather than unwrapping a None.
-            None => refetch(&guild.shard, &map_name).await?,
+            None => match refetch(&guild.shard, &map_name).await {
+                Ok(report) => report,
+                Err(err) => {
+                    log::warn!("could not refetch the war report for {map_name}: {err}");
+                    ctx.say(unreachable_message(&guild.shard_name)).await?;
+                    return Ok(());
+                }
+            },
         },
         StatusCode::OK => {
             let report = response.json::<WarReport>().await?;
