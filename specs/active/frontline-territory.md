@@ -200,15 +200,28 @@ accumulated over a war rather than a snapshot of one. The casualty fields in tha
 the reference screenshot's per-hex `220k 250k` pair exactly, which is what confirms those tiles are
 war-report casualties and not something we cannot get.
 
-**Whether `totalEnlistments` is per-region or war-global is unsettled**, and one request answers it:
-fetch a second region's report and compare. Identical means global — plausible, since `dayOfWar`
-and `version` in the same response certainly are. Different means per-region.
+**Whether `totalEnlistments` is per-region or war-global is unsettled, and the endpoint does not
+answer it.** Coming back from a per-hex request proves nothing: `dayOfWar` and `version` sit in that
+same payload and are certainly war-global, so the response demonstrably mixes scopes.
 
-If it is per-region, **differenced over time it is the better activity signal of the two**, and the
-one to reach for first. Enlistments per hour measures people arriving; casualties per hour measures
-people dying, which over-reads a stalemate where two sides feed a meat grinder for days without
-moving, and under-reads a front collapsing so fast nobody is dying to hold it. Same polling cost,
-same history table — so the choice between them is free once either is being stored.
+The reasoning leans **global**, on the word rather than the number. Enlisting in Foxhole is joining
+a faction for the war — a war-level act, not something a player does per hex — and 22,656 enlisted
+players over a 500-day war is an entirely ordinary figure, where 22,656 enlistments *into one hex*
+would have to mean something the game does not really model. Treat that as a lean, not a finding.
+
+**Settle it before building on it, and it is free to settle:** `/war-report` already displays Total
+Enlistments per region. Run it on two different hexes. Identical means global, different means
+per-region.
+
+The answer decides which number Part 2 can use:
+
+- **Global** — enlistments carry no per-region signal at all, being the same constant everywhere,
+  and casualties are the only usable field in the response.
+- **Per-region** — enlistments differenced over time are the **better** of the two signals, and the
+  one to reach for first. Enlistments per hour measures people arriving; casualties per hour
+  measures people dying, which over-reads a stalemate where two sides feed a meat grinder for days
+  without moving, and under-reads a front collapsing so fast nobody is dying to hold it. Same
+  polling cost, same history table — so the choice is free once either is stored.
 
 So what is actually available is:
 

@@ -46,10 +46,16 @@ store (a table, a retention policy, and a docs change).
 
 `totalEnlistments` is **not** a live player count — a real sample reads 22,656 against 470,272
 casualties in the same region, ~21 deaths per enlistment, so it is cumulative like everything else
-in that response. **Open: whether it is per-region or war-global.** One extra region's report
-settles it, and it matters — if per-region, enlistments/hr beats casualties/hr as the activity
-signal, because it measures people arriving rather than dying and so does not over-read a
-stalemate. Same polling cost either way.
+in that response. **Open: whether it is per-region or war-global**, and the fact that it came from
+a per-hex request does *not* answer it — `dayOfWar` and `version` are in the same payload and are
+certainly global, so the response mixes scopes.
+
+Current lean is **global**, on the word: enlisting is joining a faction for the war, not something
+done per hex, and 22,656 enlisted players over 500 days is an ordinary war-level figure. A lean,
+not a finding. **Free to settle — `/war-report` already prints Total Enlistments per region, so run
+it on two hexes and compare.** If global, enlistments are a constant and Part 2 has to use
+casualties; if per-region, enlistments/hr beats casualties/hr, since it measures people arriving
+rather than dying and so does not over-read a stalemate.
 
 The same sample's casualty fields match the reference screenshot's per-hex `220k 250k` pair, which
 is what confirms those tiles are war-report casualties.
