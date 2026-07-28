@@ -22,8 +22,10 @@ Ordered so each step is verifiable before the next depends on it. Nothing below 
 - [ ] `RenderConfig` gains `frontline`, `field_resolution_ratio`, `frontline_width_ratio`,
       `full_map_frontline_px`, `frontline_color`, `frontline_halo`, `influence_epsilon` — ratios,
       no literals
-- [ ] Halo stroke first, then black line; after the tint, before the icons
-- [ ] **Clip to the background's alpha** so nothing lands in the transparent hex corners
+- [ ] Halo stroke first, then the line; after the tint, before the icons
+- [ ] **Sample past the hex bounds, then mask by the background's alpha** — reaches the silhouette
+      with no gap, and nothing lands in the transparent corners
+- [ ] Tune width and colour by eye on a live render; the spec's values are starting points
 - [ ] `/full-map`: draw on the full-res composite, width sized backwards from the finished image
 
 ## 4. Fetching

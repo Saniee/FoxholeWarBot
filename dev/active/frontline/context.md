@@ -26,9 +26,11 @@ same branch).
   (Deadlands ↔ Callahans Passage, Umbral Wildwood, Linn of Mercy, Loch Mór, Marban Hollow,
   Drowned Vale). This belongs in a unit test.
 - **Measured off the user's reference render** (one hex of Endless Shore, exactly 1024 × 888 —
-  the same footprint the renderer uses): the line is **2 px** (median of 664 clean columns),
-  plain black, runs **unbroken edge to edge**, stops within 2 px of the hex silhouette at both
-  ends, and is smooth — max slope change 1.0 px/px, mean 0.39.
+  the same footprint the renderer uses): 2 px wide, plain black, unbroken edge to edge, smooth
+  (max slope change 1.0 px/px, mean 0.39), stopping ~2 px inside the hex silhouette.
+  **Only the shape is binding.** The user has since said it is a rough vision: width should be
+  somewhat larger (start ~5 px), colour is open, and the gap at the silhouette is a defect —
+  the line must run all the way to the edge.
 - **Cost.** One hex: ~57k cells, order 100 points, sub-millisecond. Full map: the influence field
   is O(cells × points) and does **not** reduce to a distance transform — 1M cells × ~2000
   structures is 2×10⁹ ops. Sample at ~1/32 (~62k cells, ~10⁸ ops, a few hundred ms) and truncate
@@ -67,9 +69,12 @@ judgement call most likely to be wrong — check it against a live war first.
 
 - `REGION_WIDTH` 1024 ≠ `REGION_HEIGHT` 888, so a radius in the API's normalized coordinates is an
   ellipse. Do the distance maths in canvas pixels.
-- **Clip the stroke to the background's alpha.** Hex art is transparent in the corners so tiles
-  interlock; a line drawn there paints over the seam on the full map — the same trap
-  `tint_region` already documents.
+- **Oversample the field past the hex, then mask by the background's alpha.** Both halves: the
+  mask keeps the stroke out of the transparent corners (hex art is see-through there so tiles
+  interlock, and painting it shows on the full map's seams — the trap `tint_region` documents),
+  and the oversampling is what makes the line reach the silhouette *exactly*. Terminating the
+  polyline at the hex bounds instead leaves a stroke-width gap at both ends. On `/get-map` this
+  is what the neighbour fetch is for — without it there is no field outside the hex to trace.
 - **Size the width backwards from the finished full map** (`full_map_frontline_px`), like
   `full_map_icon_px`. A 2 px ratio applied to the 63.6 MP composite vanishes in the downscale —
   the exact bug that once made the whole map "look like bare terrain".

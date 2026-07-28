@@ -120,17 +120,26 @@ that edge exactly as it would have without the feature, which is strictly better
    - Interpolate the sampled field up rather than sampling finely. Bilinear is enough; the
      contour in step 2 runs on the interpolated field.
 2. **Contour.** Marching squares on `F = 0`, producing polylines in grid space, then one or two
-   rounds of Chaikin smoothing. Measured on the reference: its line changes slope by at most
-   1.0 px per px and 0.39 on average, so the target is a gentle curve with no staircase.
+   rounds of Chaikin smoothing. The reference changes slope by at most 1.0 px per px and 0.39 on
+   average, so the target is a gentle curve with no staircase.
 3. **Draw.** Scale the polylines to canvas space and stroke at `frontline_width_ratio`, in
-   `frontline_color` — plain black, matching the reference. `frontline_halo` is a lighter,
-   wider stroke laid down first, so the line survives on the dark hexes (Deadlands, Umbral
-   Wildwood) where black-on-black would vanish; the reference never had to solve this because it
-   is a single light-terrain hex.
-4. **Clip to the hex.** Mask the stroke by the background's own alpha. Region art is transparent
-   in the hex corners so the tiles interlock, and a line drawn into that gap paints over the seam
-   between hexes on the full map — the same trap `tint_region` already documents for the wash.
-   Measured on the reference: its line stops within 2 px of the silhouette at both ends.
+   `frontline_color`, with the wider `frontline_halo` laid down first so the line survives on the
+   dark hexes (Deadlands, Umbral Wildwood) where a dark line on dark terrain would vanish.
+4. **Run the line to the hex edge, then mask.** The field is sampled over an area **larger than
+   the hex** and the contour is traced across all of it; only then is the stroke masked by the
+   background's own alpha.
+
+   Both halves matter and for different reasons. Masking is what keeps the stroke out of the
+   transparent corners, where region art is deliberately see-through so the tiles interlock — a
+   line painted there shows on the seams between hexes on the full map, the same trap
+   `tint_region` already documents for the wash. Oversampling is what makes the line reach the
+   silhouette *exactly*: terminate the polyline at the hex bounds instead and it stops a stroke
+   width short, leaving a gap at both ends. The reference has that gap — its line stops ~2 px
+   inside the silhouette — and it is an artifact of the mock, not a target.
+
+   On `/get-map` this is precisely what the neighbour fetch buys. Without the adjacent regions'
+   structures there is no field to sample outside the hex, so the line could not be drawn to the
+   edge even in principle.
 
 **Order: after the background and the tint, before the icons.** The tint is a wash and would
 swallow the line; the icons are the map's actual content and a line drawn over them costs
@@ -140,25 +149,30 @@ On `/full-map` the line is drawn on the full-resolution composite and then scale
 everything else, so it antialiases for free.
 
 **Width must be sized backwards from the finished image**, exactly as `full_map_icon_px` already
-does for icons. The reference line is **2 px on a 1024-wide hex** (median of 664 sampled columns;
-ratio ≈ 0.002). Applied as a ratio on the 63.6 MP composite and then scaled down, that line
+does for icons. Applied as a ratio on the 63.6 MP composite and then scaled down, a hairline
 disappears completely — the same bug the full-map renderer already hit once with icons, where
 "the whole map came back looking like bare terrain".
 
 ## Configuration
 
 Every constant is a ratio of the region footprint in `RenderConfig`, never a literal in the
-compositing code:
+compositing code. **The starting values are starting points, not findings** — width and colour in
+particular are meant to be tuned by eye against a live render:
 
 | Field | Meaning | Starting value |
 |---|---|---|
 | `frontline: bool` | draw it at all | `false` |
 | `field_resolution_ratio: f32` | field sample spacing | ¼ of a region |
-| `frontline_width_ratio: f32` | stroke width | `2.0 / REGION_WIDTH`, from the reference |
-| `full_map_frontline_px: f32` | stroke width wanted in the *finished* full map | ~2 |
-| `frontline_color` | stroke | black |
-| `frontline_halo` | wider under-stroke for dark hexes | light, semi-transparent |
+| `frontline_width_ratio: f32` | stroke width | `5.0 / REGION_WIDTH` |
+| `full_map_frontline_px: f32` | stroke width wanted in the *finished* full map | ~3 |
+| `frontline_color` | stroke | dark, high-contrast |
+| `frontline_halo` | wider under-stroke, for dark terrain | light, semi-transparent |
 | `influence_epsilon: f32` | the `ε` in `w / (d² + ε)`, keeping `F` finite on top of a structure | — |
+
+The reference measures 2 px on a 1024-wide hex, but it is a rough vision rather than a
+specification and the user has asked for **somewhat wider**; 5 px is that, and it is a knob, not a
+conclusion. Colour is likewise open — black is what the mock happened to use, not a requirement,
+and the halo exists so that whatever colour is chosen still reads on both light and dark terrain.
 
 ## Command surface
 
@@ -184,9 +198,10 @@ compositing code:
   squashed vertically.
 - **A hex with no structures at all draws nothing** — `F` is identically zero, which is not a
   contour. Guard the degenerate case explicitly rather than letting marching squares decide.
-- The reference render the design was measured against is one hex of Endless Shore at exactly
-  1024 × 888 — the same footprint the renderer uses — which is what made "2 px" a directly usable
-  number rather than something to eyeball.
+- **The reference is a rough vision, not a target.** It is one hex of Endless Shore at exactly
+  1024 × 888 — the same footprint the renderer uses — which made it worth measuring, but only its
+  *shape* is load-bearing: continuous, smooth, edge to edge. Its 2 px width, its black, and its
+  2 px gap at the silhouette are all incidental, and the last of those is a defect to avoid.
 
 ## Acceptance criteria
 
@@ -194,7 +209,9 @@ compositing code:
 - On a contested hex, the line runs between the two sides' structures, not along the hex border,
   and reads as a single smooth curve rather than a staircase.
 - The line runs edge to edge across a contested hex, including over water and empty terrain.
-- The line is clipped to the hex silhouette and never appears in the transparent corners.
+- **The line reaches the hex silhouette with no gap at either end**, and never appears in the
+  transparent corners outside it.
+- The line is legible on both the lightest and the darkest region art.
 - A lone structure deep inside enemy territory does **not** produce a closed loop around itself.
 - A hex held entirely by one faction, or holding nothing at all, draws no line.
 - On `/full-map`, the line crosses hex seams without breaking or kinking, and is still visible at
