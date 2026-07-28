@@ -4,10 +4,12 @@ Spec: `specs/active/frontline.md`. Context: `dev/active/frontline/context.md`.
 
 Ordered so each step is verifiable before the next depends on it. Nothing below is started.
 
-## 1. Neighbours (no rendering involved)
-- [ ] `regions::neighbours(&Region) -> Vec<&'static Region>` from odd-q `(col, row)` arithmetic
-- [ ] Unit test: relation symmetric across all 53, degrees 2–6, and the four hand-checked
-      adjacencies from the spec
+## 1. Neighbours (no rendering involved) — **done**
+- [x] `regions::neighbours(&Region) -> Vec<&'static Region>` from odd-q `(col, row)` arithmetic
+- [x] Unit test: relation symmetric across all 53, degrees 2–6, Deadlands' full ring, and the
+      two-neighbour corners. Compare regions by `api_name`: `REGIONS` is a `const`, so each use
+      site can be a separate promoted copy and `ptr::eq` says two references to the same region
+      differ. `cargo check` warns "never used" until §2 lands.
 
 ## 2. The field
 - [ ] World-space points: `grid_offset` + normalized item coords, **every faction-held structure**,
