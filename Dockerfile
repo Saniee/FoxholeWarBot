@@ -38,6 +38,9 @@ COPY --from=builder /build/target/release/FoxholeWarBot /usr/local/bin/foxholewa
 COPY assets ./assets
 
 # The API response cache lives here; mount a volume over it to survive restarts.
-RUN mkdir -p /app/cache
+# The log files live in /app/logs and are worth a volume for a different reason:
+# they are the record of what happened, and a container that is rebuilt on every
+# deploy takes them with it otherwise. `compose.yaml` mounts both.
+RUN mkdir -p /app/cache /app/logs
 
 CMD ["foxholewarbot"]

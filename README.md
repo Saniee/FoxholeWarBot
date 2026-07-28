@@ -41,6 +41,37 @@ cargo run -- --clear-commands
 
 Note: `docker compose down -v` removes the database volume. Use `docker compose down`.
 
+### Logs
+
+The bot writes two files a day into `LOG_DIR` (`/app/logs` in the container, on the `fwb_logs`
+volume):
+
+| File | Holds |
+|---|---|
+| `foxholewarbot.<date>.log` | what the console shows: the bot's own messages, plus any warning |
+| `foxholewarbot-verbose.<date>.log` | the same, plus everything serenity, poise, reqwest and sqlx say — every Discord HTTP request, every gateway event, every SQL statement |
+
+The console deliberately shows only the first. The dependencies' chatter is worth keeping and
+worth not reading: it buries a dozen useful lines a day under thousands, and it is wanted exactly
+when something has already gone wrong.
+
+```sh
+docker compose logs -f bot                      # the quiet stream
+docker compose exec bot sh -c 'ls /app/logs'     # both files
+docker compose exec bot sh -c 'tail -f /app/logs/foxholewarbot-verbose.*.log'
+```
+
+To read them straight from the host instead, swap the volume for a bind mount in `compose.yaml`:
+
+```yaml
+    volumes:
+      - ./logs:/app/logs
+```
+
+Files older than `LOG_RETENTION_DAYS` (default 14) are deleted at startup and nightly. Raise the
+console's verbosity temporarily with `RUST_LOG=info` — see `specs/architecture.md` → Logging for
+the filters and the other two overrides.
+
 ### Updating map and icon art
 
 Artwork tracks [`clapfoot/warapi`](https://github.com/clapfoot/warapi). With a clone of it on

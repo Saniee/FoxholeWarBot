@@ -22,17 +22,17 @@ pub type Context<'a> = poise::Context<'a, Data, Error>;
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
-    // `tracing::span=off` silences serenity's gateway internals. They arrive as
-    // `log` records because `tracing` bridges span lifecycles across, and every
-    // heartbeat and received frame produces one — `recv;`, `do_heartbeat;`,
-    // `recv_event;`, a few per second, forever, with no content. Serenity's own
-    // messages have their own targets and are untouched.
-    //
-    // `RUST_LOG` still overrides all of this when something needs watching.
-    env_logger::Builder::from_env(
-        env_logger::Env::default().default_filter_or("info,tracing::span=off"),
-    )
-    .init();
+    // A quiet console, a file that mirrors it, and a verbose file holding
+    // everything the dependencies say. `utils::logging` documents the filters
+    // and the env vars that override them.
+    let logs = utils::logging::init();
+
+    // Once here and once a day after: a bot that is restarted often would
+    // otherwise never reach the nightly job, and one that never restarts would
+    // only ever prune from it.
+    if let Some(logs) = &logs {
+        utils::logging::prune_and_report(logs);
+    }
 
     let args = Args::parse();
 
@@ -80,6 +80,11 @@ async fn main() -> Result<(), Error> {
 
                 cron.start_map_update_job().await?;
                 cron.start_request_purge_job(db.clone()).await?;
+
+                if let Some(logs) = logs {
+                    cron.start_log_prune_job(logs).await?;
+                }
+
                 cron.restore_jobs(ctx.http.clone(), &db).await;
                 // After the restore, so the nightly rebuild is registered
                 // against the same jobs it will later replace.

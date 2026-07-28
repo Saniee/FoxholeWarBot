@@ -15,9 +15,9 @@ Everything below is state at the time the release was prepped. Tick as you go.
       as built
 
 ## Left — do these before tagging
-- [ ] **Commit an updated `Cargo.lock`.** The tracked one predates `chrono-tz` and `croner` as
-      direct dependencies; your local build has already regenerated it. Until it's committed,
-      `cargo build --locked` and the Docker build resolve from a stale lock
+- [x] **Commit an updated `Cargo.lock`.** Done — the tracked lock carries `chrono-tz` 0.10.4 and
+      `croner` 2.1.0. It is stale again as of the logging work (`fern`, `env_filter` in,
+      `env_logger` out) and needs re-committing after the next build
 - [ ] `cargo clippy` clean
 - [ ] Tag `v2.0.0` and deploy: `docker compose up -d --build` (**never** `down -v` — it wipes
       the database)
@@ -36,6 +36,11 @@ Everything below is state at the time the release was prepped. Tick as you go.
   transition. First check is the next time the clocks move
 - `REQUESTS_CHANNEL_ID` unset (should degrade to command-only review) and a two-reviewer race on
   one request (should answer "already decided by someone else") are both untested and low-stakes
+
+## After 2.0
+- **Logging** (`dev/active/logging/`) — log files, a verbose second stream, and a mounted log
+  volume. Written, not yet built. Not part of the 2.0 tag unless it lands first; it touches no
+  migration and no command surface
 
 ## Migrations in this release
 `0001`–`0005`, applied at startup by `sqlx::migrate!`. `0005` adds `guilds.timezone`,

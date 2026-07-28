@@ -23,6 +23,8 @@ recurring scheduled map reports via webhooks.
 - `src/commands/common.rs` — guild lookup, visibility-aware deferral, map autocomplete
 - `src/utils/db.rs` — Postgres access + `Shard` enum (shard → API URL)
 - `src/utils/cache.rs` — on-disk JSON cache under `./cache/`
+- `src/utils/logging.rs` — the three log sinks (quiet console, plain file, verbose file),
+  rotation and retention
 - `src/utils/map_render.rs` — fetch + ETag revalidate + render one region (shared by `/get-map`
   and the scheduled tick)
 - `src/utils/cron.rs` — `CronHandler`, scheduled report jobs, the nightly DST rebuild
@@ -34,7 +36,8 @@ recurring scheduled map reports via webhooks.
 - `assets/Maps/` — per-hex background TGA images; `assets/MapIcons/` — icon PNGs
 - `scripts/update_assets.py` — refreshes both from a local `clapfoot/warapi` clone, and audits
   `assets/Maps/` against the region table
-- `Dockerfile` / `compose.yaml` — self-hosted deployment (bot + Postgres on a named volume)
+- `Dockerfile` / `compose.yaml` — self-hosted deployment (bot + Postgres, cache and logs on named
+  volumes)
 - `docs/` — the GitHub Pages site (ToS, Privacy, FAQ), deployed by `.github/workflows/pages.yml`
 - `specs/` — feature specifications (see below)
 
@@ -61,6 +64,11 @@ recurring scheduled map reports via webhooks.
 - `REVIEWER_IDS` — Discord user ids allowed to approve/deny those requests. One id, or several
   comma-separated. **The complete list — the app owner is not implicit and must list themselves.**
   Empty means nobody can review; the bot warns at startup
+- `LOG_DIR` — where the two log files go (default `./logs`, `/app/logs` in the container). Empty
+  turns file logging off
+- `LOG_RETENTION_DAYS` — days of log files kept (default 14; `0` keeps everything)
+- `RUST_LOG` / `LOG_FILE_FILTER` / `LOG_VERBOSE_FILTER` — filter overrides for the console, the
+  plain file and the verbose file (see `specs/architecture.md` → Logging)
 
 ## Conventions
 - Each command module exports a `#[poise::command(slash_command)]` async fn (typed params for
@@ -74,6 +82,9 @@ recurring scheduled map reports via webhooks.
   static halves revalidate independently — never assume they agree.
 - Placement/sizing constants belong in `RenderConfig` as ratios of the region footprint, not as
   literals in the compositing code.
+- The console is for this crate's own messages and warnings. Anything a dependency says — poise
+  and serenity's HTTP and gateway traffic, sqlx's per-statement logging — belongs in the verbose
+  log file, which is where a new `log::debug!` should aim by default.
 - Region display names come from `utils::regions::display_name`, never from string surgery on
   the API id.
 - Art comes in through `scripts/update_assets.py`, not by hand. Upstream and this repo disagree

@@ -12,6 +12,7 @@ use super::cache::save_maps_cache;
 use super::db::Database;
 use super::entitlement::{self, FullMapScheduling};
 use super::format_timestamp;
+use super::logging::{self, LogFiles};
 use super::map_render::{render_full_map, render_region};
 use super::request_processing::RenderConfig;
 use super::regions::display_name;
@@ -92,6 +93,27 @@ impl CronHandler {
 
         self.scheduler.add(job).await?;
         log::info!("started the full-map request retention job");
+
+        Ok(())
+    }
+
+    /// Keeps the log directory to its retention window, daily.
+    ///
+    /// Rotation only decides what the files are called; without this the mounted
+    /// volume grows for as long as the bot runs. Twenty minutes after the
+    /// request purge, so the two aren't doing filesystem work at the same
+    /// minute.
+    pub async fn start_log_prune_job(&self, logs: LogFiles) -> Result<(), JobSchedulerError> {
+        let job = Job::new_async("0 50 3 * * *", move |_uuid, _lock| {
+            let logs = logs.clone();
+
+            Box::pin(async move {
+                logging::prune_and_report(&logs);
+            })
+        })?;
+
+        self.scheduler.add(job).await?;
+        log::info!("started the log retention job");
 
         Ok(())
     }

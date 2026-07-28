@@ -35,17 +35,54 @@ client) and sets both the global and dev-guild command lists to empty, then exit
 > `ready`-based `cron_jobs_restarted` local guard (a dead write) is gone, and poise offers no
 > place to reintroduce it.
 
-### Logging
-`env_logger`, initialised first thing in `main`, writing to **stderr** — nothing is written to a
-file, so capture is the caller's job (`docker compose logs`, or a redirect).
+### Logging (`src/utils/logging.rs`)
 
-Default filter: `info,tracing::span=off`. The second half is not optional noise-trimming. Serenity
-is instrumented with `tracing`, whose `log` bridge emits a record for every span it opens; on a
-live gateway that is `recv;`, `do_heartbeat;` and `recv_event;` several times a second, forever,
-each carrying no information beyond its own name. They arrive under the `tracing::span` target, so
-they can be dropped without touching serenity's real messages, which keep their own targets.
+`fern`, initialised first thing in `main`, fanning one `log` facade out to **three sinks**: stderr
+and two date-rotated files. Filters are `RUST_LOG` syntax throughout, parsed by `env_filter` — the
+crate `env_logger` was built on, so the strings mean exactly what they used to.
 
-`RUST_LOG` overrides the whole string when something needs watching.
+| Sink | Default filter | Env override |
+|---|---|---|
+| stderr | `warn`, this crate at `info` | `RUST_LOG` |
+| `logs/foxholewarbot.<date>.log` | the same | `LOG_FILE_FILTER` |
+| `logs/foxholewarbot-verbose.<date>.log` | `debug`, this crate at `trace` | `LOG_VERBOSE_FILTER` |
+
+**The console carries this crate and warnings, and nothing else.** Serenity and poise log every
+HTTP request, every gateway event and every dispatch; sqlx logs every statement it runs, at
+`info`. All of it is real information and none of it is what someone tailing `docker compose logs`
+is looking for — it buries the bot's own dozen-a-day lines. The split keeps it, in the verbose
+file, rather than filtering it away: it is the only record of what the bot asked Discord for and
+what came back, and it is wanted precisely when something has already gone wrong.
+
+The plain file is the console's **twin**, not a middle verbosity. Its job is "what did it say last
+Tuesday" for someone who wasn't watching the terminal, and a stream that reads differently from
+the one they know is a worse answer than the same one, kept.
+
+`tracing::span=off` is in every filter, including the verbose one, and is not optional
+noise-trimming: serenity is instrumented with `tracing`, whose `log` bridge emits a record for
+every span it opens — on a live gateway that is `recv;`, `do_heartbeat;` and `recv_event;` several
+times a second, forever, each carrying no information beyond its own name. They arrive under the
+`tracing::span` target, so dropping them costs none of serenity's real messages.
+
+Filters name this crate by `module_path!()`'s root rather than by a string literal, so a rename
+can't leave them pointing at nothing.
+
+#### Files, rotation, retention
+- `LOG_DIR` (default `./logs`, `/app/logs` in the container) is created at startup. **Empty means
+  console-only** — one variable to say it, rather than a second flag that can disagree with the
+  first.
+- Rotation is daily, by `fern::DateBased`: the date is in the filename, so nothing renames or
+  reopens anything.
+- `LOG_RETENTION_DAYS` (default 14, `0` keeps everything) is enforced by `logging::prune`, run
+  **at startup and by a daily job at 03:50 UTC**. Both, because a bot restarted often would never
+  reach the nightly job and one that never restarts would only ever prune from it. It deletes only
+  files matching its own two prefixes — the directory may be a bind mount with other things in it.
+- Nothing here is fatal. A log directory that can't be created is a warning on a console that is
+  already working, the same rule the on-disk cache follows.
+
+The directory is a **mounted volume** (`fwb_logs`, or a bind mount for reading them from the
+host), for the same reason the cache is: a container rebuilt on every deploy otherwise takes the
+record of what happened with it.
 
 ### Gateway intents
 Only `GUILDS`. The bot does **not** request message content or member intents; it operates
@@ -249,6 +286,9 @@ concurrent renders can no longer collide (C-1).
 See `specs/scheduling.md` for the full subsystem.
 
 - `start_map_update_job` — cron `0 0 0 * * *` (daily at 00:00) refreshes the region lists.
+- `start_log_prune_job` — cron `0 50 3 * * *` deletes log files past `LOG_RETENTION_DAYS`
+  (see Logging). Twenty minutes after the request purge, so the two aren't doing filesystem work
+  in the same minute.
 - `restore_jobs` — runs once from `setup`; joins every `cronjobs` row to its owning guild so each
   restores against its own shard (C-7), and skips-and-logs any row it can't restore (C-8).
 - `schedule` — registers a job with the scheduler and returns its UUID. It does **not** touch the

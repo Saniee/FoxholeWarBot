@@ -66,7 +66,20 @@ Responses from the Foxhole War API are cached on disk and re-validated against t
 than re-downloaded. This cache contains Foxhole game state only: region layouts, map icons,
 casualty counts. Nothing in it identifies a person or a server.
 
-# [](#header-7)Retention and removal
+# [](#header-7)Operational logs
+
+Like any server software, the bot writes logs about what it is doing. They stay on the machine
+running it, are never sent anywhere, and exist so a failure can be diagnosed. They hold what you
+would expect from that: server names and IDs, the names of schedules and regions involved in a
+failure, and the error itself. A second, more detailed log also records the requests the bot
+makes to Discord and to the Foxhole API.
+
+Logs are **not** where the data above is kept — they are a running account of activity, deleted
+on a rolling window (14 days by default on the official instance). Nothing in them is used for
+anything but keeping the bot working, and no message content is in them: the bot cannot read
+messages at all.
+
+# [](#header-8)Retention and removal
 
 Removing the bot from a server deletes that server's settings, all of its schedules, and any
 full-map requests it filed. Deleting a single schedule with `/remove-report` removes its stored

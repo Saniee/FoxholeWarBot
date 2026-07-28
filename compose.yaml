@@ -1,4 +1,4 @@
-# Self-hosted deployment. See specs/active/postgres-migration.md.
+# Self-hosted deployment. See specs/postgres.md.
 #
 # The named volume `fwb_db` is what makes guild settings and schedules durable:
 # `docker compose down` keeps it, `docker compose down -v` DESTROYS it. Never run
@@ -35,9 +35,24 @@ services:
       GUILD_ID: ${GUILD_ID}
       REQUESTS_CHANNEL_ID: ${REQUESTS_CHANNEL_ID:-}
       REVIEWER_IDS: ${REVIEWER_IDS}
+      # Logging. The defaults are in `utils::logging`; these only exist so the
+      # host can override them without rebuilding the image. LOG_DIR is fixed to
+      # the mount point below — pointing it elsewhere writes logs into the
+      # container's own filesystem, where the next deploy removes them.
+      LOG_DIR: /app/logs
+      RUST_LOG: ${RUST_LOG:-}
+      LOG_FILE_FILTER: ${LOG_FILE_FILTER:-}
+      LOG_VERBOSE_FILTER: ${LOG_VERBOSE_FILTER:-}
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-}
     volumes:
       - fwb_cache:/app/cache
+      # Named volume so logs survive `docker compose up --build`. To read them
+      # from the host directly, swap it for a bind mount — `./logs:/app/logs` —
+      # and the files appear beside the compose file. Either way the bot prunes
+      # them to LOG_RETENTION_DAYS.
+      - fwb_logs:/app/logs
 
 volumes:
   fwb_db:
   fwb_cache:
+  fwb_logs:

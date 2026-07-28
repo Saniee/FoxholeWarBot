@@ -4,6 +4,7 @@ pub mod cron;
 pub mod db;
 pub mod entitlement;
 pub mod http;
+pub mod logging;
 pub mod map_render;
 pub mod regions;
 pub mod request_processing;
