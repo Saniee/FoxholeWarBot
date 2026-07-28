@@ -206,8 +206,8 @@ that edge exactly as it would have without the feature, which is strictly better
    come from the polyline's own direction.
 4. **Draw.** Scale the edges to canvas space and stroke at `frontline_width_ratio`, in
    `frontline_color`, over a wider halo laid down first — split down the line into each faction's
-   colour — so the line survives on the dark hexes (Deadlands, Umbral Wildwood) where a dark line
-   on dark terrain would vanish.
+   colour, or plain black where the territory wash already carries them — so the line survives on
+   the dark hexes (Deadlands, Umbral Wildwood) where a dark line on dark terrain would vanish.
 5. **Run the line to the hex edge, then mask.** The field is sampled over an area **larger than
    the hex** and the contour is traced across all of it; only then is the stroke masked by the
    background's own alpha.
@@ -267,9 +267,15 @@ particular are meant to be tuned by eye against a live render:
 | `footing_cluster_ratio: f32` | how close same-side structures merge into one footing | `100.0 / REGION_WIDTH` |
 | `frontline_color` | stroke | white |
 | `frontline_halo_ratio: f32` | halo width as a multiple of the line | `3.0` |
+| `frontline_halo` | halo colour when the territory wash is underneath it | black |
 
-The halo has no colour of its own: it is painted in `colonial_tint` and `warden_tint`, a side each,
-which is how the line says whose ground is whose. See "Saying which side is which".
+The halo usually has no colour of its own: it is painted in `colonial_tint` and `warden_tint`, a
+side each, which is how the line says whose ground is whose. See "Saying which side is which".
+
+The exception is the full map with `faction_tint` on, where `specs/frontline-territory.md` washes
+the ground either side in those same two colours. The flanks would then be repeating what the wash
+says better, so the halo falls back to `frontline_halo` and goes back to its original job of holding
+the white core off pale terrain.
 
 Six of these carry a reason beyond taste:
 
@@ -340,9 +346,11 @@ added outside it, which keeps the line the same weight it was.
   ~95 and ~90 against white's 255), so they hold the white core off pale terrain the way black did.
   Where they cannot — Deadlands, whose ground is about as dark as they are — what is left is a white
   line on near-black, which never needed a halo.
-- It agrees with `faction_tint` by construction, reusing its two colours: the wash and the line now
-  answer the same question at different resolutions instead of contradicting each other on a
-  contested hex.
+- It agrees with `faction_tint` by construction, reusing its two colours. That agreement was only
+  ever partial while the wash was per hex — a contested hex was washed one colour with the line
+  drawn across it — and `specs/frontline-territory.md` closed the gap by colouring the wash from
+  this same field. Where that wash is underneath, the flanks give way to a black halo: the ground
+  says whose it is, and the line goes back to just being the line.
 - It survives the full map's downscale for the same reason the stroke does — a band has no internal
   detail to lose — and is sized backwards through `for_full_map` along with the stroke it is a
   multiple of.

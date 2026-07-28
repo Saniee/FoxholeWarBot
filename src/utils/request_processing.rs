@@ -161,9 +161,13 @@ pub struct RenderConfig {
     /// every other label, so there is one style to change rather than two that
     /// can drift apart.
     pub full_map_label_width_ratio: f32,
-    /// Wash each hex in its controlling faction's colour. Off unless a guild
-    /// opts in (`guilds.full_map_faction_tint`), and only ever set for the full
-    /// map — see [`controlling_team`] for what "controlling" means.
+    /// Wash the ground in each faction's colour. Off unless a guild opts in
+    /// (`guilds.full_map_faction_tint`), and only ever set for the full map.
+    ///
+    /// **Which side of the front** a pixel is on, not which hex it is in — see
+    /// `specs/frontline-territory.md` and [`tint_by_field`]. [`controlling_team`]
+    /// still decides *whether* a hex is washed at all, and is the fallback
+    /// colour on a map with no front to speak of.
     pub faction_tint: bool,
     pub colonial_tint: Rgba<u8>,
     pub warden_tint: Rgba<u8>,

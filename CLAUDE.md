@@ -104,5 +104,5 @@ recurring scheduled map reports via webhooks.
 
 ## Specs
 Feature specs live in `specs/`. `specs/` documents current behavior (1:1 with the code);
-`specs/active/` holds specs for work that is planned or being reworked, and is empty as of 2.0.
+`specs/active/` holds specs for work that is planned or being reworked.
 See `specs/README.md`.

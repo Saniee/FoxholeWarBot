@@ -11,8 +11,9 @@ shipped bot rather than the thing being replaced.
 - `specs/*.md` — **current-behavior specs.** Each describes a feature exactly as it works now.
 - `specs/active/` — **specs for work in flight**: planned or in-progress features, describing
   *intended* behavior. A spec is promoted out of `active/` once it ships. Currently holds
-  `frontline-territory.md`; the full-map renderer, the scheduling gate and structured schedule
-  input emptied it at 2.0, and the frontline overlay has since shipped and joined them.
+  `frontline-activity.md`; the full-map renderer, the scheduling gate and structured schedule
+  input emptied it at 2.0, and the frontline overlay and the territory tint have since shipped and
+  joined them.
 - `specs/architecture.md` — cross-cutting concerns shared by every command (shards, caching,
   database schema, rendering pipeline, scheduler, command framework).
 - `specs/postgres.md`, `specs/rendering-placement.md`, `specs/scheduling.md` — cross-cutting
