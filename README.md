@@ -66,7 +66,14 @@ volume):
 | File | Holds |
 |---|---|
 | `foxholewarbot.<date>.log` | what the console shows: the bot's own messages, plus any warning |
-| `foxholewarbot-verbose.<date>.log` | the same, plus everything serenity, poise, reqwest and sqlx say — every Discord HTTP request, every gateway event, every SQL statement |
+| `foxholewarbot-verbose.<date>.log` | the same, plus everything serenity, poise, reqwest and sqlx say — every Discord HTTP request, every SQL statement, every connection |
+
+Serenity's two **gateway** targets are the one exception: they're muted even in the verbose file.
+They log each gateway event's entire payload on a single line — one `GuildCreate` is a whole
+guild, and a measured run came to 65 MB in two hours — which buries everything else in the file it
+was supposed to make readable. Reconnects, resumes and failures still appear; they're logged at
+warn, from targets that aren't muted. To get the firehose back for an evening:
+`LOG_VERBOSE_FILTER=debug,tracing::span=off`.
 
 The console deliberately shows only the first. The dependencies' chatter is worth keeping and
 worth not reading: it buries a dozen useful lines a day under thousands, and it is wanted exactly

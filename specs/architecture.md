@@ -58,11 +58,34 @@ The plain file is the console's **twin**, not a middle verbosity. Its job is "wh
 Tuesday" for someone who wasn't watching the terminal, and a stream that reads differently from
 the one they know is a worse answer than the same one, kept.
 
-`tracing::span=off` is in every filter, including the verbose one, and is not optional
-noise-trimming: serenity is instrumented with `tracing`, whose `log` bridge emits a record for
-every span it opens — on a live gateway that is `recv;`, `do_heartbeat;` and `recv_event;` several
-times a second, forever, each carrying no information beyond its own name. They arrive under the
-`tracing::span` target, so dropping them costs none of serenity's real messages.
+#### The gateway is muted, and why level filtering couldn't do it
+Serenity is instrumented with `tracing`, whose `log` bridge emits **two** kinds of record, and the
+distinction is load-bearing:
+
+- **Span enter/exit**, under the `tracing::span` target. Pure noise — `recv;`, `do_heartbeat;`,
+  several a second, forever, carrying nothing beyond a name. `tracing::span=off` is in every
+  filter, including the verbose one, and drops these.
+- **Span creation, under the instrumented module's own target**, with the span's fields inline.
+  `tracing::span=off` never touched these, which is what buried the console before the split: at a
+  global `info`, every heartbeat and every gateway event was on it.
+
+The second kind is also enormous, because the field *is* the payload:
+`handle_event; event=Ok(Dispatch(N, GuildCreate(GuildCreateEvent { guild: Guild { .. } })))` is an
+entire guild — every channel, role and emoji — `Debug`-formatted onto one line. Measured on a live
+run: **1,837 lines over 2h05m, 65 MB, of which 1,695 lines came from `serenity::gateway::shard`
+and `serenity::gateway::ws`.** An average line of 36 KB, and ~750 MB a day — 10 GB across the
+retention window.
+
+So those two targets are muted at `warn` in the verbose filter, and they are the only ones that
+are. **Muting is blunt on purpose: no level separates the noise from the signal here**, because
+the noise is `INFO` while the little worth keeping under the same targets (`Received a Hello`,
+`Sending presence update`) is `DEBUG`. What actually matters about the gateway — reconnects,
+resumes, failures — is `WARN` from these targets and from `shard_runner`, `shard_manager` and
+`shard_queuer`, none of which are touched.
+
+Everything else stays at `debug` on the evidence rather than on suspicion: `h2`, `rustls`,
+`hyper_util` and `tungstenite` were 16, 8, 7 and 2 lines in that same sample. They were the
+prime suspects before the log was read, and they are not the problem.
 
 Filters name this crate by `module_path!()`'s root rather than by a string literal, so a rename
 can't leave them pointing at nothing.

@@ -44,12 +44,30 @@ there is a real log to point at.
       it keeps every existing pin rather than re-resolving from scratch the way
       `cargo generate-lockfile` would
 
-## Pass 2 — the crate's own noise (blocked on a log sample)
-Not guessed at. The user is uploading a real log file; each line goes to `debug` (verbose only)
-or stays on evidence, not on a hunch. Suspects already noted:
-- [ ] `map_render::render_full_map` — "shard doesn't list X", `info`, per unlisted region per
-      full-map render
-- [ ] `map_render::live_regions` — "no grid position", `warn`, re-warned every render instead of
-      once per process
-- [ ] `cron::go_dormant` — "skipping this tick", `info`, every tick of a dormant schedule
-- [ ] Whatever the sample shows that this list doesn't
+## Pass 2 — done, and it was not what anyone expected
+
+A verbose log from a live run settled it: **1,837 lines over 2h05m, 65.0 MB.** 36 KB a line.
+
+- [x] **The problem was line size, not line count, and it was serenity's gateway.**
+      `serenity::gateway::shard` (1,507) and `serenity::gateway::ws` (188) were 1,695 of the 1,837
+      lines and effectively all of the bytes: `tracing` span-creation records whose fields are the
+      event payload, so one `GuildCreate` line is an entire guild. Muted at `warn` in the verbose
+      filter — the only two targets that are
+- [x] **`tracing::span=off` was never going to catch them.** It drops span *enter/exit*; span
+      *creation* records carry the instrumented module's own target. The comment inherited from
+      the rewrite said otherwise and is corrected in `specs/architecture.md`
+- [x] **The suspects in this list were wrong, and so was the h2/rustls/hyper guess** — 16, 8 and 7
+      lines respectively. Left at `debug`, on the evidence
+- [x] **This crate's own logging was never the problem**: `FoxholeWarBot::utils::cron` contributed
+      **5 lines** in two hours and nothing else of ours appeared at all. No demotions made — the
+      three suspects below stay exactly as they are until something shows they matter:
+      `map_render::render_full_map`'s "shard doesn't list X", `map_render::live_regions`' "no grid
+      position", `cron::go_dormant`'s "skipping this tick". All three are per-full-map-render or
+      per-dormant-tick, and neither happened in this sample
+- [x] Volume after the mute: ~140 lines per two hours from everything else, against ~750 MB/day
+      and 10 GB across the retention window before it. No shorter verbose window and no gzip on
+      prune needed — both were on the table and neither is now
+
+### Still worth a look on the next live run
+- [ ] Confirm the verbose file is a sane size after the mute, and that a scheduled tick and a
+      `/full-map` still leave a useful trail in it

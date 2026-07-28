@@ -69,9 +69,29 @@ pub fn init() -> Option<LogFiles> {
     // them costs none of serenity's real messages.
     let console_spec = spec("RUST_LOG", &format!("warn,{root}=info,tracing::span=off"));
     let file_spec = spec("LOG_FILE_FILTER", &console_spec);
+    // The two gateway targets are muted rather than merely lowered, and they are
+    // the only ones that are. Measured from a real verbose log: 1,837 lines over
+    // 2h05m, of which 1,695 came from these two — and 65 MB of file, an average
+    // of 36 KB a line. That is ~750 MB a day, or 10 GB across the default
+    // retention window. `serenity` is instrumented with `tracing`, and
+    // the bridge records a span's *creation* with its fields inline, so
+    // `handle_event; event=Ok(Dispatch(N, GuildCreate(GuildCreateEvent { .. })))`
+    // is the whole guild — every channel, role and emoji — Debug-formatted onto
+    // one line. Left in, the verbose file is most of a gigabyte a day and the
+    // useful lines are needles in it.
+    //
+    // Muting is the blunt instrument on purpose: the noise here is INFO while
+    // the little that's worth keeping under the same targets (`Received a
+    // Hello`, `Sending presence update`) is DEBUG, so no *level* separates them.
+    // What actually matters about the gateway — reconnects, resumes, failures —
+    // is logged at WARN by these targets and by `shard_runner`, `shard_manager`
+    // and `shard_queuer`, which are left alone.
     let verbose_spec = spec(
         "LOG_VERBOSE_FILTER",
-        &format!("debug,{root}=trace,tracing::span=off"),
+        &format!(
+            "debug,{root}=trace,tracing::span=off,\
+             serenity::gateway::shard=warn,serenity::gateway::ws=warn"
+        ),
     );
 
     let dir = log_dir();
