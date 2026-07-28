@@ -33,9 +33,17 @@ pub async fn full_map(ctx: Context<'_>) -> Result<(), Error> {
         Ok(rendered) => rendered,
         // Every failure path replies. A deferred interaction that never gets a
         // final response leaves the user staring at a spinner forever (QA C-12).
+        // Every region failed, which on a full map means the shard itself, not
+        // one bad hex — so name it. A guild pointed at a shard that has gone
+        // offline gets this every time, and "the API" gives them nothing to act
+        // on while "shard Charlie" points straight at `/set-guild-settings`.
         Err(MapError::ApiUnavailable) => {
-            ctx.say("The Foxhole API is not responding right now. Try again shortly.")
-                .await?;
+            ctx.say(format!(
+                "Couldn't get any region data from shard **{}** — it looks to be down or \
+                 between wars. Try again shortly, or switch shards with `/set-guild-settings`.",
+                guild.shard_name
+            ))
+            .await?;
             return Ok(());
         }
         Err(err @ MapError::TooLarge(_)) => {

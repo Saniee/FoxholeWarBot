@@ -15,16 +15,20 @@ Identical to `/get-map` — the same `commands/common.rs::autocomplete_map` help
 ## Behavior
 1. Look up guild; if not set up → ephemeral prompt to run `/set-guild-settings`.
 2. Defer public/ephemeral per `show_command_output`.
-3. Load the cached `WarReport` for `(map, shard)`.
-4. `GET /worldconquest/warReport/{map}` with `If-None-Match` (cached version, or `"0"` when
-   there is no cache).
-5. Resolve the response:
+3. If the submitted `map_name` is the `NO_CHOICE` placeholder, say so and stop — see
+   `architecture.md` → Autocomplete.
+4. Load the cached `WarReport` for `(map, shard)`.
+5. `GET /worldconquest/warReport/{map}` with `If-None-Match` (cached version, or `"0"` when
+   there is no cache). A request that gets no answer at all — an offline or unreachable shard —
+   replies naming the shard rather than propagating to `on_error`.
+6. Resolve the response:
    - `304` → serve the cached report. If the cache went away between the read and the request,
-     refetch unconditionally rather than failing.
+     refetch unconditionally rather than failing; a refetch that cannot reach the shard replies
+     naming it.
    - `200` → parse fresh and write the cache.
    - anything else → serve the cached report if there is one, otherwise reply with the status
      and return.
-6. Embed (black) titled with the region's display name; fields Total Enlistments, Colonial
+7. Embed (black) titled with the region's display name; fields Total Enlistments, Colonial
    Casualties, Warden Casualties, Day Of War; footer "Requested at" + timestamp.
 
 ## External calls

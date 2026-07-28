@@ -1,8 +1,6 @@
-use reqwest::StatusCode;
-
 use crate::commands::common::{autocomplete_timezone, guild_id};
+use crate::utils::cache::refresh_maps;
 use crate::utils::db::Shard;
-use crate::utils::http;
 use crate::utils::schedule;
 use crate::{Context, Error};
 
@@ -10,6 +8,13 @@ use crate::{Context, Error};
 ///
 /// This replaces the old free-text option with a static autocomplete: a value
 /// that wasn't one of the three silently fell through to Able.
+///
+/// All three are always offered, even when one is down. A choice list is baked
+/// into the command at registration and Discord serves it from its own copy, so
+/// there is no way to withdraw an option for the hour a shard is offline —
+/// which is why the check below happens here, at the moment of choosing, and
+/// why every command downstream still has to cope with a shard that has gone
+/// down since.
 #[derive(Debug, Clone, Copy, poise::ChoiceParameter)]
 pub enum ShardChoice {
     Able,
@@ -61,31 +66,30 @@ pub async fn set_guild_settings(
     let guild_id = guild_id(ctx)?;
     let shard: Shard = shard.into();
 
-    // Confirm the shard is actually up before committing the guild to it.
-    let response = http::client()
-        .get(format!("{}/worldconquest/war", shard.api_url()))
-        .send()
-        .await?;
+    // Confirm the shard can actually serve this guild before committing it.
+    //
+    // This asks for the region list rather than `/worldconquest/war`, and it
+    // does not use `?`. Both were bugs: the old check only understood HTTP
+    // status codes, so a shard that never answered at all — the exact meaning
+    // of "unreachable" — propagated its transport error to `on_error` and told
+    // the user "Something went wrong running that command", naming neither the
+    // shard nor the problem. And a host answering on `/war` proves only that
+    // something is listening; the region list is what every other command in
+    // the bot actually needs.
+    //
+    // The list it fetches is cached as a side effect, so the autocomplete on
+    // `/get-map` works immediately after setup rather than at the next refresh.
+    let health = refresh_maps(shard).await;
 
-    match response.status() {
-        StatusCode::OK => {}
-        StatusCode::SERVICE_UNAVAILABLE => {
-            ctx.say(format!(
-                "Shard **{}** is currently unavailable, so it wasn't set. Try another, or try again later.",
-                shard.as_str()
-            ))
+    if let Some(problem) = health.explain(shard) {
+        log::warn!(
+            "{} was not set up for shard {}: {health:?}",
+            guild_id,
+            shard.as_str()
+        );
+        ctx.say(format!("{problem}\n\nNothing was changed."))
             .await?;
-            return Ok(());
-        }
-        status => {
-            log::warn!("shard {} returned {status} during setup", shard.as_str());
-            ctx.say(format!(
-                "The Foxhole API returned `{status}` for shard **{}**. Try again shortly.",
-                shard.as_str()
-            ))
-            .await?;
-            return Ok(());
-        }
+        return Ok(());
     }
 
     // Validated before it is stored, so a typo can't sit in the row until the

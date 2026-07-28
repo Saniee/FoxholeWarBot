@@ -25,10 +25,20 @@ silently pointed a guild at the wrong shard.
 
 ## Behavior
 1. Always defer ephemeral.
-2. Validate the shard by `GET {shard_api}/worldconquest/war`:
-   - `200 OK` → continue.
-   - `503 Service Unavailable` → reply that the shard is unavailable; **nothing is written**.
-   - anything else → reply with the status; nothing is written.
+2. Validate the shard by `GET {shard_api}/worldconquest/maps` — the **region list**, not
+   `/worldconquest/war`. Every outcome below leaves the guild row untouched and says so:
+   - a non-empty list → continue, and the list is written to the cache on the way past, so
+     `/get-map`'s autocomplete works immediately rather than at the next hourly refresh.
+   - an **empty** list → the shard isn't running a war; there would be nothing to render.
+   - a non-`200` status → reply with the status.
+   - **no answer at all** (DNS, refused, TLS, timeout) → reply that the shard is unreachable.
+
+   Two things here are deliberate. The probe asks for the region list because that is what
+   `/get-map`, `/war-report` and `/full-map` all need before they can do anything — a host
+   answering on `/worldconquest/war` proves only that something is listening. And the transport
+   failure is a case in its own right: it used to propagate to `on_error` as "Something went
+   wrong running that command", which named neither the shard nor the problem, for the one
+   input the check exists to reject.
 3. Validate `timezone` against the IANA database **before** storing it, so a typo can't sit in
    the row until the next schedule quietly falls back to UTC. The canonical name is what's
    stored, whatever case was typed.
@@ -39,7 +49,8 @@ silently pointed a guild at the wrong shard.
    than "unchanged".
 
 ## External calls
-- Foxhole: `GET /worldconquest/war` on the selected shard (validation probe).
+- Foxhole: `GET /worldconquest/maps` on the selected shard (validation probe; its result is
+  cached as the shard's region list).
 - DB: upsert the `guilds` row, keyed on the `guild_id UNIQUE` constraint.
 
 ## Notes
@@ -48,10 +59,18 @@ silently pointed a guild at the wrong shard.
   silently inheriting Able.
 - Because `guild_id` is `UNIQUE`, a guild can never end up with two rows, which is what used to
   make lookups fail permanently once duplicates existed.
+- **All three shards are always offered, including a shard that is down.** A choice list is baked
+  into the command at registration and served from Discord's own copy, so an option cannot be
+  withdrawn for the hour a shard is offline. Validating at the moment of choosing is the whole
+  defence here — and it is not sufficient by itself, since a shard can go down after it is set,
+  which is why every data command also degrades gracefully rather than assuming its shard is up.
 
 ## Acceptance criteria
 - An admin runs `/set-guild-settings shard:Baker show_messages:true`; the guild row is created
   **with visibility public**, and subsequent data commands read from Baker.
 - Running it twice for the same guild updates one row — no duplicates.
-- Selecting an unavailable shard yields the "unavailable" message and does not change settings.
+- Selecting a shard that returns an error, lists no regions, or cannot be reached at all yields a
+  message naming that shard and which of the three it was, and changes no settings.
+- A successful run leaves `/get-map`'s region autocomplete populated without waiting for a
+  refresh.
 - Non-admins cannot see or use the command.

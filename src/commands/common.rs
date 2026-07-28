@@ -19,6 +19,16 @@ pub const SUPPORT_INVITE: &str = "https://discord.gg/9wzppSgXdQ";
 /// Discord rejects an autocomplete response with more than 25 choices.
 const MAX_CHOICES: usize = 25;
 
+/// The value behind an autocomplete entry that exists only to explain why there
+/// is nothing to pick.
+///
+/// Discord rejects an empty choice value, so a placeholder has to carry
+/// *something* — and whatever it carries, the user can select it and submit.
+/// Commands check for this before treating it as a region, because the honest
+/// answer is "that isn't a region, here's what to do" and not the render
+/// failure's "if `-` should exist, please report it".
+pub const NO_CHOICE: &str = "-";
+
 /// The `map-name` value that means "the whole world map" rather than a region.
 ///
 /// A sentinel in the same field, rather than a second `full:true` option, so
@@ -67,6 +77,40 @@ pub async fn defer_for(ctx: Context<'_>, guild: &GuildData) -> Result<(), Error>
     Ok(())
 }
 
+/// What to say when the guild's shard didn't answer at all.
+///
+/// Distinct from "the API returned an error": nothing came back, so there is
+/// nothing to quote, and the useful advice is to try a different shard rather
+/// than to try the same one again.
+pub fn unreachable_message(shard_name: &str) -> String {
+    format!(
+        "Couldn't reach shard **{shard_name}** — it looks to be down or unreachable right now. \
+         Try again shortly, or switch shards with `/set-guild-settings`."
+    )
+}
+
+/// Answers, and reports `true`, when the user submitted one of the placeholder
+/// autocomplete entries instead of a region.
+///
+/// Callers must check this before they try to render: `NO_CHOICE` reaches the
+/// renderer as a region name, fails to find art for it, and comes back as
+/// "if `-` should exist, please report it" — asking the user to file a bug for
+/// having clicked the only thing the picker offered them.
+pub async fn placeholder_submitted(ctx: Context<'_>, map_name: &str) -> Result<bool, Error> {
+    if map_name.trim() != NO_CHOICE {
+        return Ok(false);
+    }
+
+    ctx.say(
+        "That wasn't a region — the picker had nothing to offer, usually because this server's \
+         shard is down or between wars. Check `/war-state`, or pick another shard with \
+         `/set-guild-settings`.",
+    )
+    .await?;
+
+    Ok(true)
+}
+
 /// Autocomplete over the shard's region list, labelled with real display names.
 ///
 /// `OriginHex` is no longer filtered out: Origin is a live region, and the right
@@ -86,15 +130,29 @@ pub async fn autocomplete_map(
         // non-empty even though picking it can only fail.
         return vec![serenity::AutocompleteChoice::new(
             "Run /set-guild-settings first for this to work!",
-            "-",
+            NO_CHOICE,
         )];
     };
 
     let filter = partial.trim().to_lowercase();
+    let maps = load_maps(guild.shard()).await;
 
-    load_maps(guild.shard())
-        .await
-        .into_iter()
+    // A shard that is down, between wars, or unreachable when the list was last
+    // refreshed leaves nothing to offer. Say which shard and why, rather than
+    // returning an empty list: Discord renders that as "No options matched your
+    // search", which reads as "you typed it wrong" and sends the user looking
+    // for a spelling mistake that isn't there.
+    if maps.is_empty() {
+        return vec![serenity::AutocompleteChoice::new(
+            format!(
+                "No regions listed for {} right now — the shard may be down.",
+                guild.shard_name
+            ),
+            NO_CHOICE,
+        )];
+    }
+
+    maps.into_iter()
         .filter_map(|api_name| {
             let label = display_name(&api_name);
 

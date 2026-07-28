@@ -23,7 +23,7 @@ Shared machinery every command depends on.
        Best-effort: a failure here is logged, never fatal, since tidying the dev guild is not a
        reason to refuse to start in production. Not done in reverse — a `--local` run leaves
        global commands alone, or dev would deregister production.
-     - Start the daily map-list refresh job and restart persisted report jobs **once**.
+     - Start the hourly map-list refresh job and restart persisted report jobs **once**.
      - Return the shared `Data` (see below).
 6. `serenity::ClientBuilder::new(TOKEN, GatewayIntents::GUILDS).framework(framework)` and start.
 
@@ -31,7 +31,7 @@ Shared machinery every command depends on.
 client) and sets both the global and dev-guild command lists to empty, then exits.
 
 > **Why this structurally fixes QA C-6:** the `setup` closure runs a single time per process, so
-> the daily map job and report-job restoration cannot re-run on a gateway reconnect. The old
+> the map-refresh job and report-job restoration cannot re-run on a gateway reconnect. The old
 > `ready`-based `cron_jobs_restarted` local guard (a dead write) is gone, and poise offers no
 > place to reintroduce it.
 
@@ -188,6 +188,14 @@ returns `Vec<AutocompleteChoice>`. The map-name handler lives once in
 list, matches case-insensitively against both the display name and the API id, and caps at 25.
 Labels come from `utils::regions::display_name`; `OriginHex` is not excluded.
 
+**An empty result is never returned.** A guild with no settings, and a shard whose cached region
+list is empty, each get a single placeholder choice explaining why — Discord renders an empty
+response as "No options matched your search", which reads as a typo and sends the user hunting
+for a spelling mistake that isn't there. The placeholder's value is the `NO_CHOICE` sentinel,
+and every command taking a map name checks for it before rendering: it is selectable like any
+other option, and treating it as a region name produces "if `-` should exist, please report it",
+which asks the user to file a bug for clicking the only thing they were offered.
+
 ### Error handling
 `FrameworkOptions.on_error` is the single place transport/JSON/render failures surface. Commands
 return `Result<(), Error>`; a returned `Err` (or one bubbled with `?`) is reported to the user by
@@ -296,7 +304,15 @@ Created lazily under `./cache/`:
 - `cache/static/Static_<map>-<Shard>.json` — last `StaticMapData`.
 - `cache/war_reports/Report_<map>-<Shard>.json` — last `WarReport`.
 
-`save_maps_cache()` refreshes all three shards' map lists (skipping shards that return 503).
+`save_maps_cache()` refreshes all three shards' map lists by calling `refresh_maps(shard)`, which
+also reports a `ShardHealth` — `Ready(n)`, `NoRegions`, `Unavailable(status)`, or `Unreachable`.
+`/set-guild-settings` uses the same function as its validation probe, so the check and the cache
+fill are one request rather than two, and `ShardHealth::explain` is the one place the wording for
+each failure lives.
+
+**An empty list is not written over a list already held.** A shard between wars would otherwise
+erase a good list, blanking every autocomplete for it until its next war starts. A stale list
+costs at most a few fetches that render as bare terrain, which is by far the cheaper mistake.
 
 ## Map rendering (`src/utils/request_processing.rs::place_image_info`)
 
@@ -345,7 +361,10 @@ concurrent renders can no longer collide (C-1).
 
 See `specs/scheduling.md` for the full subsystem.
 
-- `start_map_update_job` — cron `0 0 0 * * *` (daily at 00:00) refreshes the region lists.
+- `start_map_update_job` — cron `0 0 * * * *` (hourly) refreshes the region lists. Hourly rather
+  than daily because this is also the recovery path: a shard that was down when its list was
+  last fetched has nothing cached, so every autocomplete for it is empty until the next run.
+  Daily made that window most of a day.
 - `start_log_prune_job` — cron `0 50 3 * * *` deletes log files past `LOG_RETENTION_DAYS`
   (see Logging). Twenty minutes after the request purge, so the two aren't doing filesystem work
   in the same minute.

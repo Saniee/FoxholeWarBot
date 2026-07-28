@@ -61,12 +61,22 @@ impl CronHandler {
         Ok(CronHandler { scheduler })
     }
 
-    /// Refreshes the cached per-shard region lists once a day.
+    /// Refreshes the cached per-shard region lists, hourly.
+    ///
+    /// Daily was the recovery time for an outage, not the refresh rate for a
+    /// region list. A shard that was down when the list was last fetched has
+    /// nothing cached, every autocomplete for it is empty, and none of that
+    /// mends itself until the next run — so a shard could come back and stay
+    /// unusable for most of a day. Hourly is three requests an hour against an
+    /// API with no published rate limit, and it caps that window at an hour.
     pub async fn start_map_update_job(&self) -> Result<(), JobSchedulerError> {
-        let job = Job::new_async("0 0 0 * * *", |_uuid, _lock| {
+        let job = Job::new_async("0 0 * * * *", |_uuid, _lock| {
             Box::pin(async move {
                 save_maps_cache().await;
-                log::info!("refreshed the cached region lists");
+                // Hourly now, so this goes to the verbose log rather than the
+                // console. Anything actually wrong is warned about by
+                // `save_maps_cache` itself and still shows.
+                log::debug!("refreshed the cached region lists");
             })
         })?;
 

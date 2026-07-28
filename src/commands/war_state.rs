@@ -1,6 +1,6 @@
 use poise::serenity_prelude as serenity;
 
-use crate::commands::common::{defer_for, guild_settings};
+use crate::commands::common::{defer_for, guild_settings, unreachable_message};
 use crate::utils::api_definitions::foxhole::War;
 use crate::utils::format_timestamp;
 use crate::utils::http;
@@ -15,13 +15,49 @@ pub async fn war_state(ctx: Context<'_>) -> Result<(), Error> {
 
     defer_for(ctx, &guild).await?;
 
-    let war_data = http::client()
+    // `/war-state` is the command a user reaches for *because* something looks
+    // wrong, so it is the one that must not answer "Something went wrong". Each
+    // of these three was a `?`, and a shard that had gone offline since setup
+    // failed at the first of them with no mention of the shard at all.
+    let response = match http::client()
         .get(format!("{}/worldconquest/war", guild.shard))
         .send()
-        .await?
-        .error_for_status()?
-        .json::<War>()
+        .await
+    {
+        Ok(response) => response,
+        Err(err) => {
+            log::warn!("could not reach shard {} for the war state: {err}", guild.shard_name);
+            ctx.say(unreachable_message(&guild.shard_name)).await?;
+            return Ok(());
+        }
+    };
+
+    let status = response.status();
+
+    if !status.is_success() {
+        log::warn!("shard {} returned {status} for the war state", guild.shard_name);
+        ctx.say(format!(
+            "The Foxhole API returned `{status}` for shard **{}**. It may be between wars or \
+             down — try again shortly.",
+            guild.shard_name
+        ))
         .await?;
+        return Ok(());
+    }
+
+    let war_data = match response.json::<War>().await {
+        Ok(war_data) => war_data,
+        Err(err) => {
+            log::warn!("could not read the war state for {}: {err}", guild.shard_name);
+            ctx.say(format!(
+                "Shard **{}** answered with something we couldn't read. Please report it if it \
+                 keeps happening.",
+                guild.shard_name
+            ))
+            .await?;
+            return Ok(());
+        }
+    };
 
     let embed = serenity::CreateEmbed::new()
         .color((255, 0, 0))

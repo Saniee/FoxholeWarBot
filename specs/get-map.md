@@ -28,9 +28,11 @@ Shared with `/war-report` and `/schedule-report` — one implementation,
 ## Behavior
 1. Look up the guild. If not set up → ephemeral "No shard is set for this server…".
 2. Defer public or ephemeral per `show_command_output`.
-3. Delegate to `utils::map_render::render_region` — shared with the scheduled report tick, see
+3. If the submitted `map_name` is the `NO_CHOICE` placeholder, say so and stop — see
+   `architecture.md` → Autocomplete.
+4. Delegate to `utils::map_render::render_region` — shared with the scheduled report tick, see
    `architecture.md` → Map pipeline.
-4. Reply with an embed: green, title = the region's display name, description
+5. Reply with an embed: green, title = the region's display name, description
    `Last API Update: <formatted last_updated>`, the rendered PNG attached as `<map_name>.png`,
    footer "Requested at" + timestamp.
 
@@ -38,7 +40,7 @@ Every failure path replies, so a deferred interaction never hangs on its spinner
 
 | Condition | Reply |
 |---|---|
-| Both endpoints 500 / API unreachable | "The Foxhole API is not responding right now." |
+| Both endpoints 500 / API unreachable | "Shard **X** isn't responding right now", naming the guild's shard and pointing at `/set-guild-settings` |
 | Render failure (e.g. missing background art) | "Couldn't render that region." |
 | Fetch or decode failure | "Couldn't fetch that region's data." |
 
