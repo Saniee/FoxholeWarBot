@@ -11,14 +11,27 @@ Ordered so each step is verifiable before the next depends on it. §1 is done; �
       site can be a separate promoted copy and `ptr::eq` says two references to the same region
       differ. `cargo check` warns "never used" until §2 lands.
 
-## 2. The field
-- [ ] World-space points: `grid_offset` + normalized item coords, **every faction-held structure**,
-      neutral ones excluded; distances in canvas pixels
-- [ ] `F(p) = Σ w/(d²+ε)` Colonial minus Warden, sampled on a coarse grid, bilinear upsample
-- [ ] Guard the degenerate case: no structures ⇒ no contour, not whatever marching squares does
-- [ ] Full-map cost: sample at ~1/32; if still slow, truncate influence + spatially bin the points
-- [ ] Marching squares on `F = 0` → polylines, then Chaikin smoothing (target: ≤1 px/px slope
-      change, matching the reference)
+## 2. The field — `src/utils/frontline.rs`, no rendering in it
+- [x] World-space points: `grid_offset` + normalized item coords, **every faction-held structure**,
+      neutral ones excluded; distances in canvas pixels (`sources_in`)
+- [x] `F(p) = Σ w/(d²+ε)` Colonial minus Warden, sampled on a coarse grid (`Field::sample`),
+      bilinear upsample (`Field::value_at`). Summed in `f64` — 2000 terms of ~1e-6 lose their tail
+      in `f32`, and the tail *is* the far field that decides the quiet stretches
+- [x] Guard the degenerate case: `sample` returns `None` unless **both** sides have something.
+      Covers "one faction holds it all" and "nothing here at all" in one check, and beats letting
+      marching squares meet a cell that underflowed to exactly `0.0`
+- [x] Full-map cost: **measured, not estimated.** On the real 10240 × 6216 canvas with 2000
+      structures, release: 1/32 sampling = 62.9k cells = **255 ms**, contour + smoothing 0.26 ms.
+      1/16 is 61 ms if that ever matters. No truncation, no spatial binning — the spec's fallback
+      is not needed. Numbers are in the spec; note they are *release* numbers, and the Dockerfile
+      builds release
+- [x] Marching squares on `F = 0` → polylines (`contour`), then Chaikin (`smooth`). Measured on a
+      bending fixture: worst turn 0.183 → 0.105 rad while total turning is unchanged, which is
+      corner cutting doing its job rather than straightening the front
+- [x] 11 unit tests. **The "lone outpost makes no island" criterion is met by the coarse grid, not
+      by the field** — within ~√ε of an isolated structure `F` really does cross zero; the crossing
+      just falls between samples. Recorded in `contour`'s doc comment, because it is the reason
+      not to "improve" this by sampling finely
 
 ## 3. Drawing
 - [ ] `RenderConfig` gains `frontline`, `field_resolution_ratio`, `frontline_width_ratio`,

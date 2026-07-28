@@ -7,8 +7,17 @@ same branch).
 
 ## Current state
 
-**§1 done and pushed** (`25c2b19`): `regions::neighbours` + four unit tests. Nothing else started.
-**Next is `tasks.md` §2, the field.**
+**§1 and §2 done.** `regions::neighbours` (`25c2b19`), and `src/utils/frontline.rs` — the whole
+field-and-contour model with 11 unit tests, no rendering in it. **Next is `tasks.md` §3, drawing**,
+whose first act is the draw-before/draw-after decision below.
+
+The §2 surface, all of it world-space pixels in and out:
+`sources_in(region, dynamic, config) -> Vec<Source>` · `Bounds::around_region(region, config,
+margin)` · `Field::sample(sources, bounds, spacing, epsilon) -> Option<Field>` ·
+`Field::value_at(x, y)` · `contour(&Field) -> Vec<Polyline>` · `smooth(lines, rounds)`.
+`spacing` and `epsilon` are parameters rather than config fields on purpose — §3 wires
+`field_resolution_ratio` and `influence_epsilon` to them, and the module stays testable without a
+`RenderConfig` full of drawing knobs.
 
 Two unrelated pieces of work landed on this branch in between and both touch code this feature
 will edit — read the notes below before assuming the files look like the spec describes:
@@ -40,10 +49,20 @@ will edit — read the notes below before assuming the files look like the spec 
   **Only the shape is binding.** The user has since said it is a rough vision: width should be
   somewhat larger (start ~5 px), colour is open, and the gap at the silhouette is a defect —
   the line must run all the way to the edge.
-- **Cost.** One hex: ~57k cells, order 100 points, sub-millisecond. Full map: the influence field
-  is O(cells × points) and does **not** reduce to a distance transform — 1M cells × ~2000
-  structures is 2×10⁹ ops. Sample at ~1/32 (~62k cells, ~10⁸ ops, a few hundred ms) and truncate
-  influence with spatial binning if that isn't enough.
+- **Cost — benchmarked, no longer an estimate.** Real canvas is 10240 × 6216. With 2000
+  structures, release build: 1/16 sampling 61 ms, **1/32 255 ms**, 1/64 965 ms. Contour and
+  smoothing are under a millisecond at every one of those, so **the field is the entire cost** and
+  it is linear in cells and in structures. 1/32 is the default and the spec's truncation +
+  spatial-binning fallback is **not needed** — don't build it. Debug builds are far slower; the
+  Dockerfile ships `--release`, so the numbers above are the ones that matter.
+- **The "lone outpost makes no island" criterion is delivered by the coarse grid, not the field.**
+  Within ~√ε of an isolated structure `F` really does cross zero — its own `w/ε` term wins locally.
+  The crossing is a few tens of pixels wide and the samples are hundreds of pixels apart, so it
+  falls between them. Sampling finely would *create* the islands the model was chosen to avoid.
+  Written into `contour`'s doc comment and the spec; do not "fix" it by raising resolution.
+- **Chaikin measured**: on a bending fixture, worst turn 0.183 → 0.105 rad over two rounds while
+  total turning is unchanged (0.6897 → 0.6898). That pair is the test — it distinguishes smoothing
+  from straightening, which a single "is it smoother" assertion does not.
 
 ## What the region-name work changed for this feature
 
@@ -92,6 +111,8 @@ a player would draw it", which genuinely needs real data (§6).
   `controlling_team` / `CONTROL_ICON_TYPES` are **neighbours of this work, not its basis** — see
   the model section for why their rule doesn't carry over.
 - `src/utils/regions.rs` — **done.** `neighbours()` is there and tested.
+- `src/utils/frontline.rs` — **done.** The field and the contour, and nothing else: it imports
+  `RenderConfig` only for `grid_offset`, and has no idea a canvas exists. Keep drawing out of it.
 - `src/utils/map_render.rs` — `composite_full_map` now draws tiles, downscales, *then* labels via
   `region_labels()`; `render_region` gains the neighbour fetches.
 - `src/utils/db.rs`, `migrations/`, `src/commands/set_guild_settings.rs`, `docs/` — the toggle.
@@ -132,15 +153,17 @@ judgement call most likely to be wrong — check it against a live war first.
 
 ## Next steps
 
-**Start `tasks.md` §2: the field**, and finish it before touching §3. A contour can be checked as
-numbers long before it is checked as pixels, and no amount of visual tuning in §3 rescues a field
-that is wrong underneath it.
+**Start `tasks.md` §3: drawing**, and settle the full-map draw order before writing any of it —
+that choice decides whether `RenderConfig` needs `full_map_frontline_px` at all.
 
-Concretely: world-space points from every faction-held structure, `F = Σ w/(d²+ε)` Colonial minus
-Warden, sampled coarsely, then marching squares at zero. Assert on the numbers — a hex held by one
-side has no zero crossing; two clusters either side produce one crossing between them, not several
-— before rendering anything. The degenerate case (no structures at all) is a guard, not a thing
-to let marching squares decide.
+The field is done and trustworthy; §3 is the part that can only be judged by eye. So render early
+and render locally (see "Verifying without the API" above) rather than reasoning about stroke
+widths — the spec's 5 px and its colour are explicitly starting points, and the whole tuning loop
+is meant to happen against a picture.
 
-Then §3, whose first act is the draw-before/draw-after decision above. Leave §5 (migration +
-`docs/`) whole — it is one commit by repo rule.
+One `epsilon` question §3 has to answer that §2 deliberately left open: the tests use 2500 px²
+(≈50 px), which is a guess that made the fixtures behave, **not** a finding. It sets how close to
+a lone structure the field will flip, so it interacts directly with the island behaviour above.
+Pick it against a real render.
+
+Leave §5 (migration + `docs/`) whole — it is one commit by repo rule.

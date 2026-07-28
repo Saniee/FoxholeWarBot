@@ -3,6 +3,7 @@ pub mod cache;
 pub mod cron;
 pub mod db;
 pub mod entitlement;
+pub mod frontline;
 pub mod http;
 pub mod logging;
 pub mod map_render;

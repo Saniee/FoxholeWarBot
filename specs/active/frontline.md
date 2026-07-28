@@ -40,7 +40,15 @@ Two alternatives were considered and rejected:
 - **Nearest-neighbour partition** (Voronoi between the two sides). Continuous, but brittle in the
   way that matters: it is decided by the single closest structure, so one forward base deep in
   enemy ground punches an island out of the partition and the overlay grows a closed loop nobody
-  asked for. A field sums, so an isolated outpost makes a bump that doesn't cross zero.
+  asked for. A field sums, so an isolated outpost makes a bump rather than a partition.
+
+  **But the field alone does not fully deliver that criterion, and the implementation should not
+  pretend it does.** Within about `√ε` of an isolated structure its own `w / ε` term outweighs
+  everything around it, so `F` genuinely does cross zero there. What suppresses the island is the
+  sampling grid: the crossing is a few tens of pixels across and the grid is sampled hundreds of
+  pixels apart, so it falls entirely between samples. **The coarse grid is a low-pass filter on
+  the field, not merely a cost saving** — which is the concrete reason not to "improve" this
+  feature by sampling it finely, on top of the general one below.
 
 The field is also smooth by construction, which is most of the "roughly" the user asked for — it
 comes from the model rather than from post-hoc smoothing of a jagged boundary.
@@ -111,12 +119,21 @@ that edge exactly as it would have without the feature, which is strictly better
    smooth, so sampling it densely buys nothing but time.
    - `/get-map`: a ~256 × 222 grid (~57k cells) against the region's structures plus its
      neighbours' — order 100 points, a few million float ops, sub-millisecond.
-   - `/full-map`: this is the one that needs care. `F` is a sum over *all* points, so it is
-     O(cells × points) and does not reduce to a distance transform the way a nearest-neighbour
-     partition would. At ~2000 world structures, a 1M-cell grid is 2×10⁹ operations — too slow.
-     Sample coarser (~1/32 of the composite, ~62k cells → ~10⁸ ops, a few hundred ms) and, if
-     that is still too slow, truncate each point's influence at a radius and bin the points into
-     a spatial grid so each cell only sums its neighbourhood.
+   - `/full-map`: `F` is a sum over *all* points, so it is O(cells × points) and does not reduce
+     to a distance transform the way a nearest-neighbour partition would. **Measured** on the real
+     10240 × 6216 composite with 2000 structures, release build:
+
+     | sampling | cells | field | contour + smoothing |
+     |---|---|---|---|
+     | 1/16 of a region (64 px) | 15.9k | 61 ms | 0.16 ms |
+     | 1/32 (32 px) | 62.9k | **255 ms** | 0.26 ms |
+     | 1/64 (16 px) | 250k | 965 ms | 0.89 ms |
+
+     So 1/32 is the default and no further trick is needed — a quarter of a second sits inside
+     the seconds the full map already spends resampling 63.6 MP. Tracing the contour is free at
+     every resolution; the field is the whole cost, and it is linear in both cells and structures.
+     If a war ever has enough structures to matter, drop to 1/16 before reaching for truncation
+     and spatial binning.
    - Interpolate the sampled field up rather than sampling finely. Bilinear is enough; the
      contour in step 2 runs on the interpolated field.
 2. **Contour.** Marching squares on `F = 0`, producing polylines in grid space, then one or two
