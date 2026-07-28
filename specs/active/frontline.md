@@ -32,34 +32,49 @@ F(p) = Σ  w / (d² + ε)^k   over Colonial structures
 
 The frontline is the contour `F(p) = 0`; `F` positive is Colonial ground, negative is Warden.
 
-### `k`, and why it is not 1
+### One point per footing, not one per building
 
-`k = 1` — plain inverse-square — is what shipped to the first live war, and it put the line
-visibly onto the Colonial side of the ground it was meant to bisect. The cause is arithmetic.
-Set one structure at distance `a` against `n` clustered ones at distance `b` and solve
-`1/a^(2k) = n/b^(2k)`: the balance sits at `b/a = n^(1/(2k))`.
+**This is the most important thing on the page, and it took two rounds of live-war feedback and one
+wrong answer to find.**
 
-| structures in the cluster | ground it wins at `k = 1` | at `k = 2` |
+The API reports one item per built object. Fed straight into the field, a town ringed by thirty
+bunker icons casts thirty votes and a lone forward base casts one — so the contour tracks where each
+side has **built more**, not where each side **is**. Against the first live war that put the line
+about a quarter of the way across the contested ground instead of half, leaning toward whoever was
+more lightly built, and it also made the line *angular*, because thirty points in a 60 px huddle
+give the field a great deal of local structure to follow.
+
+So the sources are clustered before the field sees them: same-side structures within
+`footing_cluster_ratio` collapse to one point at their centroid, weighing 1. Opposing structures
+never merge — two towns facing each other across a river are the entire subject of the picture.
+
+### `k`, and the wrong answer that came first
+
+`k` bounds how much a crowd is worth: one source at distance `a` balances `n` at distance `b` when
+`b/a = n^(1/(2k))`. The first attempt at the leaning line was to raise `k` from 1 to 2, compressing
+`√n` to `n^(1/4)`. **That was the wrong lever, and the measurement says so plainly.** On a fixture
+carrying the same 3:1 density asymmetry as the real map:
+
+| | off centre | total turning |
 |---|---|---|
-| 9 | 3.0 x a lone base's reach | 1.7 x |
-| 40 (a densely built hex) | 6.3 x | 2.5 x |
+| every icon, `k = 1` | +138 px | 158° |
+| every icon, `k = 2` | +68 px | 90° |
+| **one point per footing, `k = 1`** | **+33 px** | **42°** |
+| one point per footing, `k = 2` | +21 px | 60° |
 
-So at `k = 1` the contour is not a boundary between two territories, it is a **density** line, and
-whichever side had built more per acre took the difference. A bunker line of thirty icons outvoted
-a town across the river. Measured on the fixture in `a_crowd_does_not_buy_ground` — one base
-against a cluster of nine, 600 px apart — the crossing sat 150 px off centre at `k = 1` and sits
-82 px off at `k = 2`.
+Clustering beats the exponent at its own job and *improves* smoothness where raising `k` cost it.
+The error was treating `n` as given: the exponent can only bound what a crowd is worth, where
+clustering stops the crowd being counted as a crowd at all.
 
-The exponent is a dial between the two rejected models below, not a free improvement. As `k` grows
-the field approaches "whoever is nearest", which *is* the Voronoi partition, islands and all; and
-the far field vanishes faster, which is what keeps the line steady across the long quiet stretches
-where a hex holds almost nothing. `k = 2` is one notch, taken deliberately rather than two.
+`k` stays at 1 and stays a knob. Once the point set is footings, a count difference means one side
+genuinely holds more ground there, which is what the field should be reporting — `k > 1` would now
+suppress signal rather than noise. The general property still holds and is worth recording: the
+sign of `Σ w/(d²+ε)^k` is the sign of the difference between the two sides' `p`-norm soft-minimum
+distances at `p = 2k`, so raising `k` walks the contour toward the medial axis and, in the limit,
+*is* the Voronoi partition rejected below.
 
-One property worth stating because it is not obvious: the *sign* of `Σ w/(d²+ε)^k` is the sign of
-the difference between the two sides' `p`-norm soft-minimum distances at `p = 2k`. Raising `k`
-therefore moves the zero contour toward the true medial axis between the two point sets — the
-"centre between the footholds" — rather than just sharpening a line that was already in the wrong
-place.
+Clustering also made the field **16x faster** — it costs `cells × sources`, and 1995 sources became
+128 footings. See Configuration.
 
 Two alternatives were considered and rejected:
 
@@ -84,26 +99,24 @@ comes from the model rather than from post-hoc smoothing of a jagged boundary.
 
 ### What counts as a footing
 
-**Every faction-held structure**, not just `CONTROL_ICON_TYPES`.
+**Every faction-held structure is evidence; every cluster of them is one footing.** The two halves
+matter equally, and it took two rounds of feedback to get both.
 
-This deliberately departs from `controlling_team`: the tint **counts** structures and takes a
-majority, where a field weighs them by distance, so the ones deep in friendly ground matter far
-less than the ones on the boundary. Excluding non-control structures would throw away most of the
-evidence of a footing.
+Structures are collected without filtering — not narrowed to `CONTROL_ICON_TYPES` — and then
+clustered. Narrowing at collection time would answer the same question worse: it throws away every
+footing that is not a town, and a hex held only by field bunkers would disappear from the field
+entirely. Clustering keeps that evidence while counting the *place* once instead of counting the
+buildings.
 
-**The original wording of this section claimed the failure mode the tint guards against "does not
-exist here" — that a structure deep in friendly territory contributes nothing. That was wrong, and
-the first live war is what showed it.** Weighting by distance reduces a crowd's influence; it does
-not remove it. Under `k = 1` a sufficiently large crowd two hundred metres back still outweighed a
-lone base fifty metres forward, which is the same "whoever built more wins" defect the tint has,
-arriving by a slower route. Raising `k` is what actually bounds it, and the bound is `n^(1/(2k))`
-rather than nothing — so this is a matter of degree, and a live war remains the only place the
-degree can be judged.
+**Two claims this section used to make were wrong, and both were found by looking at a live war
+rather than by thinking harder.**
 
-If `k = 2` still leaves the line leaning, the next lever is this section rather than the exponent:
-thin the point set so a bunker line counts as one footing instead of thirty, either by restricting
-to `CONTROL_ICON_TYPES` or by collapsing clusters. That attacks `n` at the source, and unlike
-raising `k` it does not cost far-field stability.
+- It said the tint's failure mode "does not exist here" — that a structure deep in friendly
+  territory contributes nothing to where the boundary sits. False. Weighting by distance reduces a
+  crowd's influence; it does not remove it, and the bound is `n^(1/(2k))` rather than nothing.
+- Having admitted that, it then proposed the exponent as the fix and clustering as a fallback.
+  Backwards. See the table above: clustering wins on centring *and* on smoothness, where the
+  exponent trades one against the other.
 
 Neutral-owned structures contribute to neither side.
 
@@ -170,11 +183,14 @@ that edge exactly as it would have without the feature, which is strictly better
      | 1/32 (32 px) | 62.9k | **255 ms** | 0.26 ms |
      | 1/64 (16 px) | 250k | 965 ms | 0.89 ms |
 
-     So 1/32 is the default and no further trick is needed — a quarter of a second sits inside
-     the seconds the full map already spends resampling 63.6 MP. Tracing the contour is free at
-     every resolution; the field is the whole cost, and it is linear in both cells and structures.
-     If a war ever has enough structures to matter, drop to 1/16 before reaching for truncation
-     and spatial binning.
+     **Those are pre-clustering numbers, kept because they are what the resolution choice was made
+     against.** Since the field is `O(cells × points)` and clustering cut 1995 structures to 128
+     footings, 1/32 now measures **21 ms**, and clustering itself costs 0.2 ms. The accuracy fix
+     was a 16x speedup. Tracing the contour is free at every resolution; the field is the whole
+     cost, and it is linear in both cells and points.
+
+     The headroom this opens is deliberately not spent. Finer sampling would undo the island
+     suppression above, which is the one thing the coarse grid is load-bearing for.
    - The same spacing serves both commands, so the line looks identical whichever one drew it
      rather than being smoother in one of them.
 2. **Contour.** Marching squares on `F = 0` **directly on the sampled grid**, producing polylines
@@ -245,23 +261,29 @@ particular are meant to be tuned by eye against a live render:
 | `full_map_frontline_px: f32` | stroke width wanted in the *finished* full map | `3.0` |
 | `frontline_margin_ratio: f32` | how far past a hex the field is sampled | `48.0 / REGION_WIDTH` |
 | `influence_radius_ratio: f32` | saturation distance; `ε` is its square | `100.0 / REGION_WIDTH` |
-| `influence_falloff: u32` | the `k` of `w / (d² + ε)^k` | `2` |
+| `influence_falloff: u32` | the `k` of `w / (d² + ε)^k` | `1` |
+| `footing_cluster_ratio: f32` | how close same-side structures merge into one footing | `100.0 / REGION_WIDTH` |
 | `frontline_color` | stroke | white |
 | `frontline_halo` | wider under-stroke | opaque black |
 | `frontline_halo_ratio: f32` | halo width as a multiple of the line | `2.0` |
 
-Five of these carry a reason beyond taste:
+Six of these carry a reason beyond taste:
 
 - **`field_resolution_ratio` is not a free knob.** An earlier draft suggested ¼ of a region; 1/32
-  is both affordable (255 ms on the real composite) and the value the island behaviour above
+  is both affordable (21 ms on the real composite) and the value the island behaviour above
   depends on. It, `influence_radius_ratio` and `influence_falloff` all have to move together.
+- **`footing_cluster_ratio` is the knob that decides whether the line follows territory or
+  building density**, and on the evidence so far it is the one that matters most. 100 px is about
+  one Foxhole town on a 1024 px hex, with towns a couple of hundred apart, so it merges a town
+  without reaching the next one. Too small and the crowd comes back; too large and two genuinely
+  separate holdings become one footing halfway between them, which invents ground nobody holds.
 - **`influence_radius_ratio` replaces the `influence_epsilon` this table used to name.** `ε` is in
-  px², and 2500 px² is not a number anyone can look at a map and have an opinion about; 50 px is.
-- **It doubled to 100 px when `influence_falloff` went to 2, and the two are coupled.** The radius
+  px², and 2500 px² is not a number anyone can look at a map and have an opinion about; 100 px is.
+- **It doubled to 100 px, and stayed doubled after `influence_falloff` went back to 1.** The radius
   at which a lone structure flips the field against `m` friendly ones `s` away is
-  `r² = (s² + ε)/m^(1/k) − ε`: raising `k` widens that hole, raising `ε` closes it. Left at 50,
-  `k = 2` opens a 105 px island on plausible numbers — comfortably resolved by the 32 px grid,
-  which is the loop the whole model exists to avoid.
+  `r² = (s² + ε)/m^(1/k) − ε`. Clustering makes that *worse*, not better — it drops `m` from tens
+  to a handful and pushes `s` out — so the wider saturation earns its place independently of the
+  exponent it was first raised alongside.
 
   Treat that formula as an upper bound rather than a prediction. It says `k = 1` at `ε = 2500`
   should already have produced islands up to 113 px wide, and the live war produced none — real

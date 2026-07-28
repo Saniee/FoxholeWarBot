@@ -30,19 +30,25 @@ pub struct Source {
     pub x: f32,
     pub y: f32,
     /// Signed, and the only place a faction is encoded: positive is Colonial,
-    /// negative Warden. Magnitude is the `w` in the model — every structure
-    /// weighs 1 today, and per-type weights are the first thing to try if the
-    /// line sits wrong against a live war.
+    /// negative Warden. Magnitude is the `w` in the model, and is 1 for every
+    /// footing — see [`footings`] for why they are deliberately equal, and what
+    /// would change if a fortress should outweigh a lone bunker.
     pub weight: f32,
 }
 
 /// Every faction-held structure in one region, placed in world space.
 ///
-/// **Every** structure, not just `CONTROL_ICON_TYPES`. The tint's reason for
-/// narrowing to bases does not transfer: it *counts* and takes a majority, so
-/// sheds inflate a total, where a field *sums by distance* and a structure deep
-/// in friendly ground contributes nothing to where the boundary sits. Neutral
-/// structures belong to neither side and are dropped.
+/// **Every** structure, not just `CONTROL_ICON_TYPES` — but the raw output of
+/// this is not what the field sees. [`footings`] collapses each huddle of them
+/// into one point first, and that pairing is the design: keep every structure
+/// as *evidence* that a side is present somewhere, then count the place once
+/// rather than counting the buildings.
+///
+/// Narrowing to `CONTROL_ICON_TYPES` here instead would answer the same
+/// question worse. It would throw away every footing that is not a town, and a
+/// hex held only by field bunkers would vanish from the field entirely.
+///
+/// Neutral structures belong to neither side and are dropped.
 pub fn sources_in(region: &Region, dynamic: &DynamicMapData, config: &RenderConfig) -> Vec<Source> {
     let (origin_x, origin_y) = config.grid_offset(region.col, region.row);
 
@@ -67,6 +73,89 @@ pub fn sources_in(region: &Region, dynamic: &DynamicMapData, config: &RenderConf
             })
         })
         .collect()
+}
+
+/// Collapses each cluster of structures into a single footing.
+///
+/// # Why this exists
+///
+/// The field weighs *points*, and the API reports one point per built object.
+/// A town with thirty bunker icons stacked around it therefore cast thirty
+/// votes, and a lone forward base cast one — so the contour tracked where each
+/// side had *built more*, not where each side *was*. Against the first live war
+/// that put the line about a quarter of the way across the contested ground
+/// instead of half, and it also made the line angular, because thirty points in
+/// a 60 px huddle give the field a lot of local structure to follow.
+///
+/// Measured on a fixture with a 3:1 density asymmetry — the shape of the real
+/// complaint — collapsing towns to one point each moved the contour from 138 px
+/// off centre to 33 px *and* cut its total turning from 158° to 42°. Raising
+/// the falloff exponent, which was the first attempt, reached only 68 px and
+/// made the turning worse. This is the lever; `Model::falloff` is not.
+///
+/// Every footing weighs the same afterwards, which is the literal reading of
+/// "centre between the footholds": a fortified town and a lone bunker are both
+/// one foothold. If the line ever looks like it ignores a fortress, the
+/// refinement is `weight = sqrt(count)` rather than a return to counting every
+/// icon — `Source::weight` already carries a magnitude nothing reads yet.
+///
+/// Greedy and `O(n²)` in the worst case, and it still pays for itself many
+/// times over, because the field costs `cells × sources` and this is what sets
+/// `sources`. Measured in release on the real 10240 x 6216 canvas with 1995
+/// structures laid out as 133 towns:
+///
+/// | | |
+/// |---|---|
+/// | clustering, 1995 → 128 footings | 0.2 ms |
+/// | field over every icon | 333.9 ms |
+/// | field over the footings | **21.0 ms** |
+///
+/// So the accuracy fix is also a 16x speedup, and the `O(n²)` never gets near
+/// its worst case in practice — each pass removes everything it absorbs.
+pub fn footings(sources: &[Source], radius: f32) -> Vec<Source> {
+    let radius = radius.max(1.0);
+    let radius_squared = radius * radius;
+
+    let mut taken = vec![false; sources.len()];
+    let mut footings = Vec::new();
+
+    for seed in 0..sources.len() {
+        if taken[seed] {
+            continue;
+        }
+
+        taken[seed] = true;
+
+        let side = sources[seed].weight;
+        let (mut sum_x, mut sum_y, mut count) = (sources[seed].x, sources[seed].y, 1.0f32);
+
+        for other in (seed + 1)..sources.len() {
+            // Same side only. Two towns facing each other across a river are
+            // the whole subject of the picture, and merging them would erase
+            // the very boundary this is here to draw.
+            if taken[other] || sources[other].weight.signum() != side.signum() {
+                continue;
+            }
+
+            let dx = sources[other].x - sources[seed].x;
+            let dy = sources[other].y - sources[seed].y;
+
+            if dx * dx + dy * dy <= radius_squared {
+                taken[other] = true;
+                sum_x += sources[other].x;
+                sum_y += sources[other].y;
+                count += 1.0;
+            }
+        }
+
+        footings.push(Source {
+            x: sum_x / count,
+            y: sum_y / count,
+            weight: side.signum(),
+        });
+    }
+
+    footings
 }
 
 /// The two numbers that decide the *shape* of the field, as opposed to where it
@@ -193,36 +282,43 @@ impl Field {
 
 /// `F` at one point.
 ///
-/// # Why the exponent is 4 and not 2
+/// # What `k` does, and why it is 1
 ///
-/// The first live war put the line visibly on the Colonial side of the ground
-/// it was supposed to bisect, and the cause is arithmetic rather than a bug.
-/// Put one structure at distance `a` against `n` clustered ones at distance `b`
-/// and solve `1/a^(2k) = n/b^(2k)`: the balance sits at `b/a = n^(1/(2k))`. At
-/// the original `k = 1` a cluster of nine holds ground three times as far out as
-/// a lone base does, and a densely built hex of forty holds it six times as far.
-/// So the boundary was never a bisector — it was a *density* line, and whichever
-/// side had built more per acre took the difference. A bunker line of thirty
-/// icons outvoted a town on the other side of the river.
+/// Put one source at distance `a` against `n` sources at distance `b` and solve
+/// `1/a^(2k) = n/b^(2k)`: the balance sits at `b/a = n^(1/(2k))`. So `k` bounds
+/// how much a crowd is worth, and the *sign* of `Σ w/(d²+ε)^k` is the sign of
+/// the difference between the two sides' `p`-norm soft-minimum distances at
+/// `p = 2k` — raising `k` walks the contour toward the true medial axis between
+/// the two point sets, and in the limit it *is* the Voronoi partition the spec
+/// rejects.
 ///
-/// Raising `k` compresses that. At `k = 2` the same nine win only `9^(1/4)` —
-/// 1.7 times — and the forty win 2.5 rather than 6.3. In the limit the field
-/// becomes "whoever is nearest", which is the Voronoi model the spec rejects for
-/// punching an island around every forward base, so this is a dial between two
-/// known-bad ends rather than a fix with no cost. Two sits where a crowd still
-/// counts for something without counting for everything.
+/// **This was tried as the fix for a line that leaned toward whoever had built
+/// more, and it was the wrong lever.** The reasoning was right — at `k = 1` a
+/// huddle of nine held ground three times as far out as a lone base, and forty
+/// held it six times — but the conclusion was not, because it treated `n` as
+/// given. Against the second round of live-war feedback, on a fixture carrying
+/// the same 3:1 density asymmetry as the real map:
 ///
-/// Worth being precise about what the exponent does and does not change: the
-/// *sign* of `Σ w/(d²+ε)^k` is the sign of the difference of the two sides'
-/// `p`-norm soft-minimum distances at `p = 2k`. Raising `k` therefore moves the
-/// contour toward the true medial axis between the two point sets — the
-/// "centre between the footholds" — and does not merely sharpen it.
+/// | | off centre | total turning |
+/// |---|---|---|
+/// | every icon, `k = 1` | +138 px | 158° |
+/// | every icon, `k = 2` | +68 px | 90° |
+/// | **one point per footing, `k = 1`** | **+33 px** | **42°** |
+/// | one point per footing, `k = 2` | +21 px | 60° |
 ///
-/// Accumulated in `f64` because a full-map field sums a couple of thousand terms
-/// spanning a dozen orders of magnitude, and `f32` loses the tail of that sum —
-/// which is exactly the far-field contribution that decides where a boundary
-/// sits in the quiet stretches between clusters. Squaring the denominator
-/// doubles that spread, so the wide accumulator matters more here than it did.
+/// [`footings`] beats the exponent at its own job and *improves* smoothness
+/// where raising `k` cost it — which is the angular line the second round
+/// complained about. And once the point set is footings rather than buildings,
+/// a count difference means one side genuinely holds more ground there, so
+/// `k > 1` would be suppressing signal rather than noise.
+///
+/// It stays a knob because it is a real dial with a measured effect, and
+/// because the argument above only holds while the point set stays clustered.
+///
+/// Accumulated in `f64` because the field sums terms spanning a dozen orders of
+/// magnitude and `f32` loses the tail of that sum — which is exactly the
+/// far-field contribution that decides where a boundary sits in the quiet
+/// stretches between clusters.
 fn influence(sources: &[Source], x: f32, y: f32, model: Model) -> f32 {
     let epsilon = f64::from(model.epsilon);
     // Floored at 1: a zero exponent collapses `F` to the difference of the two
@@ -655,13 +751,14 @@ mod tests {
         }
     }
 
-    /// The live-war complaint, reduced to the smallest case that shows it: one
-    /// Colonial base on the left against a built-up Warden cluster on the right,
-    /// both the same distance from the middle.
+    /// The live-war complaint, reduced to the smallest case that shows it: a
+    /// lone Colonial base against a built-up Warden town, the same distance
+    /// either side of the middle.
     ///
-    /// The line belongs at x = 512. Under the original `k = 1` it sat at 350 —
-    /// a sixth of the hex onto the Colonial side, bought purely with icon count,
-    /// which is exactly what the map showed.
+    /// The boundary belongs at x = 512, and what put it at 350 was not distance
+    /// but headcount — nine icons against one. Clustering is the fix; the two
+    /// assertions are the two things it has to get right, and the second is the
+    /// one a naive "just merge nearby points" would fail.
     #[test]
     fn a_crowd_does_not_buy_ground() {
         let mut sources = vec![colonial(212.0, 444.0)];
@@ -673,31 +770,69 @@ mod tests {
             ));
         }
 
-        let crossing = |falloff: u32| {
-            let model = Model {
-                falloff,
-                ..model()
-            };
-
-            // Walk the midline and find where F changes sign, which is the
-            // question without any of the grid or chaining in the way.
+        // Walk the midline for the sign change: the question with none of the
+        // grid or the chaining in the way.
+        let crossing = |sources: &[Source]| {
             (212..=812)
-                .find(|x| influence(&sources, *x as f32, 444.0, model) < 0.0)
+                .find(|x| influence(sources, *x as f32, 444.0, model()) < 0.0)
                 .expect("the field has to flip somewhere between them") as f32
         };
 
-        let midpoint = 512.0;
-        let shipped = (crossing(2) - midpoint).abs();
-        let original = (crossing(1) - midpoint).abs();
+        let config = RenderConfig::default();
+        let raw = (crossing(&sources) - 512.0).abs();
+        let clustered = (crossing(&footings(&sources, config.footing_radius())) - 512.0).abs();
 
-        assert!(
-            shipped < original * 0.6,
-            "raising the falloff has to pull the line back toward the middle: \
-             k=1 was {original} px off centre, k=2 is {shipped}"
+        assert_eq!(
+            footings(&sources, config.footing_radius()).len(),
+            2,
+            "one town and one base is two footings"
         );
         assert!(
-            shipped < 90.0,
-            "and land within a sane distance of it, got {shipped} px off centre"
+            clustered < 20.0,
+            "one base against one town is a symmetric problem and belongs in the \
+             middle: counting every icon put it {raw} px off centre, clustering \
+             leaves {clustered}"
+        );
+    }
+
+    /// The failure a grid-bucketed clustering would have, and the reason this
+    /// one is greedy: the two sides of a contested river are within a footing
+    /// radius of each other, and merging them would erase the boundary.
+    #[test]
+    fn opposing_footings_never_merge() {
+        let sources = vec![
+            colonial(500.0, 444.0),
+            colonial(510.0, 450.0),
+            warden(530.0, 444.0),
+            warden(540.0, 450.0),
+        ];
+
+        let merged = footings(&sources, 200.0);
+
+        assert_eq!(merged.len(), 2, "one footing per side, not one in total");
+        assert!(merged.iter().any(|source| source.weight > 0.0));
+        assert!(merged.iter().any(|source| source.weight < 0.0));
+    }
+
+    #[test]
+    fn a_footing_sits_at_the_centre_of_what_it_absorbed() {
+        let sources = vec![
+            colonial(400.0, 400.0),
+            colonial(440.0, 400.0),
+            colonial(400.0, 440.0),
+            colonial(440.0, 440.0),
+            // Far enough out to stay its own footing.
+            colonial(900.0, 400.0),
+        ];
+
+        let merged = footings(&sources, 100.0);
+
+        assert_eq!(merged.len(), 2);
+        assert!((merged[0].x - 420.0).abs() < 0.01, "got {}", merged[0].x);
+        assert!((merged[0].y - 420.0).abs() < 0.01, "got {}", merged[0].y);
+        assert_eq!(
+            merged[0].weight, 1.0,
+            "a town of four weighs the same as the lone base — one foothold"
         );
     }
 
@@ -771,3 +906,4 @@ mod tests {
         turns(line).sum()
     }
 }
+

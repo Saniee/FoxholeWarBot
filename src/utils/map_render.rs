@@ -262,6 +262,12 @@ async fn region_frontline(
 
     let bounds = frontline::Bounds::around_region(region, config, config.frontline_margin());
 
+    // After the neighbours are in, never per region: a town sitting on a hex
+    // boundary has its structures split across two API responses, and
+    // clustering each response on its own would leave it as two footings on
+    // exactly the ground where the line is most sensitive.
+    let sources = frontline::footings(&sources, config.footing_radius());
+
     let Some(field) = frontline::Field::sample(
         &sources,
         bounds,
@@ -563,6 +569,10 @@ fn world_frontline(
         .filter_map(|(region, data)| data.as_ref().map(|(dynamic, _)| (region, dynamic)))
         .flat_map(|(region, dynamic)| frontline::sources_in(region, dynamic, config))
         .collect();
+
+    // Across the whole world, not per tile, for the reason `region_frontline`
+    // gives: a town on a hex boundary is split between two responses.
+    let sources = frontline::footings(&sources, config.footing_radius());
 
     // Past the canvas on every side, for the same reason a single hex is
     // oversampled: a contour that stops at the edge stops a stroke short of it.

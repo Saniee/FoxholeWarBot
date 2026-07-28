@@ -9,35 +9,43 @@ same branch).
 
 **§1–§5 done and pushed; §6 is under way against real feedback.** `/set-guild-settings` has a
 `frontline` option, off by default, honoured by `/get-map`, `/full-map` and both branches of the
-scheduled tick. Migration `0006` runs at startup. 20 tests; clippy clean but for the two
+scheduled tick. Migration `0006` runs at startup. 22 tests; clippy clean but for the two
 pre-existing warnings (`schedule_report.rs:24` too many arguments, `db.rs:202` large enum variant).
 
 Commits: `25c2b19` neighbours · `1e6909b` field · `90e0ddc` drawing · `fa44c0a` neighbour fetch ·
-`8c17de0` toggle · `fafaba7` state · **falloff (this one)**.
+`8c17de0` toggle · `fafaba7` state · `43682bd` falloff (superseded, see below) ·
+`c46ee0e` + `46ef743` the two-tone-edge spec · **footings (this one)**.
 
-**Round 1 of live-war feedback is in, and the first triage entry below was wrong.** The user sent a
-full map and a Callahans Passage hex: the line leaned onto the Colonial side, badly — measuring the
-hex, the middle and right of the line sat 30–55 px from Colonial structures and 130–200 px from
-Warden ones, so roughly a quarter of the way across instead of half.
+**Two rounds of live-war feedback are in. The answer is `footings` — one point per cluster of
+structures, not one per building.** Round 1: the line leaned onto the Colonial side, about a
+quarter of the way across instead of half. Round 2 ("not sure if it's better"): straighter on
+centring, but visibly *angular* — long flat runs with sharp steps, and boxy notches near Marban
+Hollow and Westgate on the full map.
 
-The cause was not the point set, which is what the list below sent me to look at first. It was the
-**exponent**. `F = Σ w/(d²+ε)` lets `n` clustered structures hold ground `√n` times as far out as a
-lone base, so the contour was a *density* line, not a boundary — the denser side simply took the
-middle. Raised to `w/(d²+ε)²` (`influence_falloff: 2`), which makes it `n^(1/4)`; measured on the
-`a_crowd_does_not_buy_ground` fixture the crossing moved from 150 px off centre to 82 px.
-`influence_radius_ratio` doubled to 100 px in the same change because `k` and `ε` are coupled —
-see the spec's Configuration notes for the formula and for why it overstates the risk.
+**Round 1's fix was the wrong lever, and round 2 is what proved it.** I raised the falloff exponent
+to 2, reasoning that `n` clustered structures hold ground `√n` times as far out as a lone base.
+True, but it treats `n` as given. Measured on a fixture with the same 3:1 density asymmetry:
 
-**This corrected a claim the spec had asserted outright** ("a structure deep in friendly territory
-contributes nothing to where the boundary sits"). It is false; distance weighting reduces a crowd's
-pull, it does not remove it. That section of the spec now says so.
+| | off centre | total turning |
+|---|---|---|
+| every icon, `k = 1` (original) | +138 px | 158° |
+| every icon, `k = 2` (round 1's fix) | +68 px | 90° |
+| **one point per footing, `k = 1`** | **+33 px** | **42°** |
+| one point per footing, `k = 2` | +21 px | 60° |
 
-**Next: the user is sending an example of how the line should sit.** Read it against "What a live
-war has to answer", which is now ordered correctly. If `k = 2` is still not centred enough, the two
-remaining levers, in order: thin the point set (attacks `n` at source, costs no far-field
-stability), then `k = 3` (measured at 52 px off centre on the same fixture, but the far field
-vanishes faster and long quiet stretches may start to wobble — that is why this round took one
-notch and not two).
+Clustering wins on centring *and* smoothness; the exponent trades one for the other, which is
+exactly the angularity round 2 saw. So `influence_falloff` is back to 1 — kept as a knob, since it
+is a real dial with a measured effect, but the argument for `k = 1` only holds while the point set
+stays clustered. `influence_radius_ratio` stays at 100 px: clustering makes islands *more* likely,
+not less, because it drops the friendly-neighbour count that closes them.
+
+**Free 16x speedup.** The field is `O(cells × points)` and 1995 structures become 128 footings, so
+the full-map field went 334 ms → 21 ms, clustering costing 0.2 ms. The headroom is deliberately not
+spent on finer sampling — that would undo the island suppression.
+
+**Next: round 3 of feedback on the clustered line.** If it still leans, `footing_cluster_ratio`
+(100 px) is the knob, not the exponent. If it looks like it ignores a fortified town, the answer is
+`weight = sqrt(count)` in `footings`, not a return to counting icons.
 
 **The full-map draw-order question is settled: draw before the downscale**, as the spec always
 said. The region-name precedent does not transfer — what the downscale destroys is *internal*
@@ -48,11 +56,14 @@ corners are filled in by neighbours. Written into the spec. Do not reopen.
 
 The `frontline` module's surface, all of it world-space pixels in and out:
 `sources_in(region, dynamic, config) -> Vec<Source>` · `Bounds::around_region(region, config,
-margin)` · `Field::sample(sources, bounds, spacing, epsilon) -> Option<Field>` ·
-`contour(&Field) -> Vec<Polyline>` · `smooth(lines, rounds)`.
-`spacing` and `epsilon` are parameters rather than config fields on purpose — the config wires
-`field_spacing()` and `influence_epsilon()` to them, and the module stays testable without a
-`RenderConfig` full of drawing knobs.
+margin)` · `footings(sources, radius) -> Vec<Source>` · `Field::sample(sources, bounds, spacing, Model)
+-> Option<Field>` · `contour(&Field) -> Vec<Polyline>` · `smooth(lines, rounds)`.
+`spacing`, `radius` and `Model` are parameters rather than config fields on purpose — the config
+wires `field_spacing()`, `footing_radius()` and `influence_model()` to them, and the module stays
+testable without a `RenderConfig` full of drawing knobs.
+**`footings` runs after every region's sources are collected, never per region**: a town on a hex
+boundary is split across two API responses, and clustering each alone leaves it as two footings on
+exactly the ground where the line is most sensitive.
 
 The drawing side is `draw_frontline(canvas, lines, config)` in `request_processing.rs`, taking
 polylines already translated into **that canvas's** pixels; `map_render::translate` does the
@@ -91,11 +102,13 @@ will edit — read the notes below before assuming the files look like the spec 
   somewhat larger (start ~5 px), colour is open, and the gap at the silhouette is a defect —
   the line must run all the way to the edge.
 - **Cost — benchmarked, no longer an estimate.** Real canvas is 10240 × 6216. With 2000
-  structures, release build: 1/16 sampling 61 ms, **1/32 255 ms**, 1/64 965 ms. Contour and
-  smoothing are under a millisecond at every one of those, so **the field is the entire cost** and
-  it is linear in cells and in structures. 1/32 is the default and the spec's truncation +
-  spatial-binning fallback is **not needed** — don't build it. Debug builds are far slower; the
-  Dockerfile ships `--release`, so the numbers above are the ones that matter.
+  structures, release build: 1/16 sampling 61 ms, 1/32 255 ms, 1/64 965 ms. Contour and smoothing
+  are under a millisecond at every one of those, so **the field is the entire cost** and it is
+  linear in cells and in points. Those are *pre-clustering* numbers, kept because they are what the
+  1/32 default was chosen against; **since `footings` cut 1995 points to 128, 1/32 measures 21 ms**
+  and clustering costs 0.2 ms. The spec's truncation + spatial-binning fallback is **not needed** —
+  don't build it. Do not spend the new headroom on finer sampling; that undoes the island
+  suppression below. Debug builds are far slower; the Dockerfile ships `--release`.
 - **The "lone outpost makes no island" criterion is delivered by the coarse grid, not the field.**
   Within ~√ε of an isolated structure `F` really does cross zero — its own `w/ε` term wins locally.
   The crossing is a few tens of pixels wide and the samples are hundreds of pixels apart, so it
@@ -208,17 +221,16 @@ list below, and the first thing to change if the line sits wrong.
 Read incoming feedback against this list before changing anything — **the order matters**, because
 three of these cannot be fixed by the knob a symptom first suggests.
 
-1. **"The line isn't centred — it leans toward one side."** → **`influence_falloff` first.** This
-   is the entry round 1 got wrong: it sent me to the point set, and the answer was the exponent.
-   A crowd of `n` holds ground `n^(1/(2k))` times as far out as a lone base, so at `k = 1` the
-   contour tracked *density* rather than territory and the better-built side took the middle.
-   Now 2. If it still leans, thin the point set (`CONTROL_ICON_TYPES` only, or collapse clusters —
-   `Source.weight` already carries a magnitude and only its sign is used today) **before** going to
-   `k = 3`: thinning attacks `n` at source and costs no far-field stability, where raising `k`
-   again trades against cases 3 and 5.
+1. **"The line isn't centred — it leans toward one side."** → **the point set: `footings` and
+   `footing_cluster_ratio`.** This entry has now been wrong twice in opposite directions, so take
+   it as settled by measurement rather than reasoning. The field weighs *points*, so anything that
+   changes how many points a place contributes dominates everything else.
 
-   **Do not touch `field_resolution_ratio` or the smoothing rounds for this** — they cannot fix a
-   field that is leaning, and raising resolution actively makes case 3 worse.
+   **Do not reach for `influence_falloff`.** That was round 1's answer and it is a worse version of
+   this one — it bounds what a crowd is worth instead of stopping the crowd being a crowd, and it
+   buys the centring back in angularity (case 4). **Do not touch `field_resolution_ratio` or the
+   smoothing rounds either** — they cannot fix a field that is leaning, and raising resolution
+   actively makes case 3 worse.
 2. **"Too thick / too thin / wrong colour."** → `frontline_width_ratio` (hex),
    `full_map_frontline_px` (finished full map), `frontline_color` / `frontline_halo`. Pure taste,
    change freely. Note the two widths are independent: the full map's is sized backwards in
@@ -228,10 +240,15 @@ three of these cannot be fixed by the knob a symptom first suggests.
    Never raise resolution: the islands are real zero crossings that the coarse grid is filtering
    out. This is the one counter-intuitive knob in the feature. It is also the price of case 1 —
    `k` and `ε` move together, which is why the radius doubled when the falloff did.
-4. **"The line is jagged / staircased."** → `frontline::SMOOTHING_ROUNDS` (2). Cheap.
-5. **"It breaks at hex seams."** → a real bug, not tuning. The field is computed once in world
+4. **"The line is angular — long straight runs with sharp corners."** → **not the same symptom as
+   jagged, and not a smoothing problem.** Corners at that scale are the field going Voronoi-ish:
+   check `influence_falloff` is 1, then whether the point set is clustered. Measured, `k = 2`
+   raises total turning ~40% and `k = 3` ~100%, while clustering *lowers* it. Chaikin cannot help —
+   its support is one vertex spacing, so it rounds a staircase, not a 200 px straight run.
+5. **"The line is jagged / staircased"** at grid scale. → `frontline::SMOOTHING_ROUNDS` (2). Cheap.
+6. **"It breaks at hex seams."** → a real bug, not tuning. The field is computed once in world
    space, so a seam break means either the per-tile `translate` or the alpha mask, not the model.
-6. **"It's missing near one edge of a hex on `/get-map`."** → look for the neighbour-fetch warning
+7. **"It's missing near one edge of a hex on `/get-map`."** → look for the neighbour-fetch warning
    in the log naming that region. Degrading at one edge when a neighbour fails is by design.
 
 ## Next steps

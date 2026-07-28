@@ -186,7 +186,11 @@ pub struct RenderConfig {
     /// [`crate::utils::frontline::contour`].
     ///
     /// Measured at this value on the real 10240 x 6216 composite with 2000
-    /// structures: 255 ms for the field, a quarter millisecond for the contour.
+    /// structures: **21 ms** for the field, a quarter millisecond for the
+    /// contour. It was 334 ms before [`crate::utils::frontline::footings`]
+    /// clustered the point set — the field costs `cells x sources`, and that cut
+    /// 1995 sources to 128.
+    ///
     /// The same spacing serves a single hex, so the line looks identical in
     /// both commands rather than being smoother in one of them.
     pub field_resolution_ratio: f32,
@@ -216,17 +220,25 @@ pub struct RenderConfig {
     pub influence_radius_ratio: f32,
     /// The `k` of `w / (d² + ε)^k` — how sharply a structure's pull falls off.
     ///
-    /// This is the knob that decides whether the line bisects the ground between
-    /// the two sides or merely separates them, and the first live war showed the
-    /// original value of 1 doing the latter. See
-    /// [`crate::utils::frontline::influence`] for the arithmetic; the short
-    /// version is that at `k = 1` a cluster of `n` holds ground `sqrt(n)` times
-    /// as far out as a lone base, so the denser side quietly took the middle.
+    /// A cluster of `n` structures holds ground `n^(1/(2k))` times as far out as
+    /// a lone one, so this bounds how much a crowd is worth. See
+    /// [`crate::utils::frontline::influence`].
     ///
-    /// Raising it pushes toward the Voronoi model the spec rejects, so it moves
-    /// together with [`RenderConfig::influence_radius_ratio`], which is what
-    /// keeps a lone base from opening an island.
+    /// **Back to 1, and it should stay there unless the point set changes.** It
+    /// was briefly 2, as the first answer to a line that leaned toward whoever
+    /// had built more — but the crowd was the problem, not the exponent, and
+    /// [`crate::utils::frontline::footings`] removes it at source. With one
+    /// point per footing a count difference means one side genuinely holds more
+    /// ground there, which is exactly what the field should be reporting; `k`
+    /// above 1 would now be suppressing signal rather than noise. It also costs
+    /// smoothness — measured, raising it made the contour's total turning worse,
+    /// which is the angular line the second round of feedback picked up on.
     pub influence_falloff: u32,
+    /// How close two same-side structures have to be to count as one footing,
+    /// as a fraction of [`REGION_WIDTH`]. See
+    /// [`crate::utils::frontline::footings`] — this is the knob that decides
+    /// whether the line follows territory or building density.
+    pub footing_cluster_ratio: f32,
     pub frontline_color: Rgba<u8>,
     /// Wider under-stroke, laid down first.
     ///
@@ -279,16 +291,25 @@ impl Default for RenderConfig {
             // Comfortably wider than the halo, so the contour is always traced
             // past wherever the stroke can reach.
             frontline_margin_ratio: 48.0 / REGION_WIDTH as f32,
-            // 100 px, doubled from the 50 the synthetic renders were tuned at.
-            // The two have to move together: the radius at which a lone
-            // structure flips the field against `m` friendly neighbours `s`
-            // away is `r² = (s² + ε)/m^(1/k) - ε`, so raising `k` widens the
-            // island and raising `ε` closes it again. At k=2, m=10, s=200 the
-            // old 50 gives r = 105 px — wide enough for the 32 px grid to
-            // resolve, which is precisely the loop the model exists to avoid.
-            // 100 px drives it back under the sampling.
+            // 100 px, doubled from the 50 the synthetic renders were tuned at,
+            // and it stays doubled even though the falloff it was raised
+            // alongside has gone back to 1. Clustering makes it *more*
+            // necessary, not less: the radius at which a lone structure flips
+            // the field against `m` friendly neighbours `s` away is
+            // `r² = (s² + ε)/m^(1/k) - ε`, and collapsing towns to footings
+            // drops `m` from tens to a handful while pushing `s` out. At m=5,
+            // s=250 the old 50 gives a 102 px island — resolvable by the 32 px
+            // grid, which is the loop the whole model exists to avoid. 100 px
+            // takes it to 67.
             influence_radius_ratio: 100.0 / REGION_WIDTH as f32,
-            influence_falloff: 2,
+            influence_falloff: 1,
+            // One footing per town, near enough. Foxhole towns huddle inside
+            // about 80 px of a 1024 px hex and sit a couple of hundred apart,
+            // so this merges a town without reaching the next one. It is the
+            // same 100 px as the influence radius by coincidence of scale, not
+            // by construction — they answer different questions and should be
+            // free to move apart.
+            footing_cluster_ratio: 100.0 / REGION_WIDTH as f32,
             // The label style, deliberately: light stroke over a dark halo. It
             // is the one combination already shown to survive both Acrithia's
             // pale desert and Deadlands' near-black, which is the same problem
@@ -367,6 +388,12 @@ impl RenderConfig {
     /// Field sample spacing, in world pixels.
     pub fn field_spacing(&self) -> f32 {
         (REGION_WIDTH as f32 * self.field_resolution_ratio).max(1.0)
+    }
+
+    /// Radius within which same-side structures collapse to one footing, in
+    /// world pixels.
+    pub fn footing_radius(&self) -> f32 {
+        (REGION_WIDTH as f32 * self.footing_cluster_ratio).max(1.0)
     }
 
     /// The shape of the influence field: `ε` in world pixels squared, and `k`.

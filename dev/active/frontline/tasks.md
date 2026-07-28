@@ -99,10 +99,19 @@ next, and most of it needs a live war rather than more code.
       field. Same commit, per the 1:1 rule
 - [x] Reorder context.md's triage list: "the line isn't centred" now points at `influence_falloff`
       first and the point set second
-- [ ] **Round 2: the user is sending an example of how the line should sit.** If `k = 2` is still
-      not centred enough, thin the point set (`CONTROL_ICON_TYPES` only, or collapse clusters)
-      *before* going to `k = 3` — thinning attacks `n` at source and costs no far-field stability,
-      where raising `k` again trades against island and wobble behaviour
+- [x] **Round 2 — "not sure if it's better": better centred, but visibly angular.** That is the
+      exponent's known cost, and it proved round 1 had the wrong lever. Added `frontline::footings`,
+      one point per cluster of same-side structures, and put `influence_falloff` back to 1.
+      Measured on a 3:1-density fixture: every icon at `k=1` is +138 px off centre / 158° of
+      turning, at `k=2` +68 px / 90°, **one point per footing at `k=1` is +33 px / 42°** — better
+      on both axes than either. Free 16x speedup as well, 334 ms → 21 ms, since the field is
+      `O(cells × points)` and 1995 points become 128
+- [x] Clustering runs across the whole collected point set, never per region — a town on a hex
+      boundary is split across two API responses
+- [ ] **Round 3: feedback on the clustered line.** If it still leans, `footing_cluster_ratio`
+      (100 px) is the knob, **not** `influence_falloff` — that has now been the wrong answer once.
+      If it looks like it ignores a fortified town, `weight = sqrt(count)` in `footings`, not a
+      return to counting icons
 - [x] Acceptance criteria measured so far: off ⇒ byte-identical; the line reaches the silhouette
       with no gap (13 edge pixels painted at each end it exits by); nothing lands in the
       transparent corners. The rest need real data
