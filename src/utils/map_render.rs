@@ -594,6 +594,82 @@ fn composite_full_map(
     encode_png(&scaled)
 }
 
+/// How busy each region is, at its hex centre, normalized against the busiest.
+///
+/// # Structure density is a stand-in, and this is the experiment
+///
+/// `specs/active/frontline-activity.md` wants *activity*, and the War API
+/// publishes no player counts — what it publishes that means "activity" is
+/// cumulative casualties, and what would mean it properly is a casualty *rate*,
+/// which needs polling history this bot does not keep. Footing count is neither.
+/// It is what the render already holds, for free, at the moment the field is
+/// built, and it answers the cheaper question first: **is a wash that varies in
+/// strength worth having at all?** If the answer is no, the migration behind
+/// option B was never worth starting.
+///
+/// What it will get wrong, stated up front so a look at the output is a fair
+/// test: a heavily built but quiet backline reads as busy. That is the known
+/// defect of the proxy, not a bug in the interpolation.
+///
+/// Footings rather than raw structures for the same reason the field weighs
+/// footings — thirty bunker icons around one town are one place, and counting
+/// them individually would rank regions by how much concrete is on them.
+///
+/// Normalized against the busiest region rather than an absolute scale, so the
+/// picture is always about relative busyness. That does mean the mapping shifts
+/// between renders as the war moves, which is a real cost and one more reason
+/// this is an experiment: an absolute divisor would need a number nobody has
+/// measured yet.
+fn activity_readings(
+    tiles: &[Tile],
+    footings: &[frontline::Source],
+    config: &RenderConfig,
+) -> Vec<frontline::Reading> {
+    let mut readings: Vec<_> = tiles
+        .iter()
+        .map(|(region, _)| {
+            let (origin_x, origin_y) = config.grid_offset(region.col, region.row);
+            let (origin_x, origin_y) = (origin_x as f32, origin_y as f32);
+
+            // Bucketed by rectangle rather than recomputed per region: the
+            // footings were clustered across the whole world on purpose, and
+            // re-clustering per hex would split every town that straddles a
+            // boundary — the defect `world_frontline` exists to avoid.
+            let count = footings
+                .iter()
+                .filter(|footing| {
+                    footing.x >= origin_x
+                        && footing.x < origin_x + REGION_WIDTH as f32
+                        && footing.y >= origin_y
+                        && footing.y < origin_y + REGION_HEIGHT as f32
+                })
+                .count();
+
+            frontline::Reading {
+                x: origin_x + REGION_WIDTH as f32 / 2.0,
+                y: origin_y + REGION_HEIGHT as f32 / 2.0,
+                value: count as f32,
+            }
+        })
+        .collect();
+
+    let busiest = readings
+        .iter()
+        .map(|reading| reading.value)
+        .fold(0.0f32, f32::max);
+
+    // A world with no footings at all has no frontline either, so this guard is
+    // belt and braces — but dividing by it would poison every pixel of the wash
+    // with a NaN, which is not a failure mode worth risking to save a branch.
+    if busiest > 0.0 {
+        for reading in &mut readings {
+            reading.value /= busiest;
+        }
+    }
+
+    readings
+}
+
 /// The frontline across the whole world, in world pixels.
 ///
 /// Empty whenever there is nothing to draw: the feature is off, or the field
@@ -651,6 +727,15 @@ fn world_frontline(
         config.influence_model(),
         config.field_spacing(),
     );
+
+    // After the contour, never before it. The line is traced from `field` as it
+    // was sampled, so the activity grid physically cannot have been consulted in
+    // deciding where it goes.
+    let field = if config.faction_tint && config.faction_tint_activity {
+        field.with_activity(&activity_readings(tiles, &sources, config), REGION_WIDTH as f32 / 2.0)
+    } else {
+        field
+    };
 
     Front {
         edges,
@@ -737,4 +822,5 @@ fn encode_png(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>, RenderErr
 
     Ok(buf)
 }
+
 

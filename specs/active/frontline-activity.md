@@ -1,7 +1,7 @@
 # Activity as tint intensity
 
-**Status: planned, and not scheduled.** This describes intended behavior. Promote to `specs/` when
-it ships.
+**Status: option C tried and rejected; B and A not started, and not recommended.** The apparatus is
+in the code behind a default-off flag; nothing user-facing changed. See "What the experiment found".
 
 Part 2 of the request that produced `specs/frontline-territory.md`, which shipped. That one decides
 *which* colour a pixel gets; this decides *how strong* it is: a region where the war is actually
@@ -108,6 +108,53 @@ holds. Not the same quantity as activity, and it would make heavily-built quiet 
 one experiment before paying for B, because the experiment costs an afternoon and the answer might
 be "close enough".
 
+**Built, measured, and the answer is no.** See "What the experiment found" below.
+
+## What the experiment found
+
+Option C shipped as far as a render and no further: `RenderConfig::faction_tint_activity`, off by
+default and reachable from no command. Footing count per region, normalized against the busiest,
+spread across the map by `Field::with_activity`. Run against a live Able shard, it fails on both
+halves at once.
+
+**The proxy does not track the front.** The ranking is the finding, and it needs no interpretation:
+
+| | reading |
+|---|---|
+| Farranac Coast — Warden backline | **1.000** |
+| Oarbreaker Isles — islands, far rear | 0.778 |
+| Callahans Passage — *the line runs through it* | 0.722 |
+| Deadlands — the spec's own example of a quiet hex | 0.667 |
+| Marban Hollow — *the line runs through it* | 0.611 |
+| Pari Peak — far rear | 0.333 |
+
+Both contested hexes sit mid-table, below regions deep behind either line. This is not a weak
+correlation with the front, it is no correlation: what the count actually measures is how many
+separate built-up places a region has, which is mostly a fact about its terrain and its size.
+
+**And the spread is too small to see anyway.** 0.333 to 1.000 is about 3x, and clustered — most of
+the map falls between 0.44 and 0.78. That is the *enlistments* figure this spec already rejected for
+being flat, which is a nice consistency check on the reasoning above it. At the 0.6 floor the
+argument below calls for, the rendered map is near-indistinguishable from one with the feature off.
+
+**The part that matters for B.** Turning the floor down to 0.15 does make the variation plainly
+visible — the mechanism works — and it also turns Pari Peak, Olavis Wake and Kuura Strand nearly
+colourless. So the squeeze is real and it belongs to the *rendering*, not to the input: visible
+variation costs backline legibility, and the floor is the only dial between them. B is not refuted
+by this — casualties carry 10.6x against footings' 3x, so a real signal plausibly clears the bar at a
+safe floor. But "plausibly" is the whole of the evidence, and B costs a migration, a retention
+policy, a docs change and a fresh-deployment fallback to find out.
+
+**Recommendation: stop here.** The territory tint already answers the question that was asked, and
+the drawn line already marks where the fighting is. Reopen this only if a live map is looked at and
+the flat wash is what is missing from it.
+
+The apparatus is kept rather than reverted — `Field::with_activity`, `Row::activity` and the two
+config knobs — because all three options are the same rendering change downstream of a different
+number, and B would rebuild exactly this. It is dead in production by construction: nothing sets the
+flag, and with the field carrying no readings `Row::activity` returns 1.0, so the wash is arithmetic
+identical to the one that shipped.
+
 ## The thing to get right: this reintroduces hex edges
 
 The territory tint's whole point is that the wash stops being hex-shaped. **A per-region intensity
@@ -131,3 +178,7 @@ So the intensity has to be a *field*, not a lookup:
 **C to find out whether the effect is worth having, B to do it properly, A only if cheapness beats
 accuracy.** All three are the same rendering change downstream of a different number, so the
 experiment is not wasted whichever way it goes.
+
+C was done on those terms and came back negative, and the sentence above turned out to be the useful
+part of it: what the experiment left behind is the rendering change, ready for a better number if one
+is ever wanted.

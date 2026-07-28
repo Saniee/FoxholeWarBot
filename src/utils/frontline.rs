@@ -208,6 +208,18 @@ impl Bounds {
     }
 }
 
+/// One region's activity, placed at its hex centre in world pixels.
+///
+/// `value` is already normalized: 0.0 is as quiet as the map gets, 1.0 as busy.
+/// Deciding *what* the number counts, and what it is divided by, is the caller's
+/// job and deliberately not this module's — see [`Field::with_activity`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Reading {
+    pub x: f32,
+    pub y: f32,
+    pub value: f32,
+}
+
 /// `F` sampled on a regular grid.
 ///
 /// Coarse on purpose. The field is smooth by construction and the answer is
@@ -223,6 +235,13 @@ pub struct Field {
     cols: usize,
     rows: usize,
     values: Vec<f32>,
+    /// Activity, on the same grid and in the same cell order as `values`, or
+    /// `None` when nobody asked for it. Riding along on this grid rather than
+    /// living in its own structure is the point: it is then interpolated per
+    /// pixel by the same [`Field::along`] pass, for one extra load and one
+    /// extra multiply, and — the part that matters — it cannot be hex-shaped.
+    /// See [`Field::with_activity`].
+    activity: Option<Vec<f32>>,
 }
 
 impl Field {
@@ -268,7 +287,74 @@ impl Field {
             cols,
             rows,
             values,
+            activity: None,
         })
+    }
+
+    /// Spreads one figure per region across the whole grid, smoothly.
+    ///
+    /// # Why this is a field and not a lookup
+    ///
+    /// The territory tint's entire claim is that the wash stops being
+    /// hex-shaped. Multiplying its strength by a number looked up per region
+    /// would put the hexagons straight back — as steps in strength rather than
+    /// flips in colour, which on a large flat wash is just as visible a lattice.
+    /// So the per-region figures are sampled at the hex centres and everything
+    /// between them is interpolated, and a region twice as busy as its
+    /// neighbour reads as a gradient across the boundary rather than an edge on
+    /// it.
+    ///
+    /// Normalized inverse-distance (Shepard): `Σ v/(d²+r²) / Σ 1/(d²+r²)`. The
+    /// normalization is what makes it safe — the result is a weighted *average*
+    /// of the readings, so it is bounded by their min and max no matter how the
+    /// hexes are spaced, and cannot spike where three regions happen to meet.
+    /// That is the difference from [`influence`], which sums unnormalized
+    /// because there the *sign* is the answer and the magnitude is never read.
+    ///
+    /// `radius` is the smoothing length, and it is not optional. Plain IDW
+    /// (`r = 0`) reproduces each reading exactly at its own hex centre and then
+    /// falls away from it fast, so every region becomes a bullseye on a plateau
+    /// — a different lattice, not the absence of one. At roughly half a region
+    /// across, a hex centre still leans strongly toward its own figure while the
+    /// ground between two hexes genuinely mixes them.
+    ///
+    /// **This never touches `values`.** Activity changes how strong the wash is,
+    /// never which side a pixel is on, so the contour traced from this field is
+    /// bit-for-bit what it was before — which is the one rule
+    /// `specs/active/frontline-activity.md` opens with.
+    ///
+    /// A reading list that is empty leaves the field alone rather than dividing
+    /// by zero.
+    pub fn with_activity(mut self, readings: &[Reading], radius: f32) -> Field {
+        if readings.is_empty() {
+            return self;
+        }
+
+        let softening = f64::from(radius.max(1.0)).powi(2);
+        let mut activity = Vec::with_capacity(self.values.len());
+
+        for row in 0..self.rows {
+            let y = self.origin.1 + row as f32 * self.spacing;
+
+            for col in 0..self.cols {
+                let x = self.origin.0 + col as f32 * self.spacing;
+                let (mut total, mut weights) = (0.0f64, 0.0f64);
+
+                for reading in readings {
+                    let dx = f64::from(x - reading.x);
+                    let dy = f64::from(y - reading.y);
+                    let weight = 1.0 / (dx * dx + dy * dy + softening);
+
+                    total += weight * f64::from(reading.value);
+                    weights += weight;
+                }
+
+                activity.push((total / weights) as f32);
+            }
+        }
+
+        self.activity = Some(activity);
+        self
     }
 
     /// `F` along one horizontal line of world pixels, read off the sampled grid.
@@ -348,6 +434,29 @@ pub struct Row<'a> {
 impl Row<'_> {
     /// `F` at one `x` on this line.
     pub fn at(&self, x: f32) -> f32 {
+        self.read(&self.field.values, x)
+    }
+
+    /// Activity at one `x` on this line, 0.0 to 1.0.
+    ///
+    /// **1.0 when the field carries no activity**, which is the identity for a
+    /// caller multiplying it into a wash strength: a field sampled without
+    /// [`Field::with_activity`] therefore paints exactly what it painted before
+    /// this existed, with no branch at the call site.
+    pub fn activity(&self, x: f32) -> f32 {
+        match &self.field.activity {
+            Some(activity) => self.read(activity, x),
+            None => 1.0,
+        }
+    }
+
+    /// Bilinear read of one grid-shaped buffer at `x` on this line.
+    ///
+    /// Takes the buffer rather than reading `self.field.values` directly so the
+    /// activity grid gets the identical treatment — same clamping, same weights,
+    /// one implementation. `cells` must be `cols * rows` in the field's own cell
+    /// order, which is why this is private.
+    fn read(&self, cells: &[f32], x: f32) -> f32 {
         let field = self.field;
         let last_col = field.cols - 1;
 
@@ -358,9 +467,9 @@ impl Row<'_> {
         let across = col - left;
 
         let above =
-            field.values[self.above + col0] * (1.0 - across) + field.values[self.above + col1] * across;
+            cells[self.above + col0] * (1.0 - across) + cells[self.above + col1] * across;
         let below =
-            field.values[self.below + col0] * (1.0 - across) + field.values[self.below + col1] * across;
+            cells[self.below + col0] * (1.0 - across) + cells[self.below + col1] * across;
 
         above * (1.0 - self.down) + below * self.down
     }
@@ -1127,6 +1236,90 @@ mod tests {
         }
 
         assert!(checked > 20, "only {checked} segments — the fixture went thin");
+    }
+
+    /// Readings evenly spread down the hex, standing in for a column of regions.
+    fn readings() -> Vec<Reading> {
+        vec![
+            Reading { x: 512.0, y: 150.0, value: 1.0 },
+            Reading { x: 512.0, y: 450.0, value: 0.5 },
+            Reading { x: 512.0, y: 750.0, value: 0.0 },
+        ]
+    }
+
+    /// A field with no readings answers 1.0, so multiplying by it is a no-op.
+    #[test]
+    fn a_field_without_activity_reads_as_fully_strong() {
+        let field = Field::sample(&contested(), window(), SPACING, model()).expect("contested");
+
+        assert_eq!(field.along(400.0).activity(512.0), 1.0);
+    }
+
+    /// **The one rule of this feature.** Activity changes how strong the wash is
+    /// and nothing else, so the traced contour has to come out identical — not
+    /// close, identical, since both traces read the same untouched `values`.
+    #[test]
+    fn activity_does_not_move_the_line_at_all() {
+        let sources = footings(&contested_wavy(), RenderConfig::default().footing_radius());
+        let plain = Field::sample(&sources, window(), 64.0, model()).expect("contested");
+        let busy = plain.clone().with_activity(&readings(), 400.0);
+
+        assert_eq!(contour(&plain), contour(&busy));
+    }
+
+    /// Near a reading, the answer is close to that reading. "Close" and not
+    /// "equal": the smoothing radius deliberately lets the neighbours pull, and
+    /// a version of this that interpolated exactly would be the bullseye lattice
+    /// [`Field::with_activity`] exists to avoid.
+    #[test]
+    fn activity_leans_toward_the_nearest_reading() {
+        let field = Field::sample(&contested(), window(), SPACING, model())
+            .expect("contested")
+            .with_activity(&readings(), 400.0);
+
+        let hot = field.along(150.0).activity(512.0);
+        let cold = field.along(750.0).activity(512.0);
+
+        assert!(hot > 0.6, "the busy end read {hot}");
+        assert!(cold < 0.4, "the quiet end read {cold}");
+        assert!(hot > cold);
+    }
+
+    /// **The failure this whole feature has to avoid**, in its numeric form:
+    /// between two readings the answer has to *slope*, not step. A lookup per
+    /// region would hold flat and then jump at the boundary, which is the hex
+    /// lattice coming back as a change in strength.
+    ///
+    /// Checked as monotonicity plus a bound on the largest single step, since a
+    /// step is exactly what a lookup produces and a gradient is exactly what it
+    /// does not.
+    #[test]
+    fn activity_slopes_between_readings_instead_of_stepping() {
+        let field = Field::sample(&contested(), window(), SPACING, model())
+            .expect("contested")
+            .with_activity(&readings(), 400.0);
+
+        let walk: Vec<f32> = (150..=750)
+            .step_by(10)
+            .map(|y| field.along(y as f32).activity(512.0))
+            .collect();
+
+        let mut worst = 0.0f32;
+
+        for pair in walk.windows(2) {
+            assert!(
+                pair[1] <= pair[0] + 1e-4,
+                "activity rose walking from the busy end toward the quiet one: {pair:?}"
+            );
+            worst = worst.max(pair[0] - pair[1]);
+        }
+
+        let total = walk[0] - walk[walk.len() - 1];
+        assert!(total > 0.2, "the walk barely moved at all: {total}");
+        assert!(
+            worst < total / 4.0,
+            "one step of {worst} out of a total {total} — that is an edge, not a gradient"
+        );
     }
 
     fn contested_wavy() -> Vec<Source> {

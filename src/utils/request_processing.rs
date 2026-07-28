@@ -273,6 +273,23 @@ pub struct RenderConfig {
     /// Low on purpose: the point is to read ownership at a glance without
     /// losing the terrain underneath it.
     pub faction_tint_strength: f32,
+    /// Whether the wash varies in strength with how busy the ground is
+    /// (`specs/active/frontline-activity.md`).
+    ///
+    /// Off by default and not a guild setting: this is the experiment that
+    /// decides whether varying intensity is worth having at all, and the answer
+    /// might be no.
+    pub faction_tint_activity: bool,
+    /// What the quietest ground on the map keeps of
+    /// [`RenderConfig::faction_tint_strength`], with the busiest keeping all of
+    /// it.
+    ///
+    /// **Well above zero, and that is the whole design of this knob.** Most of
+    /// the map is quiet most of the time, so a floor near zero would erase the
+    /// territory tint's answer across almost the entire picture in order to
+    /// emphasize a front that the drawn line already marks. This says "vary the
+    /// wash", not "hide it".
+    pub faction_tint_activity_floor: f32,
 }
 
 impl Default for RenderConfig {
@@ -305,6 +322,11 @@ impl Default for RenderConfig {
             colonial_tint: Rgba([74, 106, 62, 255]),
             warden_tint: Rgba([58, 92, 142, 255]),
             faction_tint_strength: 0.5,
+            faction_tint_activity: false,
+            // A quiet hex washes at 60% of a contested one. Enough spread to be
+            // read as a difference, not so much that the backline stops looking
+            // held — the balance the floor exists to strike.
+            faction_tint_activity_floor: 0.6,
             frontline: false,
             field_resolution_ratio: 1.0 / 32.0,
             frontline_width_ratio: 5.0 / REGION_WIDTH as f32,
@@ -653,22 +675,37 @@ fn tint_by_field(
     let strength = config.faction_tint_strength.clamp(0.0, 1.0);
     let width = canvas.width() as usize;
 
+    // Hoisted: the map from activity to a multiplier is the same for every one
+    // of the 63.6 million pixels this walks.
+    let floor = config.faction_tint_activity_floor.clamp(0.0, 1.0);
+    let span = 1.0 - floor;
+
     for (y, row) in canvas.chunks_exact_mut(width * 4).enumerate() {
         // Pixel centres, so the sample matches the geometry the stroke uses.
         let sample = ground.field.along(ground.origin.1 + y as f32 + 0.5);
 
         for (x, pixel) in row.chunks_exact_mut(4).enumerate() {
-            let weight = strength * (pixel[3] as f32 / 255.0);
+            let alpha = pixel[3] as f32 / 255.0;
 
             // Transparent corners are the gaps the hexes interlock through, and
             // a wash in them makes every seam visible.
-            if weight <= 0.0 {
+            if alpha <= 0.0 {
                 continue;
             }
 
+            let here = ground.origin.0 + x as f32 + 0.5;
+
+            // Activity scales the strength and nothing else. It reads from the
+            // same sample as the colour below, one cell of the same grid, so it
+            // is incapable of moving the boundary between them — the rule
+            // `specs/active/frontline-activity.md` is built around. `activity`
+            // is 1.0 unless the field was given readings, so this line is the
+            // identity when the experiment is off.
+            let weight = strength * (floor + span * sample.activity(here)) * alpha;
+
             // Positive is Colonial, which is the one place a faction is encoded
             // in the field — see `frontline::Source::weight`.
-            let color = if sample.at(ground.origin.0 + x as f32 + 0.5) > 0.0 {
+            let color = if sample.at(here) > 0.0 {
                 config.colonial_tint
             } else {
                 config.warden_tint
@@ -1363,6 +1400,68 @@ mod tests {
             tint(config.warden_tint, strength),
             "and the Warden end, in the same hex"
         );
+    }
+
+    /// Activity is allowed to change how strong a pixel is washed and nothing
+    /// else. Rendered twice over the same field, once with a busy end and a
+    /// quiet end: every pixel has to keep the faction it had, and the quiet end
+    /// has to sit nearer the untinted terrain than the busy one.
+    #[test]
+    fn activity_dims_the_wash_without_changing_whose_it_is() {
+        let field = over_canvas(&[source(-100.0, 1.0), source(164.0, -1.0)]);
+        let flat = washed();
+        let varied = RenderConfig {
+            faction_tint_activity: true,
+            faction_tint_activity_floor: 0.25,
+            ..washed()
+        };
+
+        // Busy at the top of the canvas, quiet at the bottom — across the front
+        // rather than along it, so the check covers both factions at once.
+        let busy = over_canvas(&[source(-100.0, 1.0), source(164.0, -1.0)]).with_activity(
+            &[
+                crate::utils::frontline::Reading { x: 32.0, y: 0.0, value: 1.0 },
+                crate::utils::frontline::Reading { x: 32.0, y: 64.0, value: 0.0 },
+            ],
+            32.0,
+        );
+
+        let (mut plain, mut dimmed) = (canvas(255), canvas(255));
+        tint_by_field(&mut plain, ground(&field), &flat);
+        tint_by_field(&mut dimmed, ground(&busy), &varied);
+
+        // 128 is the untinted terrain these fixtures are painted on, so distance
+        // from it *is* how strongly a pixel was washed.
+        let distance = |image: &ImageBuffer<Rgba<u8>, Vec<u8>>, x, y| {
+            (channels(image.get_pixel(x, y))[2] as f32 - 128.0).abs()
+        };
+
+        for x in [4, 60] {
+            let top = distance(&dimmed, x, 2);
+            let bottom = distance(&dimmed, x, 61);
+
+            assert!(
+                top > bottom + 2.0,
+                "column {x}: the busy end washed {top} against the quiet end's {bottom}"
+            );
+            assert!(
+                bottom > distance(&plain, x, 61) * 0.2,
+                "column {x}: the floor is supposed to keep quiet ground visibly held"
+            );
+        }
+
+        for (left, right) in plain.pixels().zip(dimmed.pixels()) {
+            let colonial = |pixel: &Rgba<u8>| {
+                let [_, green, blue] = channels(pixel);
+                green > blue
+            };
+
+            assert_eq!(
+                colonial(left),
+                colonial(right),
+                "activity moved a pixel across the front"
+            );
+        }
     }
 
     #[test]

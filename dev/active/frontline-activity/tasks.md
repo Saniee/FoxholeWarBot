@@ -4,36 +4,46 @@ Spec: `specs/active/frontline-activity.md`. Context: `context.md`.
 
 ## 0. Before any of this
 
-- [ ] Look at the shipped territory tint on a live map. It may be enough on its own, and everything
-      below is speculative until that is checked
+- [x] Look at the shipped territory tint on a live map. It reads well — the wash follows the line
+      with no hex edges, and the black halo keeps the seam legible. What it does **not** do is
+      distinguish a contested hex from a backline one, so the Part 2 question was real
 
 ## 1. Option C — structure density as a free stand-in
 
-The cheap experiment that answers "is varying intensity worth having at all", before paying for
-data. Nothing here is a commitment to ship it.
+- [x] Footing count per region, already in hand at render time, as the intensity input
+- [x] Carried as a second value per cell on `Field`, interpolated by the same `Field::along` pass
+- [x] Map it to a strength range with a floor well above zero
+- [x] Render it and look
 
-- [ ] Footing count per region, already in hand at render time, as the intensity input
-- [ ] Carried as a second value per cell on `Field`, interpolated by the same `Field::along` pass —
-      **not** looked up per hex, or the wash grows hex edges again
-- [ ] Map it to a strength range with a floor well above zero: a quiet region still has to read as
-      *held*, or Part 1's answer disappears across most of the map
-- [ ] Render it and look. If the effect is not worth having here, it is not worth a migration either
+**Answered: no.** Footing count is uncorrelated with the front — both contested hexes rank below
+several deep-backline ones — and its 3x spread is the flat one this spec already rejected
+enlistments for. Table and the full argument in the spec.
 
-## 2. Option B — casualty rate, only if C says yes
+## 2. Option B — casualty rate
+
+**Not recommended, and not started.** C did not refute B, but it did show the squeeze is in the
+rendering rather than the input: variation only becomes visible at a floor low enough that quiet
+regions stop reading as held. B would pay a migration, a retention policy, a `docs/` change and a
+fresh-deployment fallback to find out whether 10.6x clears that bar where 3x did not.
+
+If it is ever wanted, the rendering half is already built and tested — only the number changes.
 
 - [ ] History table: `(shard, region, timestamp, colonial_casualties, warden_casualties)`
 - [ ] A retention policy for it, and `docs/tos.md` + `docs/privacy.md` in the **same commit** as the
       migration (`specs/docs-site.md`)
-- [ ] A defined fallback for a fresh deployment, which has no window yet and would otherwise draw a
-      flat map for its first hours
+- [ ] A defined fallback for a fresh deployment
 
 ## 3. Option A — cumulative casualties
 
-Only if cheapness beats accuracy. Free and needs no storage, but describes the whole war rather than
-the present, so by late war most of the front is dark and the picture stops discriminating.
+Not started. Describes the whole war rather than the present, so by late war most of the front is
+dark and the picture stops discriminating.
 
 ## Checks, whichever number it is
 
-- [ ] The line does not move. Byte-compare the frontline against a render with intensity off
-- [ ] No hex edges in the wash — the failure this whole feature has to avoid
-- [ ] Cost measured in release on the real canvas, and the number written into the spec
+- [x] The line does not move — `activity_does_not_move_the_line_at_all` compares the traced contour
+      before and after, and asserts equality rather than closeness
+- [x] No hex edges in the wash — `activity_slopes_between_readings_instead_of_stepping` walks between
+      two readings and bounds the largest single step against the total
+- [x] Cost measured in release on the real canvas: **below the noise floor.** Six alternating runs
+      gave 4.1–6.1 s with it off and 4.5–5.2 s with it on, which overlap — whole-composite timings
+      on this canvas are not trustworthy to better than a couple of seconds

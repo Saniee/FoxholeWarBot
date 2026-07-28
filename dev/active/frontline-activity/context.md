@@ -6,11 +6,23 @@ Branch `claude/specs-workflow-review-p0c7p3`, PR #2.
 
 ## Current state
 
-**Nothing built.** Part 2 of the tint request; Part 1 shipped the same day
-(`specs/frontline-territory.md`, `dev/done/frontline-territory/`).
+**Option C built, rendered, rejected. B and A not started and not recommended.** Part 2 of the tint
+request; Part 1 shipped the same day (`specs/frontline-territory.md`,
+`dev/done/frontline-territory/`).
 
 Part 1 decides *which* colour a pixel gets. This decides *how strong* it is: a region where the war
 is being fought washes darker, a quiet backline washes faint.
+
+In the code, off by default and reachable from no command: `Field::with_activity` /
+`Row::activity` in `frontline.rs`, `activity_readings` in `map_render.rs`,
+`faction_tint_activity` + `faction_tint_activity_floor` in `RenderConfig`. Kept rather than
+reverted because B would rebuild exactly it; the only thing that would change is the number going
+in. With no readings, `Row::activity` returns 1.0 and the wash is arithmetic identical to shipped.
+
+**The finding, in one line:** footing count does not track the front (both contested hexes rank
+below deep-backline ones) and its 3x spread is invisible at a safe floor. Turning the floor down far
+enough to see it bleaches the quiet regions — so the tradeoff lives in the rendering, not the input,
+and even a good signal has to clear that bar. Full table in the spec.
 
 ## The three things that decide this
 
@@ -33,11 +45,11 @@ visible. Whatever the number is, it has to be interpolated across the map, not l
 `Field` already spans the world and is already sampled per pixel; a second `Vec<f32>` on it is the
 obvious carrier.
 
-## Before starting
+## Next steps
 
-**Look at the shipped territory tint live first.** The spec says so, and it may be enough on its
-own. Then option C (structure density, free) to find out whether varying intensity is worth having
-at all, before paying for the polling history option B needs.
+**None. Stop unless asked.** The territory tint answers the question that was asked and the drawn
+line already marks where the fighting is. Reopen only if a live map is looked at and a flat wash is
+what is missing from it — in which case the work is option B's number, not its rendering.
 
 ## Rendering locally
 
