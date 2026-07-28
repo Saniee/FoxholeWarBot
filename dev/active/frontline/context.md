@@ -7,13 +7,17 @@ same branch).
 
 ## Current state
 
-**§1–§4 done.** `regions::neighbours` (`25c2b19`), `src/utils/frontline.rs` (the field and
-contour, no rendering in it), the stroke, and both commands wired — `/full-map` composites the
-world's contour per tile, `/get-map` fetches its up-to-six neighbours' dynamic data first.
-19 tests, clippy clean but for the two pre-existing warnings.
-**Next is `tasks.md` §5, the toggle — one commit, migration + `db.rs` + `/set-guild-settings` +
-`docs/tos.md` + `docs/privacy.md`.** Until it lands, `frontline` defaults to `false` and nothing
-sets it, so the feature is unreachable in production; that is deliberate, not an oversight.
+**§1–§5 done and pushed. The feature is complete and reachable**: `/set-guild-settings` has a
+`frontline` option, off by default, honoured by `/get-map`, `/full-map` and both branches of the
+scheduled tick. Migration `0006` runs at startup. 19 tests; clippy clean but for the two
+pre-existing warnings (`schedule_report.rs:24` too many arguments, `db.rs:202` large enum variant).
+
+Commits: `25c2b19` neighbours · `1e6909b` field · `90e0ddc` drawing · `fa44c0a` neighbour fetch ·
+`8c17de0` toggle.
+
+**Next: §6, and the user is bringing live-war results and fixes.** Nothing left is guesswork that
+more code can settle — see "What a live war has to answer" below, which is the list to read the
+feedback against.
 
 **The full-map draw-order question is settled: draw before the downscale**, as the spec always
 said. The region-name precedent does not transfer — what the downscale destroys is *internal*
@@ -116,18 +120,23 @@ of the label work — which turned out not to matter, and the same trick serves 
 This is faster than a live war for everything except the last question, "does the line sit where
 a player would draw it", which genuinely needs real data (§6).
 
-## Key files (expected)
+## Key files
 
-- `src/utils/request_processing.rs` — `RenderConfig` gains the frontline ratios; `grid_offset` is
-  the world-space anchor; `tint_region` is the precedent for alpha-aware compositing.
+- `src/utils/request_processing.rs` — **done.** The frontline ratios are on `RenderConfig` with
+  accessors (`frontline_width`, `field_spacing`, `influence_epsilon`, `frontline_margin`);
+  `draw_frontline` / `stroke` do the painting. `grid_offset` is the world-space anchor;
+  `tint_region` is the precedent for alpha-aware compositing.
   `controlling_team` / `CONTROL_ICON_TYPES` are **neighbours of this work, not its basis** — see
   the model section for why their rule doesn't carry over.
 - `src/utils/regions.rs` — **done.** `neighbours()` is there and tested.
 - `src/utils/frontline.rs` — **done.** The field and the contour, and nothing else: it imports
   `RenderConfig` only for `grid_offset`, and has no idea a canvas exists. Keep drawing out of it.
-- `src/utils/map_render.rs` — `composite_full_map` now draws tiles, downscales, *then* labels via
-  `region_labels()`; `render_region` gains the neighbour fetches.
-- `src/utils/db.rs`, `migrations/`, `src/commands/set_guild_settings.rs`, `docs/` — the toggle.
+- `src/utils/map_render.rs` — **done.** `world_frontline` (whole-map contour) and
+  `region_frontline` (one hex + its neighbours) both end by calling `translate` into tile pixels.
+  `fetch_dynamic` is the dynamic-half-only fetch.
+- `src/utils/db.rs`, `migrations/0006_frontline.sql`, `src/commands/set_guild_settings.rs`,
+  `docs/` — **done.** Four render sites read `guild.frontline`: `/get-map`, `/full-map`, and both
+  branches of the cron tick.
 
 ## The model, and two rejected ones
 
@@ -145,8 +154,9 @@ at zero. Smooth by construction, and robust to outliers.
 
 **Footing = every faction-held structure**, not `CONTROL_ICON_TYPES`. The tint's objection to
 sheds doesn't transfer: the tint *counts* and takes a majority, where a field *sums by distance*,
-so a structure deep in friendly ground contributes nothing to where the boundary sits. This is the
-judgement call most likely to be wrong — check it against a live war first.
+so a structure deep in friendly ground contributes nothing to where the boundary sits. **This is
+the judgement call most likely to be wrong, and it is what shipped** — it is item 1 on the live-war
+list below, and the first thing to change if the line sits wrong.
 
 ## Traps worth not rediscovering
 
@@ -173,15 +183,43 @@ judgement call most likely to be wrong — check it against a live war first.
 - **Don't measure the overlay by timing whole renders.** A 63.6 MP composite varies by ~150 ms
   run to run, which swamps it. §2's isolated field benchmark is the number to quote.
 
+## What a live war has to answer
+
+Read incoming feedback against this list before changing anything — **the order matters**, because
+three of these cannot be fixed by the knob a symptom first suggests.
+
+1. **"The line sits in the wrong place."** → the point set, not the resolution. Try
+   `CONTROL_ICON_TYPES` only, then per-type weights `w` (the `Source.weight` field already carries
+   a magnitude; only its sign is used today). **Do not touch `field_resolution_ratio` or the
+   smoothing rounds for this** — they cannot fix a bad input, and raising resolution actively
+   makes case 3 worse.
+2. **"Too thick / too thin / wrong colour."** → `frontline_width_ratio` (hex),
+   `full_map_frontline_px` (finished full map), `frontline_color` / `frontline_halo`. Pure taste,
+   change freely. Note the two widths are independent: the full map's is sized backwards in
+   `for_full_map`, so changing the hex one does nothing to the world map.
+3. **"There are little loops / blobs around isolated bases."** → **raise
+   `influence_radius_ratio`** (currently 50 px), or lower resolution. Never raise resolution: the
+   islands are real zero crossings that the coarse grid is filtering out. This is the one
+   counter-intuitive knob in the feature.
+4. **"The line is jagged / staircased."** → `frontline::SMOOTHING_ROUNDS` (2). Cheap.
+5. **"It breaks at hex seams."** → a real bug, not tuning. The field is computed once in world
+   space, so a seam break means either the per-tile `translate` or the alpha mask, not the model.
+6. **"It's missing near one edge of a hex on `/get-map`."** → look for the neighbour-fetch warning
+   in the log naming that region. Degrading at one edge when a neighbour fails is by design.
+
 ## Next steps
 
-**Start `tasks.md` §4: the `/get-map` neighbour fetch.** `render_region` currently passes an
-empty slice of polylines with a comment saying why — a single hex's line is wrong at its own edges
-without its neighbours' structures, so wiring it from the region's own data alone would put a
-confidently wrong line on the map. `regions::neighbours` and `Bounds::around_region` are both
-written and waiting; the dead-code warnings on them clear when §4 lands.
+**§6.** Take the user's live-war results, triage with the list above, then finish:
 
-Then §5 (migration + `docs/`) whole — it is one commit by repo rule.
+- `cargo clippy` clean (the two pre-existing warnings excepted) — currently true, keep it.
+- Re-check the acceptance criteria in the spec. Three are already measured and recorded:
+  off ⇒ byte-identical, the line reaching the silhouette with no gap (13 edge pixels painted at
+  each end), and nothing landing in the transparent corners.
+- Promote `specs/active/frontline.md` → `specs/`, update `specs/README.md` (it says `specs/active/`
+  is empty as of 2.0 — that changes), and move `dev/active/frontline/` → `dev/done/`.
+
+Whatever the feedback changes, **update the spec in the same commit** — it is meant to be 1:1 with
+the code, and three of its original claims have already needed correcting.
 
 **Still unvalidated, and it needs a live war, not another synthetic render:**
 

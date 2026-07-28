@@ -86,11 +86,16 @@ next, and most of it needs a live war rather than more code.
       `RenderConfig` twice, once per branch
 - [x] `specs/set-guild-settings.md` and `specs/postgres.md` updated
 
-## 6. Finishing
+## 6. Finishing — **the user is bringing live-war results and fixes**
+- [ ] Triage the feedback with context.md → "What a live war has to answer". Three symptoms have
+      a counter-intuitive fix; in particular **loops around isolated bases are fixed by *lowering*
+      resolution or raising `influence_radius_ratio`, never by sampling finer**
 - [ ] Validate against a live war — the line's quality is entirely the point set. If it sits
       wrong, try `CONTROL_ICON_TYPES` only, or per-type weights, **before** touching resolution or
       smoothing; those cannot fix a bad input
-- [ ] Check the acceptance criteria in the spec, especially "off ⇒ byte-identical output"
-- [ ] `cargo clippy` clean (the two pre-existing warnings excepted)
+- [x] Acceptance criteria measured so far: off ⇒ byte-identical; the line reaches the silhouette
+      with no gap (13 edge pixels painted at each end it exits by); nothing lands in the
+      transparent corners. The rest need real data
+- [x] `cargo clippy` clean (the two pre-existing warnings excepted) — keep it that way
 - [ ] Promote `specs/active/frontline.md` → `specs/`, update `specs/README.md`, move
       `dev/active/frontline/` → `dev/done/`
