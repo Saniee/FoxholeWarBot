@@ -87,6 +87,8 @@ Still 55.7 MB, now from **711 lines**: 80 KB a line.
 ### Still worth a look on the next live run
 - [ ] Confirm the verbose file is a sane size now, and that a scheduled tick and a `/full-map`
       still leave a useful trail in it
-- [ ] **Not a logging issue:** find out which icon types are actually missing from
-      `assets/MapIcons/` and whether `scripts/update_assets.py` closes the gap. The present set
-      has holes at 24-26, 31, 42-44, 48-50, 55, 63-69, 73-74, 76-82, 85-87 and above 92
+- [x] **Not a logging issue, and now fixed.** The holes were never missing *structures* — every
+      neutral icon was on disk. Foxhole ships one neutral icon per structure and tints it in
+      game, so the faction files the renderer names (`13Colonials.png`) exist nowhere upstream to
+      copy. `update_assets.py --derive-icons` generates them by linear burn; 50 written, and the
+      DebugIcon fallback should now be unreachable for every type we have art for

@@ -53,23 +53,33 @@ Both guesses made before reading a log were wrong; the fixes below are measured,
 - **Log setup is never fatal**; the directory is canonicalized before it's announced and probed
   for writability, because `fern::DateBased` opens lazily and can't report a failure.
 
+## The icon gap the logs exposed — closed
+
+The 113 `no icon for …` warnings were never missing *structures*. Foxhole ships **one neutral
+icon per structure** and tints it in game, so `MapIconStorageFacilityColonial.TGA` does not exist
+upstream at all, while the renderer asks for `33Colonials.png` by name. 25 icon types had a
+neutral file and no faction pair.
+
+`scripts/update_assets.py --derive-icons` now generates them: `decode_png`, `tint_linear_burn`,
+`derive_team_icons`. Linear burn (`out = neutral + faction − 255`, clamped, alpha untouched) is
+not a taste call — the faction icons drawn by hand years ago are *exactly* it, matching pixel for
+pixel on 38 of the 66 pairs on disk, and the colours (Colonial `101,135,94`, Warden
+`72,125,169`) were recovered from that fit as what pure white maps to. Black clamps to itself, so
+the outline survives. The other 28 pairs are upstream's own faction art (5-9, 19, 28-30) or drawn
+from different sources; existing files are never overwritten. 50 icons written, run is idempotent.
+
+Every neutral type gets a pair, including resource fields that are never captured — 2 KB of dead
+weight against a curated list that goes stale into a DebugIcon on a live map.
+
 ## Next steps
 
-**The open thread is icons, not logging.** One full-map render produced 113 `no icon for …`
-fallbacks to `DebugIcon` from two icon types — the API uses structure types
-`assets/MapIcons/` has no art for. The de-duplication landed; the gap did not. The installed set
-has holes at 24-26, 31, 42-44, 48-50, 55, 63-69, 73-74, 76-82, 85-87 and everything above 92.
-**The user has since investigated this and has findings to share — start there.** Which types are
-missing comes from the raw log:
-
-```powershell
-Select-String -Path .\foxholewarbot-verbose.*.log -Pattern 'no icon for (\S+)' |
-  ForEach-Object { $_.Matches[0].Groups[1].Value } | Sort-Object -Unique
-```
-
-Then: does `scripts/update_assets.py --warapi <clone> --dry-run` close it, or is this art to
-source by hand? Note `update_assets.py` already tracks icons that upstream doesn't ship (its
-`ICON_SOURCES` table), so this may be that list needing an entry rather than a copy step failing.
-
-Also still unconfirmed: that the verbose file is a sane size after both mutes, and that a
-scheduled tick and a `/full-map` still leave a useful trail in it.
+- **Unverified in production:** a `/full-map` should now emit no `no icon for …` at all. Check
+  the next verbose log.
+- Verbose file size after both mutes, and that a scheduled tick and a `/full-map` still leave a
+  useful trail in it.
+- **A separate finding, not acted on.** `ICON_SOURCES` names look stale: upstream now ships
+  `MapIconMedical`/`Vehicle`/`Supplies`/`Manufacturing` where the table says
+  `Hospital`/`VehicleFactory`/`SupplyStation`/`ManufacturingPlant`, so 11, 12, 14 and 16 are
+  listed in `HAND_SOURCED` when upstream does have art for them. Left alone deliberately: the
+  upstream art is **not** byte-identical to what is on disk, so adopting it is a visual change
+  the user should look at first.

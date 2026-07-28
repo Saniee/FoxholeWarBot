@@ -314,6 +314,16 @@ Inputs: `DynamicMapData`, `StaticMapData`, `draw_text: bool`, background path, `
    than per render, since the answer only changes when someone deploys new art.
    Each icon is resized to `icon_size_ratio × region width` and overlaid at the position given
    by `place()`, which honors the config's `Anchor`.
+
+   The faction art mostly does not exist upstream to be copied — Foxhole ships one *neutral*
+   icon per structure and tints it in game — so `scripts/update_assets.py --derive-icons`
+   generates `<icon_type>{Colonials,Wardens}.png` from `<icon_type>None.png` by linear burn
+   (`out = neutral + faction − 255`, clamped, alpha untouched). That operation is not a taste
+   call: the faction icons drawn by hand years ago are exactly it, matching pixel for pixel on
+   38 of the 66 pairs on disk, and the two colours (Colonial `101,135,94`, Warden `72,125,169`)
+   were recovered from that fit as what pure white maps to. The black outline survives because
+   black clamps to itself; a blend would wash it grey and cost the icon its edge on a dark hex.
+   Existing art always wins — nothing hand-made is overwritten by a generated approximation.
 3. If `draw_text`: render each `map_text_item.text` in Inter-Bold at
    `major_text_ratio`/`minor_text_ratio` × region height, per its `MapMarkerType`.
 4. Return the composited `ImageBuffer`.

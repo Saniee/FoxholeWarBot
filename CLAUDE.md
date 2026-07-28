@@ -91,6 +91,9 @@ recurring scheduled map reports via webhooks.
   about names on purpose (upstream ships `MapDeadlandsHex.TGA`, the table says `DeadLandsHex`;
   icons are descriptive TGA upstream and `{iconType}{Team}.png` here), and a hand copy that gets
   the case wrong renders as a missing hex with a clean `git status`.
+- Faction icons are **generated** from the neutral one by linear burn (`--derive-icons`), because
+  upstream ships neutral art and tints it in game. Add a new structure type's `{iconType}None.png`
+  and let the script write the two faction files; never hand-tint one.
 - The stored-data list in `docs/tos.md` and `docs/privacy.md` is the database schema in prose:
   a change under `migrations/` is also a `docs/` change, in the same commit
   (see `specs/docs-site.md`).

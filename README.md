@@ -99,6 +99,7 @@ disk:
 scripts/update_assets.py --warapi ../warapi --dry-run   # see what would change
 scripts/update_assets.py --warapi ../warapi
 scripts/update_assets.py --audit                        # check what's on disk, copy nothing
+scripts/update_assets.py --derive-icons                 # faction icons from the neutral art
 ```
 
 It renames as it copies, because upstream and the renderer disagree about names in ways that fail
@@ -113,6 +114,14 @@ misnamed, or leftover file. Worth running after any art drop.
 Some icons aren't in warapi at all and are sourced by hand — the script lists those as expected
 and never touches them. If it reports an **UNEXPECTED** icon type instead, upstream renamed the
 file: add the new name to `ICON_SOURCES` rather than renaming anything by hand.
+
+**Faction icons are generated, not copied.** Upstream mostly ships one *neutral* icon per
+structure and Foxhole tints it in game, so `MapIconStorageFacilityColonial.TGA` doesn't exist —
+but the renderer asks for `33Colonials.png` by name and falls back to the debug icon when it's
+missing. `--derive-icons` fills that in by tinting each `<n>None.png` into its two faction
+siblings with a linear burn, which leaves the black outline untouched; it runs automatically as
+part of a normal `--warapi` update, needs no source of its own, and never overwrites art that is
+already on disk. So a new structure type only needs its *neutral* icon added by hand.
 
 ---
 
