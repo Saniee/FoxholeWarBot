@@ -15,9 +15,8 @@ Everything below is state at the time the release was prepped. Tick as you go.
       as built
 
 ## Left — do these before tagging
-- [x] **Commit an updated `Cargo.lock`.** Done — the tracked lock carries `chrono-tz` 0.10.4 and
-      `croner` 2.1.0. It is stale again as of the logging work (`fern`, `env_filter` in,
-      `env_logger` out) and needs re-committing after the next build
+- [x] **Commit an updated `Cargo.lock`.** Done — `chrono-tz` 0.10.4 and `croner` 2.1.0, and as of
+      the logging work `fern` 0.7.1 and `env_filter` 0.1.4 with `env_logger` gone
 - [ ] `cargo clippy` clean
 - [ ] Tag `v2.0.0` and deploy: `docker compose up -d --build` (**never** `down -v` — it wipes
       the database)

@@ -31,7 +31,11 @@ there is a real log to point at.
 - [ ] `RUST_LOG=info` still puts everything back on the console
 - [ ] `LOG_DIR=""` degrades to console-only, and an unwritable `LOG_DIR` warns and continues
 - [ ] Retention: `touch -d '30 days ago' logs/foxholewarbot.2000-01-01.log`, restart, it's gone
-- [ ] `Cargo.lock` regenerated and committed (`fern`, `env_filter` in; `env_logger` out)
+- [x] `Cargo.lock` regenerated and committed — `fern` 0.7.1, `env_filter` 0.1.4 in, `env_logger`
+      and its colour/humantime tree out, nothing else moved. Done with `cargo metadata`, which
+      resolves and writes the lock **without compiling**: it needs the network, not a build, and
+      it keeps every existing pin rather than re-resolving from scratch the way
+      `cargo generate-lockfile` would
 
 ## Pass 2 — the crate's own noise (blocked on a log sample)
 Not guessed at. The user is uploading a real log file; each line goes to `debug` (verbose only)
