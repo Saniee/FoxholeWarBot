@@ -1,6 +1,6 @@
 # Tasks: frontline overlay
 
-Spec: `specs/active/frontline.md`. Context: `dev/active/frontline/context.md`.
+Spec: `specs/frontline.md`. Context: `context.md`.
 
 Ordered so each step is verifiable before the next depends on it. §1–§5 are done; §6 is
 next, and most of it needs a live war rather than more code.
@@ -148,5 +148,5 @@ next, and most of it needs a live war rather than more code.
       being told what it means
 
 ## 8. Promotion
-- [ ] Promote `specs/active/frontline.md` → `specs/`, update `specs/README.md`, move
+- [x] Promote `specs/active/frontline.md` → `specs/`, update `specs/README.md`, move
       `dev/active/frontline/` → `dev/done/`

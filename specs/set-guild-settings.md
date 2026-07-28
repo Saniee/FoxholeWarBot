@@ -15,7 +15,7 @@ Creates the guild row on first use, updates it thereafter.
   - `frontline` (boolean, optional) — draw the contested boundary between the factions. **Both**
     `/get-map` and `/full-map`, unlike the tint: the tint answers "who holds this hex" at hex
     resolution, and the frontline answers a sub-region question that the contested hex — the one
-    a player cares about most — is served worst by. See `specs/active/frontline.md`.
+    a player cares about most — is served worst by. See `specs/frontline.md`.
   - `timezone` (string, optional, autocomplete) — IANA name, the default new schedules inherit.
 - Permissions: `ADMINISTRATOR` (`default_member_permissions`).
 

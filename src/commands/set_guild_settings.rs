@@ -42,7 +42,7 @@ impl From<ShardChoice> for Shard {
 // The tint shades each hex on /full-map by whichever faction holds it; see
 // `utils::request_processing::controlling_team`. The frontline traces the
 // contested boundary on both /get-map and /full-map; see
-// `specs/active/frontline.md`.
+// `specs/frontline.md`.
 #[poise::command(
     slash_command,
     guild_only,

@@ -5,7 +5,7 @@
 //! a contour can be checked as numbers long before it can be checked as pixels,
 //! and no amount of visual tuning rescues a field that is wrong underneath it.
 //!
-//! See `specs/active/frontline.md` for the model and the two rejected ones.
+//! See `specs/frontline.md` for the model and the two rejected ones.
 
 use crate::utils::api_definitions::foxhole::{DynamicMapData, TeamId};
 use crate::utils::regions::Region;

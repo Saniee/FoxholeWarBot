@@ -169,7 +169,7 @@ pub struct RenderConfig {
     pub warden_tint: Rgba<u8>,
 
     // --- frontline overlay ------------------------------------------------
-    // `specs/active/frontline.md`. The model itself lives in `utils::frontline`
+    // `specs/frontline.md`. The model itself lives in `utils::frontline`
     // and knows nothing about canvases; everything here is about drawing what
     // it produces.
     /// Trace the contested boundary between the two factions. Off unless a

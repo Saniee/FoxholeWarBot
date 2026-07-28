@@ -1,6 +1,6 @@
 # Context: frontline overlay
 
-Spec: `specs/active/frontline.md`. Tasks: `tasks.md`.
+Spec: `specs/frontline.md`. Tasks: `tasks.md`.
 
 Branch `claude/specs-workflow-review-p0c7p3`, PR #2 (the logging work, now closed out, is on the
 same branch).
@@ -84,8 +84,8 @@ map, or replicate `region_frontline`'s body from cache and hand the result to `p
 for one hex. **`faction_tint` must be off for a hex render** — it is full-map only, and leaving it
 on produces a green-washed hex that looks nothing like `/get-map`.
 
-**Next: §8, promotion** — `specs/active/frontline.md` → `specs/`, update `specs/README.md` (it
-still says `specs/active/` is empty as of 2.0), move `dev/active/frontline/` → `dev/done/`.
+**Done and promoted.** The spec is `specs/frontline.md`, `specs/active/` is empty again, and this
+directory moved to `dev/done/`.
 
 **The full-map draw-order question is settled: draw before the downscale**, as the spec always
 said. The region-name precedent does not transfer — what the downscale destroys is *internal*

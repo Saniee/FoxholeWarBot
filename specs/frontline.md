@@ -1,7 +1,5 @@
 # Frontline overlay
 
-**Status: planned.** This describes intended behavior. Promote to `specs/` when it ships.
-
 ## Summary
 
 Draw the contested boundary between Colonial- and Warden-held ground on rendered maps, as a line
