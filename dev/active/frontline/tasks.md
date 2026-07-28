@@ -59,11 +59,19 @@ Ordered so each step is verifiable before the next depends on it. §1 is done; �
       mechanism works, not that the values are right. `influence_radius_ratio` (50 px) is the one
       genuinely unvalidated number: it sets how close to a lone structure the field flips
 
-## 4. Fetching
-- [ ] `/get-map` fetches neighbours' dynamic data; a failed neighbour warns and does not fail
-      the render
-- [ ] Confirm the dynamic/static independent-revalidation rule still holds (only dynamic is
-      needed here)
+## 4. Fetching — **done**
+- [x] `/get-map` fetches neighbours' dynamic data concurrently (`region_frontline`); a failed
+      neighbour warns naming the region and the line degrades at that edge only
+- [x] `fetch_dynamic` + `save_dynamic_cache`: the dynamic half alone, which halves the fan-out.
+      The independent-revalidation rule is what *permits* this — the halves already had separate
+      ETags and separate cache files, so `save_map_cache` just became a call to both
+- [x] Neighbour names resolved through `live_name` against the cached map list, so the API's
+      spelling reaches the API and the table's reaches the assets. A neighbour not in this war is
+      skipped
+- [x] Verified with a local single-hex render: line edge to edge between the two sides,
+      **13 silhouette-edge pixels painted at each of the two ends it exits by** — the "no gap"
+      criterion, measured. Contour runs x 234..1072 and y 392..944 against a 1024 x 888 hex, so
+      the oversampling genuinely reaches past the silhouette
 
 ## 5. The toggle — one commit, all of it
 - [ ] `migrations/` — `guilds.frontline`

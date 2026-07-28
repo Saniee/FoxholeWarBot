@@ -205,6 +205,18 @@ pub async fn save_map_cache(
     map_name: &str,
     shard: &str,
 ) {
+    save_dynamic_cache(dynamic_data, map_name, shard).await;
+    save_static_cache(static_data, map_name, shard).await;
+}
+
+/// Writes one half on its own.
+///
+/// The frontline's neighbour fetch wants the dynamic half and nothing else —
+/// it needs where the structures are, not what the towns are called — and the
+/// two halves already live in separate files revalidated by separate ETags, so
+/// writing one without the other is the existing model rather than a shortcut
+/// around it.
+pub async fn save_dynamic_cache(dynamic_data: &DynamicMapData, map_name: &str, shard: &str) {
     create_cache_dirs().await;
 
     write_json(
@@ -213,6 +225,11 @@ pub async fn save_map_cache(
         &format!("dynamic data for {map_name}"),
     )
     .await;
+}
+
+pub async fn save_static_cache(static_data: &StaticMapData, map_name: &str, shard: &str) {
+    create_cache_dirs().await;
+
     write_json(
         format!("./cache/static/Static_{map_name}-{shard}.json"),
         static_data,

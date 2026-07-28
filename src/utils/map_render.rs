@@ -18,7 +18,9 @@ use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
 
 use super::api_definitions::foxhole::{DynamicMapData, StaticMapData};
-use super::cache::{load_dynamic_cache, load_maps, load_static_cache, save_map_cache};
+use super::cache::{
+    load_dynamic_cache, load_maps, load_static_cache, save_dynamic_cache, save_map_cache,
+};
 use super::db::Shard;
 use super::http;
 use super::regions::{self, Region, REGIONS};
@@ -159,6 +161,123 @@ async fn fetch_region(
     Ok((dynamic_data, static_data))
 }
 
+/// Fetches just the dynamic half of a region.
+///
+/// The frontline needs where the structures are, not what the towns are called,
+/// and the two halves have always been revalidated against separate ETags and
+/// separate cache files — so asking for one is the existing model, not a
+/// shortcut around it. Halves the request count of the neighbour fan-out.
+async fn fetch_dynamic(
+    client: &reqwest::Client,
+    api_url: &str,
+    shard_name: &str,
+    map_name: &str,
+) -> Result<DynamicMapData, MapError> {
+    let cached = load_dynamic_cache(map_name, shard_name).await;
+
+    let response = conditional_get(
+        client,
+        format!("{api_url}/worldconquest/maps/{map_name}/dynamic/public"),
+        cached.as_ref().map(|d| d.version),
+    )
+    .await?;
+
+    let (data, is_fresh): (DynamicMapData, bool) = resolve(response, cached).await?;
+
+    if is_fresh {
+        save_dynamic_cache(&data, map_name, shard_name).await;
+    }
+
+    Ok(data)
+}
+
+/// The frontline through one region, in that region's own pixels.
+///
+/// **Fetches the up-to-six adjacent regions**, because a single hex's line is
+/// wrong at its own edges without them: the field outside the hex is what the
+/// contour needs in order to reach the silhouette at all, and there is none
+/// without the neighbours' structures. A neighbour that fails is skipped with a
+/// warning — the line then degrades near that one edge exactly as it would have
+/// without the feature, which is strictly better than refusing to render.
+///
+/// Empty whenever there is nothing to draw, which includes the ordinary case of
+/// a hex where only one faction holds anything.
+async fn region_frontline(
+    client: &reqwest::Client,
+    api_url: &str,
+    shard_name: &str,
+    map_name: &str,
+    own_data: &DynamicMapData,
+    config: &RenderConfig,
+) -> Vec<Polyline> {
+    if !config.frontline {
+        return Vec::new();
+    }
+
+    let Some(region) = regions::find(map_name) else {
+        log::warn!("{map_name} has no grid position, so it gets no frontline");
+        return Vec::new();
+    };
+
+    let mut sources = frontline::sources_in(region, own_data, config);
+
+    // The API's spelling for the API's URLs, the table's for everything else —
+    // conflating the two is what lost Marban Hollow. An empty list means the
+    // cache is cold rather than that the war has no regions.
+    let listed = load_maps(Shard::from_str(shard_name)).await;
+    let live = (!listed.is_empty()).then_some(listed);
+
+    let mut fetches = JoinSet::new();
+
+    for neighbour in regions::neighbours(region) {
+        let Some(fetch_name) = live_name(&live, neighbour) else {
+            continue;
+        };
+
+        let fetch_name = fetch_name.to_string();
+        let client = client.clone();
+        let api_url = api_url.to_string();
+        let shard_name = shard_name.to_string();
+
+        fetches.spawn(async move {
+            (
+                neighbour,
+                fetch_dynamic(&client, &api_url, &shard_name, &fetch_name).await,
+            )
+        });
+    }
+
+    while let Some(joined) = fetches.join_next().await {
+        match joined {
+            Ok((neighbour, Ok(dynamic))) => {
+                sources.extend(frontline::sources_in(neighbour, &dynamic, config));
+            }
+            Ok((neighbour, Err(err))) => log::warn!(
+                "frontline: no data for {}, so the line may drift at that edge: {err}",
+                neighbour.api_name
+            ),
+            Err(_) => log::warn!("frontline: a neighbour fetch panicked, skipping it"),
+        }
+    }
+
+    let bounds = frontline::Bounds::around_region(region, config, config.frontline_margin());
+
+    let Some(field) = frontline::Field::sample(
+        &sources,
+        bounds,
+        config.field_spacing(),
+        config.influence_epsilon(),
+    ) else {
+        log::debug!("no frontline in {map_name}: only one faction holds anything nearby");
+        return Vec::new();
+    };
+
+    let lines = frontline::smooth(frontline::contour(&field), frontline::SMOOTHING_ROUNDS);
+    let (origin_x, origin_y) = config.grid_offset(region.col, region.row);
+
+    translate(&lines, origin_x, origin_y)
+}
+
 /// Fetches (revalidating against the on-disk cache) and renders one region.
 pub async fn render_region(
     api_url: &str,
@@ -175,20 +294,25 @@ pub async fn render_region(
     let last_updated = dynamic_data.last_updated;
     let background = background_path(map_name);
 
+    let frontline = region_frontline(
+        &client,
+        api_url,
+        shard_name,
+        map_name,
+        &dynamic_data,
+        &config,
+    )
+    .await;
+
     // Compositing is CPU-bound and would otherwise stall the async runtime for
     // the duration of the render (QA L-8).
-    // No frontline here yet. A single hex's line is wrong at its own edges
-    // without the adjacent regions' structures — there is no field outside the
-    // hex to trace — so the fetch has to land before this can be wired
-    // (`specs/active/frontline.md` -> Neighbour data). Drawing it from this
-    // region's data alone would put a confidently wrong line on the map.
     let png = tokio::task::spawn_blocking(move || {
         let img = place_image_info(
             &dynamic_data,
             &static_data,
             draw_text,
             &background,
-            &[],
+            &frontline,
             &config,
         )?;
 

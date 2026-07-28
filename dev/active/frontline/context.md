@@ -7,9 +7,13 @@ same branch).
 
 ## Current state
 
-**§1, §2 and §3 done** (§3 for `/full-map`; `/get-map` is wired in §4 with the neighbour fetch). `regions::neighbours` (`25c2b19`), `src/utils/frontline.rs`
-(the field and contour, no rendering in it), and the stroke + full-map wiring. 19 tests.
-**Next is `tasks.md` §4, the `/get-map` neighbour fetch.**
+**§1–§4 done.** `regions::neighbours` (`25c2b19`), `src/utils/frontline.rs` (the field and
+contour, no rendering in it), the stroke, and both commands wired — `/full-map` composites the
+world's contour per tile, `/get-map` fetches its up-to-six neighbours' dynamic data first.
+19 tests, clippy clean but for the two pre-existing warnings.
+**Next is `tasks.md` §5, the toggle — one commit, migration + `db.rs` + `/set-guild-settings` +
+`docs/tos.md` + `docs/privacy.md`.** Until it lands, `frontline` defaults to `false` and nothing
+sets it, so the feature is unreachable in production; that is deliberate, not an oversight.
 
 **The full-map draw-order question is settled: draw before the downscale**, as the spec always
 said. The region-name precedent does not transfer — what the downscale destroys is *internal*
@@ -162,6 +166,10 @@ judgement call most likely to be wrong — check it against a live war first.
 - **A tile drawn as bare terrain still needs the line.** `composite_full_map` has two paths, and
   the `None` one calls `load_background` directly — it needs its own `draw_frontline` call or the
   front breaks wherever a region failed to fetch.
+- **The dynamic and static halves being independently revalidated is what permits the neighbour
+  fetch.** They already had separate ETags and separate cache files, so `fetch_dynamic` /
+  `save_dynamic_cache` are a split of the existing model rather than a shortcut around it, and
+  `/get-map` costs 7 dynamic requests instead of 14 of everything.
 - **Don't measure the overlay by timing whole renders.** A 63.6 MP composite varies by ~150 ms
   run to run, which swamps it. §2's isolated field benchmark is the number to quote.
 
