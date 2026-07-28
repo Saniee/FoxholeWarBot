@@ -193,10 +193,28 @@ underlying endpoint is one this bot already calls:
 `GET /worldconquest/warReport/{map}` → `WarReport { total_enlistments, colonial_casualties,
 warden_casualties, day_of_war, version }`, per region.
 
+`totalEnlistments` is **not** a live player count, which is the first thing anyone checks it for.
+It is a cumulative counter: a hex holds players in the low hundreds, and a real sample reads 22,656
+against 470,272 casualties in the same region — about 21 deaths per enlistment, which is a ratio
+accumulated over a war rather than a snapshot of one. The casualty fields in that same sample match
+the reference screenshot's per-hex `220k 250k` pair exactly, which is what confirms those tiles are
+war-report casualties and not something we cannot get.
+
+**Whether `totalEnlistments` is per-region or war-global is unsettled**, and one request answers it:
+fetch a second region's report and compare. Identical means global — plausible, since `dayOfWar`
+and `version` in the same response certainly are. Different means per-region.
+
+If it is per-region, **differenced over time it is the better activity signal of the two**, and the
+one to reach for first. Enlistments per hour measures people arriving; casualties per hour measures
+people dying, which over-reads a stalemate where two sides feed a meat grinder for days without
+moving, and under-reads a front collapsing so fast nobody is dying to hold it. Same polling cost,
+same history table — so the choice between them is free once either is being stored.
+
 So what is actually available is:
 
 - **Per-region cumulative casualties per faction, right now** — one fetch per region, already
-  modelled in `api_definitions::foxhole`, already cached by `/war-report`. Free.
+  modelled in `api_definitions::foxhole`, already cached by `/war-report`. Free. Cumulative
+  enlistments come in the same response, at no extra cost, subject to the scope question above.
 - **Rates** — only by keeping history. Two polls of every region and the difference between them,
   which is state this bot does not store today.
 
@@ -213,8 +231,9 @@ war *has been* rather than where it is. By late war most of the front is dark an
 discriminating. **Usable as a first cut precisely because it is cheap and cannot mislead about
 territory** — it is only ever intensity — but it answers a different question than the one asked.
 
-**B. Casualty rate, by differencing polls.** The number the reference actually shows, and the one
-that means "where the war is right now". It needs history: a table of `(shard, region, timestamp,
+**B. A rate, by differencing polls — enlistments if they are per-region, casualties otherwise.**
+The kind of number the reference actually shows, and the one that means "where the war is right
+now". It needs history: a table of `(shard, region, timestamp,
 colonial_casualties, warden_casualties)`, written by a background poll or on each render, read back
 as a delta over a window.
 

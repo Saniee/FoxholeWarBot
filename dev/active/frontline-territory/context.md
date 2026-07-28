@@ -44,6 +44,16 @@ already model and cache `WarReport { total_enlistments, colonial_casualties, war
 day_of_war, version }` per region — so cumulative totals are free, and rates need history we do not
 store (a table, a retention policy, and a docs change).
 
+`totalEnlistments` is **not** a live player count — a real sample reads 22,656 against 470,272
+casualties in the same region, ~21 deaths per enlistment, so it is cumulative like everything else
+in that response. **Open: whether it is per-region or war-global.** One extra region's report
+settles it, and it matters — if per-region, enlistments/hr beats casualties/hr as the activity
+signal, because it measures people arriving rather than dying and so does not over-read a
+stalemate. Same polling cost either way.
+
+The same sample's casualty fields match the reference screenshot's per-hex `220k 250k` pair, which
+is what confirms those tiles are war-report casualties.
+
 Spec's recommendation: ship Part 1, look at it, and only then try structure density as a free
 stand-in before paying for the polling history.
 
