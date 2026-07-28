@@ -217,6 +217,9 @@ impl Bounds {
 pub struct Field {
     origin: (f32, f32),
     spacing: f32,
+    /// `1.0 / spacing`, kept because the field is sampled once per pixel of a
+    /// 63.6 MP composite and a division there is not free — see [`Field::along`].
+    inv_spacing: f32,
     cols: usize,
     rows: usize,
     values: Vec<f32>,
@@ -261,13 +264,14 @@ impl Field {
         Some(Field {
             origin: (bounds.min_x, bounds.min_y),
             spacing,
+            inv_spacing: 1.0 / spacing,
             cols,
             rows,
             values,
         })
     }
 
-    /// `F` at one world pixel, read off the sampled grid.
+    /// `F` along one horizontal line of world pixels, read off the sampled grid.
     ///
     /// This is what a wash coloured by the field asks, once per pixel, and it
     /// deliberately does **not** call [`influence`] again: a 10240 x 6216 canvas
@@ -287,26 +291,30 @@ impl Field {
     /// line therefore see the same territory, which is the whole point of
     /// reading the field instead of the hex.
     ///
+    /// Split by row rather than offered as a single `at(x, y)` because a wash
+    /// walks the canvas one row at a time: `y` is constant for a thousand
+    /// consecutive samples while only `x` moves, so resolving the row once
+    /// leaves a multiply, a floor and two loads per pixel. Worth the second type
+    /// at 48 million samples per full map — this is otherwise the most expensive
+    /// thing in the composite, and hoisting the row took it from 40 ms a hex to
+    /// 34.
+    ///
     /// Clamped at the edges: the contour is traced over a margin around the
     /// region, but a caller compositing the region itself can land a fraction of
     /// a pixel outside the sampled rectangle, and the nearest cell is the right
     /// answer there rather than a panic.
-    pub fn at(&self, point: Point) -> f32 {
-        let last_col = self.cols - 1;
+    pub fn along(&self, y: f32) -> Row<'_> {
         let last_row = self.rows - 1;
+        let row = ((y - self.origin.1) * self.inv_spacing).clamp(0.0, last_row as f32);
+        let top = row.floor();
+        let row0 = top as usize;
 
-        let col = ((point.0 - self.origin.0) / self.spacing).clamp(0.0, last_col as f32);
-        let row = ((point.1 - self.origin.1) / self.spacing).clamp(0.0, last_row as f32);
-
-        let (left, top) = (col.floor(), row.floor());
-        let (col0, row0) = (left as usize, top as usize);
-        let (col1, row1) = ((col0 + 1).min(last_col), (row0 + 1).min(last_row));
-        let (across, down) = (col - left, row - top);
-
-        let above = self.value(col0, row0) * (1.0 - across) + self.value(col1, row0) * across;
-        let below = self.value(col0, row1) * (1.0 - across) + self.value(col1, row1) * across;
-
-        above * (1.0 - down) + below * down
+        Row {
+            field: self,
+            above: row0 * self.cols,
+            below: (row0 + 1).min(last_row) * self.cols,
+            down: row - top,
+        }
     }
 
     fn value(&self, col: usize, row: usize) -> f32 {
@@ -319,6 +327,42 @@ impl Field {
             self.origin.0 + col * self.spacing,
             self.origin.1 + row * self.spacing,
         )
+    }
+}
+
+/// One horizontal line through a [`Field`], ready to be sampled along.
+///
+/// See [`Field::along`], which is where the sampling rule is documented. Holds
+/// the two grid rows the line falls between and how far it sits between them,
+/// which is everything about `y` that a sample needs.
+#[derive(Clone, Copy)]
+pub struct Row<'a> {
+    field: &'a Field,
+    /// Index of the start of the grid row above the line, and below it. Already
+    /// multiplied out, so a sample is an add rather than a multiply-add.
+    above: usize,
+    below: usize,
+    down: f32,
+}
+
+impl Row<'_> {
+    /// `F` at one `x` on this line.
+    pub fn at(&self, x: f32) -> f32 {
+        let field = self.field;
+        let last_col = field.cols - 1;
+
+        let col = ((x - field.origin.0) * field.inv_spacing).clamp(0.0, last_col as f32);
+        let left = col.floor();
+        let col0 = left as usize;
+        let col1 = (col0 + 1).min(last_col);
+        let across = col - left;
+
+        let above =
+            field.values[self.above + col0] * (1.0 - across) + field.values[self.above + col1] * across;
+        let below =
+            field.values[self.below + col0] * (1.0 - across) + field.values[self.below + col1] * across;
+
+        above * (1.0 - self.down) + below * self.down
     }
 }
 
@@ -1000,7 +1044,7 @@ mod tests {
                 let corner = field.world(col as f32, row as f32);
 
                 assert_eq!(
-                    field.at(corner),
+                    field.along(corner.1).at(corner.0),
                     field.value(col, row),
                     "interpolation has to be exact where the grid actually knows the answer, \
                      at ({col}, {row})"
@@ -1015,16 +1059,18 @@ mod tests {
 
         // A caller compositing a region can land just outside the sampled
         // rectangle. It should read the edge, not panic.
-        assert_eq!(field.at((-500.0, -500.0)), field.value(0, 0));
+        assert_eq!(field.along(-500.0).at(-500.0), field.value(0, 0));
         assert_eq!(
-            field.at((REGION_WIDTH as f32 + 500.0, REGION_HEIGHT as f32 + 500.0)),
+            field
+                .along(REGION_HEIGHT as f32 + 500.0)
+                .at(REGION_WIDTH as f32 + 500.0),
             field.value(field.cols - 1, field.rows - 1)
         );
     }
 
     /// **The correctness condition for a wash coloured by the field.** The line
     /// is drawn from [`Edge::colonial_side`], which asks [`influence`] directly;
-    /// a wash would ask [`Field::at`], which reads the sampled grid. If those two
+    /// a wash would ask [`Field::along`], which reads the sampled grid. If those two
     /// ever disagree, the picture gets a sliver of one faction's colour on the
     /// wrong side of its own frontline — and this is far cheaper to catch here
     /// than in a render.
@@ -1065,13 +1111,13 @@ mod tests {
                 // read there has to be positive exactly when the flag says
                 // Colonial.
                 assert_eq!(
-                    field.at((mid_x + step_x, mid_y + step_y)) > 0.0,
+                    field.along(mid_y + step_y).at(mid_x + step_x) > 0.0,
                     colonial_side,
                     "segment {index} at ({mid_x}, {mid_y}): the wash would paint the \
                      opposite side to the line"
                 );
                 assert_eq!(
-                    field.at((mid_x - step_x, mid_y - step_y)) > 0.0,
+                    field.along(mid_y - step_y).at(mid_x - step_x) > 0.0,
                     !colonial_side,
                     "segment {index} at ({mid_x}, {mid_y}): both flanks read the same faction"
                 );

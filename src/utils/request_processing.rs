@@ -16,7 +16,7 @@ use thiserror::Error;
 use crate::utils::api_definitions::foxhole::{
     DynamicMapData, MapMarkerType, StaticMapData, TeamId,
 };
-use crate::utils::frontline::{Edge, Point};
+use crate::utils::frontline::{Edge, Field, Point};
 
 /// Every `assets/Maps/Map*Hex.TGA` is 1024 x 888 (a regular flat-top hexagon:
 /// 1024/888 = 1.153 ~= 2/sqrt(3)).
@@ -255,6 +255,16 @@ pub struct RenderConfig {
     /// blends twice there and beads visibly along the line; opaque blending is
     /// idempotent.
     pub frontline_halo_ratio: f32,
+    /// What the halo becomes when the territory wash is under it
+    /// ([`RenderConfig::faction_tint`]).
+    ///
+    /// Black, because with the ground either side already carrying the faction
+    /// colours the flanks would be saying a second time, in a thin band, what the
+    /// wash says across the whole hex — and saying it at the low contrast
+    /// `dev/done/frontline/` measured, since a coloured band over a wash of the
+    /// same colour barely separates from it. Black separates the line from both
+    /// tints and from the terrain.
+    pub frontline_halo: Rgba<u8>,
     /// How far a tinted pixel moves toward the faction colour, 0.0 to 1.0.
     /// Low on purpose: the point is to read ownership at a glance without
     /// losing the terrain underneath it.
@@ -335,6 +345,7 @@ impl Default for RenderConfig {
             // visible band is half a line width — under a pixel once the full
             // map is downscaled, which is a colour nobody can name.
             frontline_halo_ratio: 3.0,
+            frontline_halo: Rgba([0, 0, 0, 255]),
         }
     }
 }
@@ -490,6 +501,7 @@ pub fn place_image_info<P>(
     draw_text: bool,
     background_img_path: &P,
     frontline: &[Edge],
+    ground: Option<Ground>,
     config: &RenderConfig,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, RenderError>
 where
@@ -502,10 +514,22 @@ where
 
     // Before the icons, never after: the icons are already faction-coloured,
     // and washing them in the same colour is how you make a map you can't read.
+    //
+    // `controlling_team` is the *presence* gate and nothing more — a hex with
+    // nothing built in it stays bare terrain. Which colour the ground takes is
+    // the field's answer, not this one, wherever there is a field to ask.
     if config.faction_tint {
-        if let Some(color) = controlling_team(dynamic_data).and_then(|team| config.tint_color(team))
-        {
-            tint_region(&mut bg_img, color, config.faction_tint_strength);
+        if let Some(team) = controlling_team(dynamic_data) {
+            match ground {
+                Some(ground) => tint_by_field(&mut bg_img, ground, config),
+                // No boundary anywhere near this hex, so the field would have
+                // said the same thing at every pixel of it anyway.
+                None => {
+                    if let Some(color) = config.tint_color(team) {
+                        tint_region(&mut bg_img, color, config.faction_tint_strength);
+                    }
+                }
+            }
         }
     }
 
@@ -585,6 +609,76 @@ fn controlling_team(dynamic_data: &DynamicMapData) -> Option<TeamId> {
     }
 }
 
+/// A tile, and the field that says who holds each pixel of it.
+///
+/// Two spaces meet here, which is the only fiddly part: the field is sampled in
+/// world (full-map canvas) pixels, because a region's front depends on the bases
+/// in the regions beside it, while the canvas being painted is one hex's own.
+/// `origin` is what converts between them, and it is the tile's grid offset —
+/// the same number [`RenderConfig::grid_offset`] gives the compositor.
+///
+/// Borrowed rather than owned so the full map can hand all 53 tiles the same
+/// field. Copying it per tile would be a quarter of a megabyte each time, for a
+/// value none of them modify.
+#[derive(Clone, Copy)]
+pub struct Ground<'a> {
+    pub field: &'a Field,
+    pub origin: (f32, f32),
+}
+
+/// Washes the ground in each faction's colour, split where the field changes
+/// sign.
+///
+/// The same blend as [`tint_region`] — same alpha mask, same strength, same
+/// "before the icons" placement — differing only in choosing the colour per
+/// pixel instead of once for the hex. That is deliberate: everything the flat
+/// wash got right about staying inside the hexagon is behaviour to keep, and the
+/// only question being changed is *which* colour, not how it is applied.
+///
+/// The boundary of the wash lands on the drawn line without any effort to make
+/// it, because the two are the same curve: the line is traced along `F = 0` and
+/// this switches colour at `F = 0`. Smoothing moves the stroke off the contour
+/// by up to a cell, but the stroke is several pixels wide and covers its own
+/// drift — so the seam between the two colours is under the line rather than
+/// beside it.
+fn tint_by_field(
+    canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    ground: Ground,
+    config: &RenderConfig,
+) {
+    let strength = config.faction_tint_strength.clamp(0.0, 1.0);
+    let width = canvas.width() as usize;
+
+    for (y, row) in canvas.chunks_exact_mut(width * 4).enumerate() {
+        // Pixel centres, so the sample matches the geometry the stroke uses.
+        let sample = ground.field.along(ground.origin.1 + y as f32 + 0.5);
+
+        for (x, pixel) in row.chunks_exact_mut(4).enumerate() {
+            let weight = strength * (pixel[3] as f32 / 255.0);
+
+            // Transparent corners are the gaps the hexes interlock through, and
+            // a wash in them makes every seam visible.
+            if weight <= 0.0 {
+                continue;
+            }
+
+            // Positive is Colonial, which is the one place a faction is encoded
+            // in the field — see `frontline::Source::weight`.
+            let color = if sample.at(ground.origin.0 + x as f32 + 0.5) > 0.0 {
+                config.colonial_tint
+            } else {
+                config.warden_tint
+            };
+
+            for (channel, value) in pixel.iter_mut().take(3).enumerate() {
+                let base = *value as f32;
+                let target = color.0[channel] as f32;
+                *value = (base + (target - base) * weight).round() as u8;
+            }
+        }
+    }
+}
+
 /// Blends every pixel toward `color`, scaled by its own alpha.
 ///
 /// Scaling by alpha is what keeps the wash inside the hexagon: the art's corners
@@ -623,15 +717,20 @@ pub fn draw_frontline(
 
     let width = config.frontline_width(canvas.width());
 
-    stroke(
-        canvas,
-        lines,
-        width * config.frontline_halo_ratio,
+    // The flanks name the two sides — but so does the territory wash, better and
+    // over the whole hex rather than in a band. Where the wash is underneath,
+    // the halo goes back to doing the one job the colours displaced: holding the
+    // white core off pale terrain.
+    let halo = if config.faction_tint {
+        Paint::Flat(config.frontline_halo)
+    } else {
         Paint::Flanked {
             colonial: config.colonial_tint,
             warden: config.warden_tint,
-        },
-    );
+        }
+    };
+
+    stroke(canvas, lines, width * config.frontline_halo_ratio, halo);
 
     stroke(canvas, lines, width, Paint::Flat(config.frontline_color));
 }
@@ -1173,6 +1272,197 @@ mod tests {
         );
 
         assert_eq!(forward, backward);
+    }
+
+    fn source(x: f32, weight: f32) -> crate::utils::frontline::Source {
+        crate::utils::frontline::Source { x, y: 32.0, weight }
+    }
+
+    /// The canvas's own footprint. These tests draw a single tile sitting at the
+    /// world origin, so canvas pixels and world pixels coincide and `Ground`'s
+    /// offset is zero — the space conversion is exercised by the full-map path,
+    /// not by the colouring rule.
+    fn over_canvas(sources: &[crate::utils::frontline::Source]) -> Field {
+        Field::sample(
+            sources,
+            crate::utils::frontline::Bounds {
+                min_x: 0.0,
+                min_y: 0.0,
+                max_x: 64.0,
+                max_y: 64.0,
+            },
+            8.0,
+            config().influence_model(),
+        )
+        .expect("both factions are present")
+    }
+
+    fn ground(field: &Field) -> Ground<'_> {
+        Ground {
+            field,
+            origin: (0.0, 0.0),
+        }
+    }
+
+    fn washed() -> RenderConfig {
+        RenderConfig {
+            faction_tint: true,
+            ..config()
+        }
+    }
+
+    fn channels(pixel: &Rgba<u8>) -> [u8; 3] {
+        [pixel.0[0], pixel.0[1], pixel.0[2]]
+    }
+
+    fn tint(color: Rgba<u8>, strength: f32) -> [u8; 3] {
+        let mut washed = Rgba([128, 128, 128, 255]);
+
+        for channel in 0..3 {
+            let target = color.0[channel] as f32;
+            washed.0[channel] = (128.0 + (target - 128.0) * strength).round() as u8;
+        }
+
+        channels(&washed)
+    }
+
+    #[test]
+    fn the_wash_stays_out_of_the_transparent_corners() {
+        let mut transparent = canvas(0);
+        let before = transparent.clone();
+        let field = over_canvas(&[source(-100.0, 1.0), source(164.0, -1.0)]);
+
+        tint_by_field(&mut transparent, ground(&field), &washed());
+
+        // Same rule as the flat wash and the stroke: the corners are the gaps
+        // the hexes interlock through, and colour there shows up as seams.
+        assert_eq!(transparent, before);
+    }
+
+    #[test]
+    fn a_hex_the_front_crosses_comes_out_in_both_colours() {
+        let mut opaque = canvas(255);
+        let config = washed();
+        let field = over_canvas(&[source(-100.0, 1.0), source(164.0, -1.0)]);
+
+        tint_by_field(&mut opaque, ground(&field), &config);
+
+        let strength = config.faction_tint_strength;
+
+        assert_eq!(
+            channels(opaque.get_pixel(4, 32)),
+            tint(config.colonial_tint, strength),
+            "the Colonial end of the hex"
+        );
+        assert_eq!(
+            channels(opaque.get_pixel(60, 32)),
+            tint(config.warden_tint, strength),
+            "and the Warden end, in the same hex"
+        );
+    }
+
+    #[test]
+    fn ground_behind_the_front_is_all_one_colour() {
+        let mut opaque = canvas(255);
+        let config = washed();
+        // Both sources off to the west, the Colonial one nearer: the boundary
+        // between them never reaches this hex, so every pixel of it is theirs.
+        let field = over_canvas(&[source(-500.0, 1.0), source(-1000.0, -1.0)]);
+
+        tint_by_field(&mut opaque, ground(&field), &config);
+
+        let expected = tint(config.colonial_tint, config.faction_tint_strength);
+
+        assert!(
+            opaque.pixels().all(|pixel| channels(pixel) == expected),
+            "a hex the front does not cross has no business being two colours"
+        );
+    }
+
+    /// The failure the spec names: a sliver of one faction's colour on the wrong
+    /// side of its own frontline, which would read as inverted flanks rather than
+    /// as a rounding error.
+    ///
+    /// The wash switches colour on the field's zero set; the stroke is drawn
+    /// along a contour that marching squares located to about a cell and Chaikin
+    /// then moved again. They are not the same curve to the pixel — the claim is
+    /// only that the stroke is wide enough to cover the difference, and that is
+    /// measured here rather than assumed.
+    #[test]
+    fn the_seam_between_the_two_colours_hides_under_the_stroke() {
+        let config = washed();
+        // Off-centre on purpose, so a boundary that quietly defaulted to the
+        // middle of the canvas would not pass.
+        let sources = [source(-40.0, 1.0), source(120.0, -1.0)];
+        let field = over_canvas(&sources);
+
+        let edges = crate::utils::frontline::flanks(
+            crate::utils::frontline::smooth(
+                crate::utils::frontline::contour(&field),
+                crate::utils::frontline::SMOOTHING_ROUNDS,
+            ),
+            &sources,
+            config.influence_model(),
+            8.0,
+        );
+        assert!(!edges.is_empty(), "the fixture has to produce a front");
+
+        let mut wash_only = canvas(255);
+        tint_by_field(&mut wash_only, ground(&field), &config);
+
+        let mut with_line = wash_only.clone();
+        draw_frontline(&mut with_line, &edges, &config);
+
+        let colonial = tint(config.colonial_tint, config.faction_tint_strength);
+        let mut seams = 0;
+
+        for y in 0..64 {
+            let Some(seam) = (1..64).find(|x| {
+                channels(wash_only.get_pixel(*x, y)) != channels(wash_only.get_pixel(x - 1, y))
+            }) else {
+                continue;
+            };
+
+            assert_eq!(
+                channels(wash_only.get_pixel(seam - 1, y)),
+                colonial,
+                "row {y}: the Colonials are west of this front, so the wash \
+                 should change from their colour, not to it"
+            );
+            assert_ne!(
+                channels(with_line.get_pixel(seam, y)),
+                channels(wash_only.get_pixel(seam, y)),
+                "row {y}: the wash changes colour at x={seam}, which the stroke \
+                 does not cover — that seam is a visible sliver"
+            );
+            assert_ne!(
+                channels(with_line.get_pixel(seam - 1, y)),
+                channels(wash_only.get_pixel(seam - 1, y)),
+                "row {y}: the stroke covers the seam on one side only"
+            );
+
+            seams += 1;
+        }
+
+        assert!(seams > 50, "only {seams} rows had a seam at all");
+    }
+
+    #[test]
+    fn the_halo_goes_black_where_the_wash_names_the_sides_instead() {
+        let mut opaque = canvas(255);
+
+        draw_frontline(&mut opaque, &line(), &washed());
+
+        // The same two pixels `each_faction_gets_the_flank_the_field_gave_it`
+        // checks, which carry the faction colours when there is no wash.
+        for x in [26, 38] {
+            assert_eq!(
+                channels(opaque.get_pixel(x, 32)),
+                [0, 0, 0],
+                "x={x} should be halo, not a faction band, once the ground \
+                 either side is already coloured"
+            );
+        }
     }
 
     #[test]

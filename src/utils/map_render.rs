@@ -26,7 +26,7 @@ use super::http;
 use super::regions::{self, Region, REGIONS};
 use super::frontline::{self, Edge};
 use super::request_processing::{
-    draw_frontline, draw_region_labels, load_background, place_image_info, RegionLabel,
+    draw_frontline, draw_region_labels, load_background, place_image_info, Ground, RegionLabel,
     RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
 };
 
@@ -209,14 +209,14 @@ async fn region_frontline(
     map_name: &str,
     own_data: &DynamicMapData,
     config: &RenderConfig,
-) -> Vec<Edge> {
+) -> Front {
     if !config.frontline {
-        return Vec::new();
+        return Front::default();
     }
 
     let Some(region) = regions::find(map_name) else {
         log::warn!("{map_name} has no grid position, so it gets no frontline");
-        return Vec::new();
+        return Front::default();
     };
 
     let mut sources = frontline::sources_in(region, own_data, config);
@@ -275,7 +275,7 @@ async fn region_frontline(
         config.influence_model(),
     ) else {
         log::debug!("no frontline in {map_name}: only one faction holds anything nearby");
-        return Vec::new();
+        return Front::default();
     };
 
     let lines = frontline::smooth(frontline::contour(&field), frontline::SMOOTHING_ROUNDS);
@@ -287,7 +287,31 @@ async fn region_frontline(
     );
     let (origin_x, origin_y) = config.grid_offset(region.col, region.row);
 
-    translate(&edges, origin_x, origin_y)
+    Front {
+        edges: translate(&edges, origin_x, origin_y),
+        field: Some(field),
+        origin: (origin_x as f32, origin_y as f32),
+    }
+}
+
+/// What one pass of the frontline model produces: the traced boundary, and the
+/// field it was traced from.
+///
+/// The field travels with the line because the territory wash is coloured by it
+/// (`specs/active/frontline-territory.md`), and the two have to come from the
+/// same evaluation or the wash and the line disagree about where the front is.
+#[derive(Default)]
+struct Front {
+    /// Already in the target canvas's own pixels for a single region; still in
+    /// world space for the full map, where each of the 53 tiles translates it
+    /// for itself.
+    edges: Vec<Edge>,
+    /// `None` when there is no boundary at all — the feature is off, or one
+    /// faction holds everything the API told us about.
+    field: Option<frontline::Field>,
+    /// Where the canvas `edges` are stated in sits in world space, which is what
+    /// lets a canvas pixel be turned back into a field sample.
+    origin: (f32, f32),
 }
 
 /// Fetches (revalidating against the on-disk cache) and renders one region.
@@ -319,12 +343,18 @@ pub async fn render_region(
     // Compositing is CPU-bound and would otherwise stall the async runtime for
     // the duration of the render (QA L-8).
     let png = tokio::task::spawn_blocking(move || {
+        let ground = frontline.field.as_ref().map(|field| Ground {
+            field,
+            origin: frontline.origin,
+        });
+
         let img = place_image_info(
             &dynamic_data,
             &static_data,
             draw_text,
             &background,
-            &frontline,
+            &frontline.edges,
+            ground,
             &config,
         )?;
 
@@ -508,7 +538,15 @@ fn composite_full_map(
         // `stroke` clips per segment, so the 52 regions' worth that miss this
         // hex cost nothing — and the ones that overhang it are exactly what
         // carries the line to the silhouette instead of stopping short.
-        let local = translate(&frontline, x, y);
+        let local = translate(&frontline.edges, x, y);
+
+        // The same field for every tile, read at the tile's own place in the
+        // world. One field for the world is what keeps the wash continuous
+        // across a seam, exactly as it keeps the line continuous.
+        let ground = frontline.field.as_ref().map(|field| Ground {
+            field,
+            origin: (x as f32, y as f32),
+        });
 
         let hex = match data {
             Some((dynamic, statics)) => place_image_info(
@@ -517,6 +555,7 @@ fn composite_full_map(
                 draw_text,
                 &background,
                 &local,
+                ground,
                 &tile_config,
             ),
             // No icons to sit under here, so the order the overlay cares about
@@ -565,9 +604,14 @@ fn world_frontline(
     canvas_w: u32,
     canvas_h: u32,
     config: &RenderConfig,
-) -> Vec<Edge> {
-    if !config.frontline {
-        return Vec::new();
+) -> Front {
+    // The wash needs the field even when the line is not drawn. Computing it
+    // only for `frontline` would mean a guild that turned the tint on kept
+    // getting the old per-hex answer until it also turned the line on, which is
+    // a coupling nobody asked for — and at 21 ms on the real composite it is
+    // affordable to just have it.
+    if !config.frontline && !config.faction_tint {
+        return Front::default();
     }
 
     let sources: Vec<_> = tiles
@@ -597,17 +641,24 @@ fn world_frontline(
         config.influence_model(),
     ) else {
         log::debug!("no frontline to draw: only one faction holds anything on this map");
-        return Vec::new();
+        return Front::default();
     };
 
     let lines = frontline::smooth(frontline::contour(&field), frontline::SMOOTHING_ROUNDS);
-
-    frontline::flanks(
+    let edges = frontline::flanks(
         lines,
         &sources,
         config.influence_model(),
         config.field_spacing(),
-    )
+    );
+
+    Front {
+        edges,
+        field: Some(field),
+        // World space *is* the full map's canvas space, so a tile's own offset
+        // is the whole of the conversion.
+        origin: (0.0, 0.0),
+    }
 }
 
 /// The same edges, moved from world space into a tile's own pixels.
@@ -686,3 +737,4 @@ fn encode_png(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>, RenderErr
 
     Ok(buf)
 }
+
