@@ -77,6 +77,16 @@ weight against a curated list that goes stale into a DebugIcon on a live map.
   two serenity mutes were the whole problem; nothing of ours needed demoting.
 - **Unverified in production:** a `/full-map` should now emit no `no icon for …` at all. Check
   the next verbose log, and that a tick and a `/full-map` still leave a useful trail in it.
+- **Icon type 97 is live and undocumented upstream.** warapi's `MapIconType` list stops at 92
+  (Update 63) and `Images/` has no file for it; reported as clapfoot/warapi#137 (July 2026,
+  seen on RedRiverHex, reporter guesses anti-air, no maintainer reply). Nothing to do until art
+  exists — a hand-drawn `97None.png` is all `--derive-icons` needs. Noted in `ICON_SOURCES`.
+- **Upstream publishes recommended faction tints, and they are not the ones we use.** warapi's
+  "Map Icon Colours" section gives Colonial `#516C4B` (81,108,75) and Warden `#245682`
+  (36,86,130); the colours recovered from this repo's hand-made art are (101,135,94) and
+  (72,125,169) — brighter, and the Colonial is exactly 1.25× upstream's while the Warden is no
+  constant multiple at all. Kept ours: they match the 38 hand-made pairs exactly, and switching
+  would either desync generated art from hand-drawn art or mean overwriting the hand-drawn art.
 - **A separate finding, not acted on.** `ICON_SOURCES` names look stale: upstream now ships
   `MapIconMedical`/`Vehicle`/`Supplies`/`Manufacturing` where the table says
   `Hospital`/`VehicleFactory`/`SupplyStation`/`ManufacturingPlant`, so 11, 12, 14 and 16 are
