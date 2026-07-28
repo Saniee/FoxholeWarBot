@@ -63,10 +63,29 @@ a single probe can land back across the contour. The answer rides in `Edge::colo
 per segment, and `translate` stays a pure shift so it cannot mirror them.
 `reversing_the_walk_does_not_swap_the_factions` is the test that would catch a regression.
 
+**Verified against a real war**, not just a synthetic front — the user supplied a `cache.zip` of a
+live Able shard (53 regions, dynamic + static + the maps list). Rendered the full map and the
+Callahans Passage, Marban Hollow and Endless Shore hexes from it: flanks correct everywhere, both
+bands legible on pale terrain, and the sides agree with the icons on each hex.
+
+One honest caveat, on the full map only. `faction_tint` washes each hex toward the same two colours
+at strength 0.5, so a band sits on ground already half its own colour. On pale terrain the band
+still separates cleanly; on a dark hex under the wash — Deadlands, Umbral Wildwood — the Colonial
+band is close to invisible, and what carries the line there is the white core. Same trade the black
+halo made, and it did not look wrong in the render. Leave it unless someone complains.
+
+**Rendering locally without the API** (the live API is 403 through the agent proxy). Unzip the
+cache into `./cache` — it is gitignored by the root `/*` rule — and the non-obvious part is that
+neither render path needs the network once it is there: build `Vec<Tile>` by reading
+`cache/dynamic/Dynamic_{api}-Able.json` and `cache/static/...` straight through `serde_json`, match
+the table's `api_name` to the maps list with `regions::same_region` (the API says `MarbanHollow`,
+the table says `MarbanHollowHex`), then call `composite_full_map(tiles, true, &config)` for the full
+map, or replicate `region_frontline`'s body from cache and hand the result to `place_image_info`
+for one hex. **`faction_tint` must be off for a hex render** — it is full-map only, and leaving it
+on produces a green-washed hex that looks nothing like `/get-map`.
+
 **Next: §8, promotion** — `specs/active/frontline.md` → `specs/`, update `specs/README.md` (it
-still says `specs/active/` is empty as of 2.0), move `dev/active/frontline/` → `dev/done/`. Worth
-one more live look at the coloured sides first, since nothing but a synthetic render has been seen
-of them.
+still says `specs/active/` is empty as of 2.0), move `dev/active/frontline/` → `dev/done/`.
 
 **The full-map draw-order question is settled: draw before the downscale**, as the spec always
 said. The region-name precedent does not transfer — what the downscale destroys is *internal*

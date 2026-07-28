@@ -132,6 +132,10 @@ next, and most of it needs a live war rather than more code.
 - [x] `frontline_halo_ratio` 2.0 → 3.0: two thirds of the halo is now the only thing carrying the
       answer, and at 2.0 the visible band is half a line width — sub-pixel after the full-map
       downscale
+- [x] **Checked against a real war**, from a cache the user supplied: full map plus three hexes,
+      flanks correct on all of them. Full-map caveat recorded in `context.md` — under
+      `faction_tint` a band sits on ground already half its own colour, so on the dark hexes the
+      Colonial one all but disappears and the white core carries the line
 - [x] Pinned by tests: the two flanks get the right colours, and **the same front walked backwards
       renders identically** — the one that would have caught the winding bug. Eyeballed on a
       synthetic wavy front before the scratch render was deleted
