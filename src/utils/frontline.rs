@@ -267,6 +267,48 @@ impl Field {
         })
     }
 
+    /// `F` at one world pixel, read off the sampled grid.
+    ///
+    /// This is what a wash coloured by the field asks, once per pixel, and it
+    /// deliberately does **not** call [`influence`] again: a 10240 x 6216 canvas
+    /// is 64 million pixels against a few hundred footings, and the grid was
+    /// sampled precisely so that cost is paid once. Reading it back is a handful
+    /// of multiplies.
+    ///
+    /// Bilinear rather than nearest-cell because the grid is hundreds of pixels
+    /// coarse. Nearest would draw the field's own sampling lattice into the
+    /// picture as visible blocks — which is the same defect, at a different
+    /// scale, as the hex-shaped wash this replaces.
+    ///
+    /// Interpolating does not undo what the coarse grid buys [`contour`]. A
+    /// bilinear patch is monotone along each edge and cannot introduce a sign
+    /// change inside a cell whose four corners agree, so the islands around lone
+    /// outposts that fall between samples stay absent here too. The wash and the
+    /// line therefore see the same territory, which is the whole point of
+    /// reading the field instead of the hex.
+    ///
+    /// Clamped at the edges: the contour is traced over a margin around the
+    /// region, but a caller compositing the region itself can land a fraction of
+    /// a pixel outside the sampled rectangle, and the nearest cell is the right
+    /// answer there rather than a panic.
+    pub fn at(&self, point: Point) -> f32 {
+        let last_col = self.cols - 1;
+        let last_row = self.rows - 1;
+
+        let col = ((point.0 - self.origin.0) / self.spacing).clamp(0.0, last_col as f32);
+        let row = ((point.1 - self.origin.1) / self.spacing).clamp(0.0, last_row as f32);
+
+        let (left, top) = (col.floor(), row.floor());
+        let (col0, row0) = (left as usize, top as usize);
+        let (col1, row1) = ((col0 + 1).min(last_col), (row0 + 1).min(last_row));
+        let (across, down) = (col - left, row - top);
+
+        let above = self.value(col0, row0) * (1.0 - across) + self.value(col1, row0) * across;
+        let below = self.value(col0, row1) * (1.0 - across) + self.value(col1, row1) * across;
+
+        above * (1.0 - down) + below * down
+    }
+
     fn value(&self, col: usize, row: usize) -> f32 {
         self.values[row * self.cols + col]
     }
@@ -946,6 +988,99 @@ mod tests {
         // The renderer indexes the flags by segment. One short and the last
         // segment silently falls back to a default.
         assert_eq!(edges[0].colonial_side.len(), edges[0].points.len() - 1);
+    }
+
+    #[test]
+    fn sampling_a_cell_corner_returns_the_value_that_was_stored() {
+        let sources = contested();
+        let field = Field::sample(&sources, window(), 64.0, model()).expect("contested");
+
+        for row in 0..field.rows {
+            for col in 0..field.cols {
+                let corner = field.world(col as f32, row as f32);
+
+                assert_eq!(
+                    field.at(corner),
+                    field.value(col, row),
+                    "interpolation has to be exact where the grid actually knows the answer, \
+                     at ({col}, {row})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sampling_outside_the_field_reads_the_nearest_cell() {
+        let field = Field::sample(&contested(), window(), 64.0, model()).expect("contested");
+
+        // A caller compositing a region can land just outside the sampled
+        // rectangle. It should read the edge, not panic.
+        assert_eq!(field.at((-500.0, -500.0)), field.value(0, 0));
+        assert_eq!(
+            field.at((REGION_WIDTH as f32 + 500.0, REGION_HEIGHT as f32 + 500.0)),
+            field.value(field.cols - 1, field.rows - 1)
+        );
+    }
+
+    /// **The correctness condition for a wash coloured by the field.** The line
+    /// is drawn from [`Edge::colonial_side`], which asks [`influence`] directly;
+    /// a wash would ask [`Field::at`], which reads the sampled grid. If those two
+    /// ever disagree, the picture gets a sliver of one faction's colour on the
+    /// wrong side of its own frontline — and this is far cheaper to catch here
+    /// than in a render.
+    ///
+    /// Probed a cell out to either side, which is where the two are comparable:
+    /// both are near zero *on* the contour, and the grid locates it only to
+    /// about a cell anyway.
+    #[test]
+    fn the_wash_and_the_line_agree_about_which_side_is_whose() {
+        let sources = footings(&contested_wavy(), RenderConfig::default().footing_radius());
+        let spacing = 64.0;
+        let field = Field::sample(&sources, window(), spacing, model()).expect("contested");
+        let edges = flanks(
+            smooth(contour(&field), SMOOTHING_ROUNDS),
+            &sources,
+            model(),
+            spacing,
+        );
+
+        assert!(!edges.is_empty(), "the fixture has to produce a front");
+        let mut checked = 0;
+
+        for edge in &edges {
+            for (index, pair) in edge.points.windows(2).enumerate() {
+                let ((from_x, from_y), (to_x, to_y)) = (pair[0], pair[1]);
+                let (dx, dy) = (to_x - from_x, to_y - from_y);
+                let length = (dx * dx + dy * dy).sqrt();
+
+                if length <= f32::EPSILON {
+                    continue;
+                }
+
+                let (mid_x, mid_y) = ((from_x + to_x) / 2.0, (from_y + to_y) / 2.0);
+                let (step_x, step_y) = (-dy / length * spacing, dx / length * spacing);
+                let colonial_side = edge.colonial_side[index];
+
+                // `(-dy, dx)` is the side the flag is stated about, so the field
+                // read there has to be positive exactly when the flag says
+                // Colonial.
+                assert_eq!(
+                    field.at((mid_x + step_x, mid_y + step_y)) > 0.0,
+                    colonial_side,
+                    "segment {index} at ({mid_x}, {mid_y}): the wash would paint the \
+                     opposite side to the line"
+                );
+                assert_eq!(
+                    field.at((mid_x - step_x, mid_y - step_y)) > 0.0,
+                    !colonial_side,
+                    "segment {index} at ({mid_x}, {mid_y}): both flanks read the same faction"
+                );
+
+                checked += 1;
+            }
+        }
+
+        assert!(checked > 20, "only {checked} segments — the fixture went thin");
     }
 
     fn contested_wavy() -> Vec<Source> {
