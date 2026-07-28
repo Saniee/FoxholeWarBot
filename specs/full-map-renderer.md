@@ -255,10 +255,37 @@ This is 53× the work of a single hex — the reason scheduled full-map renders 
 - Consider caching the finished composite keyed by shard + newest `last_updated`, so concurrent
   requests share one render.
 
+### Saying what it is doing
+
+A full map is 53 fetches and a 63.6 MP composite. That is long enough that a deferred interaction
+showing nothing but a spinner reads as a command that failed silently, so `/full-map` posts a status
+message before the work starts and **edits that same message into the finished map** when it is
+done. Errors edit it too — otherwise the "Rendering…" line sits above the failure forever.
+
+**One message, posted once, never updated in place.** A moving progress bar is the obvious design
+and is the wrong one: editing an interaction response counts against Discord's rate limits, and the
+render passes through something worth showing about a hundred times (53 fetches, 53 hexes, the
+downscale, the encode). A live bar therefore means either throttling down to a handful of edits that
+barely move, or spending a guild's rate limit on decoration. A single message says the same thing in
+one call.
+
+What it says is deliberately specific rather than "Working…":
+
+- **The shard**, so a guild pointed at the wrong one finds out before waiting.
+- **The region count**, which is what makes the wait read as proportionate rather than stuck.
+- **Which overlays are on**, when either is. A user who forgot they enabled the frontline or the
+  territory tint has no way to tell from the finished image whether the setting took.
+
+Scheduled reports get none of this. They post through a webhook with no message to edit and nobody
+watching a spinner.
+
 ## Decisions (settled)
 - **Faction control tint — shipped, opt-in per guild.** The reference tints each hex blue/green by
   controlling faction; our renderer composites the real map art, so a tint is a visual departure
-  from the per-hex renders. It lives behind `RenderConfig::faction_tint` with the colours and
+  from the per-hex renders. **The wash is no longer per hex** — `specs/frontline-territory.md`
+  replaced "which faction holds this hex" with "which side of the front is this pixel on", so what
+  follows describes the gate and the blend, which both survived, rather than the colour choice,
+  which did not. It lives behind `RenderConfig::faction_tint` with the colours and
   strength as named constants, and a guild turns it on with
   `/set-guild-settings faction-tint:true` (`guilds.full_map_faction_tint`, default off). The
   "darker = more recent change" recency shading is **not** in scope for v1.
@@ -298,3 +325,6 @@ This is 53× the work of a single hex — the reason scheduled full-map renders 
   the palest and the darkest terrain; a name never strays onto a neighbouring hex.
 - A region whose data failed to fetch is still named.
 - No stats/banner/log furniture is drawn — hexes and their names only.
+- `/full-map` says what it is doing before the render starts, and the finished map replaces that
+  message rather than arriving beside it. Every failure path replaces it too.
+- Exactly one message is posted and one edit made per invocation, whatever the render does.
