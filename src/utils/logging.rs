@@ -86,11 +86,20 @@ pub fn init() -> Option<LogFiles> {
     // What actually matters about the gateway — reconnects, resumes, failures —
     // is logged at WARN by these targets and by `shard_runner`, `shard_manager`
     // and `shard_queuer`, which are left alone.
+    // `serenity::http` is muted for the same reason and by the same measurement.
+    // With the gateway silenced the file was still 55.7 MB — from 711 lines, 80 KB
+    // each — because `build; self=Request { body: Some([N, N, N, ..` is the request
+    // body as a decimal list, one element per byte. A rendered map PNG posted to a
+    // webhook is a few megabytes, so a single scheduled tick writes a single log
+    // line of a few megabytes. What that line would have told us — method, route,
+    // status — is not worth the file it arrives in, and a 429 or a failed request
+    // is logged at WARN, which survives the mute.
     let verbose_spec = spec(
         "LOG_VERBOSE_FILTER",
         &format!(
             "debug,{root}=trace,tracing::span=off,\
-             serenity::gateway::shard=warn,serenity::gateway::ws=warn"
+             serenity::gateway::shard=warn,serenity::gateway::ws=warn,\
+             serenity::http=warn"
         ),
     );
 

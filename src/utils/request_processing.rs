@@ -5,7 +5,8 @@
 //! (`/get-map`) or as one tile of the stitched full map — only its pixel offset
 //! differs. See `specs/rendering-placement.md`.
 
-use std::sync::OnceLock;
+use std::collections::HashSet;
+use std::sync::{Mutex, OnceLock};
 
 use ab_glyph::{FontRef, PxScale};
 use image::{imageops::overlay, imageops::FilterType, ImageBuffer, Rgba};
@@ -378,6 +379,36 @@ fn tint_region(canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, color: Rgba<u8>, str
     }
 }
 
+/// Warns about a missing icon **once per icon type per process**.
+///
+/// The fact is about the asset set, not about this render: an icon type Foxhole
+/// ships before we do is missing for every structure of that type, in every
+/// region, on every render. Measured on one full-map render: 113 identical
+/// warnings from two icon types, which is a real signal — art needs updating —
+/// buried under its own repetition, and repeated on the console where warnings
+/// are meant to be worth reading.
+///
+/// Per process rather than per render, deliberately. The answer doesn't change
+/// until someone deploys new art, and that means a restart.
+fn warn_missing_icon(path: &str) {
+    static SEEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+    let seen = SEEN.get_or_init(|| Mutex::new(HashSet::new()));
+
+    // A poisoned lock here means another thread panicked mid-insert. The set is
+    // a de-duplication cache and nothing reads it for correctness, so recovering
+    // the guard and carrying on is right — the alternative is taking a render
+    // down over a logging detail.
+    let mut seen = seen.lock().unwrap_or_else(|err| err.into_inner());
+
+    if seen.insert(path.to_string()) {
+        log::warn!(
+            "no icon for {path}, using the debug icon — said once per icon type, \
+             and a sign the art needs updating (scripts/update_assets.py)"
+        );
+    }
+}
+
 fn draw_icons(
     canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
     dynamic_data: &DynamicMapData,
@@ -398,7 +429,7 @@ fn draw_icons(
         let icon_path = if std::path::Path::new(&path).exists() {
             path
         } else {
-            log::warn!("no icon for {path}, using the debug icon");
+            warn_missing_icon(&path);
             "./assets/MapIcons/DebugIcon.png".to_string()
         };
 

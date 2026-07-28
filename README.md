@@ -68,11 +68,12 @@ volume):
 | `foxholewarbot.<date>.log` | what the console shows: the bot's own messages, plus any warning |
 | `foxholewarbot-verbose.<date>.log` | the same, plus everything serenity, poise, reqwest and sqlx say — every Discord HTTP request, every SQL statement, every connection |
 
-Serenity's two **gateway** targets are the one exception: they're muted even in the verbose file.
-They log each gateway event's entire payload on a single line — one `GuildCreate` is a whole
-guild, and a measured run came to 65 MB in two hours — which buries everything else in the file it
-was supposed to make readable. Reconnects, resumes and failures still appear; they're logged at
-warn, from targets that aren't muted. To get the firehose back for an evening:
+Serenity's **gateway and HTTP** targets are the exception: they're muted even in the verbose file.
+Their instrumentation puts whole structures on one line — a gateway event is the entire guild, and
+an HTTP request is its body as a list of individual bytes, so posting a map PNG writes a log line
+several megabytes long. Measured: 65 MB in two hours from the gateway, then 55.7 MB from 711 HTTP
+lines once the gateway was muted. Reconnects, failures and rate limits still appear; they're
+warnings, and warnings survive the mute. To get the firehose back for an evening:
 `LOG_VERBOSE_FILTER=debug,tracing::span=off`.
 
 The console deliberately shows only the first. The dependencies' chatter is worth keeping and

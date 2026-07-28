@@ -76,16 +76,28 @@ run: **1,837 lines over 2h05m, 65 MB, of which 1,695 lines came from `serenity::
 and `serenity::gateway::ws`.** An average line of 36 KB, and ~750 MB a day — 10 GB across the
 retention window.
 
-So those two targets are muted at `warn` in the verbose filter, and they are the only ones that
-are. **Muting is blunt on purpose: no level separates the noise from the signal here**, because
-the noise is `INFO` while the little worth keeping under the same targets (`Received a Hello`,
-`Sending presence update`) is `DEBUG`. What actually matters about the gateway — reconnects,
-resumes, failures — is `WARN` from these targets and from `shard_runner`, `shard_manager` and
-`shard_queuer`, none of which are touched.
+So those two targets are muted at `warn` in the verbose filter. **Muting is blunt on purpose: no
+level separates the noise from the signal here**, because the noise is `INFO` while the little
+worth keeping under the same targets (`Received a Hello`, `Sending presence update`) is `DEBUG`.
+What actually matters about the gateway — reconnects, resumes, failures — is `WARN` from these
+targets and from `shard_runner`, `shard_manager` and `shard_queuer`, none of which are touched.
+
+**`serenity::http` is muted for the same reason and by the same measurement.** With the gateway
+silenced the next sample was still **55.7 MB from 711 lines** — 80 KB a line — because
+`build; self=Request { body: Some([N, N, N, ..` is the request body as a decimal list, one element
+per byte. A map PNG posted to a webhook is megabytes, so one scheduled tick writes one log line of
+megabytes. Method, route and status are not worth that, and a 429 or a failed request is `WARN`,
+which survives.
 
 Everything else stays at `debug` on the evidence rather than on suspicion: `h2`, `rustls`,
-`hyper_util` and `tungstenite` were 16, 8, 7 and 2 lines in that same sample. They were the
-prime suspects before the log was read, and they are not the problem.
+`hyper_util` and `tungstenite` were 16, 8, 7 and 2 lines in the first sample. They were the prime
+suspects before the log was read, and they are not the problem — `hyper_util`'s connection pooling
+is the largest of them at 227 small lines, which is what a full-map render's 53 fetches looks like
+and is worth having.
+
+Nothing of **this crate's** logging was demoted for volume. Across both samples it contributed a
+handful of lines, and the one place it repeated was a fact rather than an event: see the
+per-process de-duplication in Map rendering below.
 
 Filters name this crate by `module_path!()`'s root rather than by a string literal, so a rename
 can't leave them pointing at nothing.
@@ -294,7 +306,12 @@ footprint. Detail and the anchoring decision: `specs/rendering-placement.md`.
 Inputs: `DynamicMapData`, `StaticMapData`, `draw_text: bool`, background path, `&RenderConfig`.
 1. Open `assets/Maps/Map<name>.TGA` as RGBA; a failure is a typed `RenderError`.
 2. For each dynamic `map_item`: load `assets/MapIcons/<icon_type><TeamId>.png`
-   (e.g. `12Colonials.png`, `40None.png`). Missing icon → fall back to `DebugIcon.png`.
+   (e.g. `12Colonials.png`, `40None.png`). Missing icon → fall back to `DebugIcon.png`, warned
+   **once per icon type per process**. The fact is about the asset set, not about this render: a
+   type Foxhole ships before we do is missing for every structure of that type, in every region,
+   on every render — one measured full-map render produced 113 identical warnings from two types,
+   which buries a real signal (art needs updating) under its own repetition. Per process rather
+   than per render, since the answer only changes when someone deploys new art.
    Each icon is resized to `icon_size_ratio × region width` and overlaid at the position given
    by `place()`, which honors the config's `Anchor`.
 3. If `draw_text`: render each `map_text_item.text` in Inter-Bold at

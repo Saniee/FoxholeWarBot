@@ -68,6 +68,25 @@ A verbose log from a live run settled it: **1,837 lines over 2h05m, 65.0 MB.** 3
       and 10 GB across the retention window before it. No shorter verbose window and no gzip on
       prune needed — both were on the table and neither is now
 
+## Pass 3 — the second sample, taken after the gateway mute
+
+Still 55.7 MB, now from **711 lines**: 80 KB a line.
+
+- [x] **`serenity::http` muted**, same mechanism as the gateway.
+      `build; self=Request { body: Some([N, N, N, ..` is the request body as a decimal list, one
+      element per byte, so a scheduled tick posting a map PNG writes one log line of several
+      megabytes. `pre_hook`/`post_hook`/`perform` under `serenity::http::ratelimiting` and
+      `serenity::http::client` are the same shape. 429s and failures are WARN and survive
+- [x] **`no icon for …` de-duplicated to once per icon type per process**
+      (`request_processing::warn_missing_icon`). 113 of the 711 lines were two identical warnings
+      repeated per map item — a real signal about the asset set, buried under its own repetition
+      and repeated on the console, where a warning is supposed to be worth reading
+- [x] `hyper_util`'s connection pooling (227 lines) left alone: small lines, and that's what a
+      full-map render's 53 fetches looks like
+
 ### Still worth a look on the next live run
-- [ ] Confirm the verbose file is a sane size after the mute, and that a scheduled tick and a
-      `/full-map` still leave a useful trail in it
+- [ ] Confirm the verbose file is a sane size now, and that a scheduled tick and a `/full-map`
+      still leave a useful trail in it
+- [ ] **Not a logging issue:** find out which icon types are actually missing from
+      `assets/MapIcons/` and whether `scripts/update_assets.py` closes the gap. The present set
+      has holes at 24-26, 31, 42-44, 48-50, 55, 63-69, 73-74, 76-82, 85-87 and above 92
