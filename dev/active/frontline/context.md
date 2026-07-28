@@ -7,17 +7,30 @@ same branch).
 
 ## Current state
 
-**§1 and §2 done.** `regions::neighbours` (`25c2b19`), and `src/utils/frontline.rs` — the whole
-field-and-contour model with 11 unit tests, no rendering in it. **Next is `tasks.md` §3, drawing**,
-whose first act is the draw-before/draw-after decision below.
+**§1, §2 and §3 done** (§3 for `/full-map`; `/get-map` is wired in §4 with the neighbour fetch). `regions::neighbours` (`25c2b19`), `src/utils/frontline.rs`
+(the field and contour, no rendering in it), and the stroke + full-map wiring. 19 tests.
+**Next is `tasks.md` §4, the `/get-map` neighbour fetch.**
 
-The §2 surface, all of it world-space pixels in and out:
+**The full-map draw-order question is settled: draw before the downscale**, as the spec always
+said. The region-name precedent does not transfer — what the downscale destroys is *internal*
+detail (glyph counters, stroke gaps) and a stroke has none. Two constraints also rule the
+alternative out outright: icons are drawn per tile, so drawing afterwards puts the line over every
+one of them; and the alpha mask stops existing once the tiles are composited and their transparent
+corners are filled in by neighbours. Written into the spec. Do not reopen.
+
+The `frontline` module's surface, all of it world-space pixels in and out:
 `sources_in(region, dynamic, config) -> Vec<Source>` · `Bounds::around_region(region, config,
 margin)` · `Field::sample(sources, bounds, spacing, epsilon) -> Option<Field>` ·
-`Field::value_at(x, y)` · `contour(&Field) -> Vec<Polyline>` · `smooth(lines, rounds)`.
-`spacing` and `epsilon` are parameters rather than config fields on purpose — §3 wires
-`field_resolution_ratio` and `influence_epsilon` to them, and the module stays testable without a
+`contour(&Field) -> Vec<Polyline>` · `smooth(lines, rounds)`.
+`spacing` and `epsilon` are parameters rather than config fields on purpose — the config wires
+`field_spacing()` and `influence_epsilon()` to them, and the module stays testable without a
 `RenderConfig` full of drawing knobs.
+
+The drawing side is `draw_frontline(canvas, lines, config)` in `request_processing.rs`, taking
+polylines already translated into **that canvas's** pixels; `map_render::translate` does the
+shift, because the grid is the caller's business. Coverage comes from distance-to-segment rather
+than a scanline, so it antialiases for free and costs work proportional to the line's length
+rather than the canvas's area.
 
 Two unrelated pieces of work landed on this branch in between and both touch code this feature
 will edit — read the notes below before assuming the files look like the spec describes:
@@ -66,22 +79,17 @@ will edit — read the notes below before assuming the files look like the spec 
 
 ## What the region-name work changed for this feature
 
-Three things, all of them useful, one of them a decision that has to be re-made.
+All three of these are now resolved; kept because the reasoning is what stops them being reopened.
 
-- **There is now a precedent for drawing at final size, after the downscale.** Region names are
-  drawn on the *scaled* image because text on a 1024 px tile is resampled with the terrain and
-  arrives as a smudge. A thin line has the same problem, so `/full-map`'s frontline is now an
-  open choice rather than the settled one in the spec: draw on the full-res composite and size
-  the width backwards (`full_map_frontline_px`, what the spec says), or scale the contour and
-  stroke it at final width afterwards (simpler, and `for_full_map` needs no new field). **Decide
-  this before writing §3**, and update the spec either way.
-- **`draw_haloed_text` in `request_processing.rs` is the halo the spec asks for**, already
-  written: a full square ring whose thickness scales with the feature (`px / 12`, min 1), not
-  four cardinal offsets — those leave the diagonals bare where a stroke is thinnest. The
-  frontline's halo should follow it rather than invent a second one.
-- **Order on the full map is now: tiles → downscale → region names.** The line goes *under* the
-  names, which is right — but it means "draw the frontline last" is no longer available on the
-  full map, and `composite_full_map` has a second post-downscale step to slot into.
+- **The precedent for drawing after the downscale did not carry over**, and §3 draws before it as
+  originally specced. See the Current state section for why — in short, the downscale destroys
+  internal detail, and a stroke has none.
+- **The halo follows `draw_haloed_text`'s spirit, not its implementation.** Text needs a square
+  ring because glyphs have thin strokes in every direction; a polyline just needs a wider stroke
+  of the same shape underneath, which is what `stroke` does at `frontline_halo_ratio`. The one
+  rule that did transfer is the colour: light over dark, the style the user asked for everywhere.
+- **Order on the full map is: tiles (background → tint → frontline → icons) → downscale → region
+  names.** The line goes under the icons and under the names, which is right on both counts.
 
 Also worth knowing: `text_color`/`text_outline` defaults changed (white on a dark halo), and hex
 labels now drop clear of the icon they'd otherwise cover. Neither affects the frontline, but the
@@ -148,22 +156,31 @@ judgement call most likely to be wrong — check it against a live war first.
   is what the neighbour fetch is for — without it there is no field outside the hex to trace.
 - **Size the width backwards from the finished full map** (`full_map_frontline_px`), like
   `full_map_icon_px`. A 2 px ratio applied to the 63.6 MP composite vanishes in the downscale —
-  the exact bug that once made the whole map "look like bare terrain".
-- Draw after the tint, before the icons — same rule the tint already follows.
+  the exact bug that once made the whole map "look like bare terrain". Done in `for_full_map`,
+  with a test that asserts the round trip.
+- Draw after the tint, before the icons — same rule the tint already follows. Done.
+- **A tile drawn as bare terrain still needs the line.** `composite_full_map` has two paths, and
+  the `None` one calls `load_background` directly — it needs its own `draw_frontline` call or the
+  front breaks wherever a region failed to fetch.
+- **Don't measure the overlay by timing whole renders.** A 63.6 MP composite varies by ~150 ms
+  run to run, which swamps it. §2's isolated field benchmark is the number to quote.
 
 ## Next steps
 
-**Start `tasks.md` §3: drawing**, and settle the full-map draw order before writing any of it —
-that choice decides whether `RenderConfig` needs `full_map_frontline_px` at all.
+**Start `tasks.md` §4: the `/get-map` neighbour fetch.** `render_region` currently passes an
+empty slice of polylines with a comment saying why — a single hex's line is wrong at its own edges
+without its neighbours' structures, so wiring it from the region's own data alone would put a
+confidently wrong line on the map. `regions::neighbours` and `Bounds::around_region` are both
+written and waiting; the dead-code warnings on them clear when §4 lands.
 
-The field is done and trustworthy; §3 is the part that can only be judged by eye. So render early
-and render locally (see "Verifying without the API" above) rather than reasoning about stroke
-widths — the spec's 5 px and its colour are explicitly starting points, and the whole tuning loop
-is meant to happen against a picture.
+Then §5 (migration + `docs/`) whole — it is one commit by repo rule.
 
-One `epsilon` question §3 has to answer that §2 deliberately left open: the tests use 2500 px²
-(≈50 px), which is a guess that made the fixtures behave, **not** a finding. It sets how close to
-a lone structure the field will flip, so it interacts directly with the island behaviour above.
-Pick it against a real render.
+**Still unvalidated, and it needs a live war, not another synthetic render:**
 
-Leave §5 (migration + `docs/`) whole — it is one commit by repo rule.
+- `influence_radius_ratio` = 50 px. It decides how close to a lone structure the field flips, so it
+  and `field_resolution_ratio` are the pair that governs the island behaviour. 50 is a guess that
+  made the fixtures behave.
+- Width (5 px on a hex, 3 px on the finished full map) and colour. The synthetic render shows the
+  mechanism works, not that the numbers are right.
+- **"Every structure" versus `CONTROL_ICON_TYPES`** — still the single most likely thing to be
+  wrong, and §6 says to try that before touching resolution or smoothing.

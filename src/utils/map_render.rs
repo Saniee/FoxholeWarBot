@@ -22,9 +22,10 @@ use super::cache::{load_dynamic_cache, load_maps, load_static_cache, save_map_ca
 use super::db::Shard;
 use super::http;
 use super::regions::{self, Region, REGIONS};
+use super::frontline::{self, Polyline};
 use super::request_processing::{
-    draw_region_labels, load_background, place_image_info, RegionLabel, RenderConfig, RenderError,
-    REGION_HEIGHT, REGION_WIDTH,
+    draw_frontline, draw_region_labels, load_background, place_image_info, RegionLabel,
+    RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
 };
 
 /// Region fetches in flight at once during a full-map render.
@@ -176,8 +177,20 @@ pub async fn render_region(
 
     // Compositing is CPU-bound and would otherwise stall the async runtime for
     // the duration of the render (QA L-8).
+    // No frontline here yet. A single hex's line is wrong at its own edges
+    // without the adjacent regions' structures — there is no field outside the
+    // hex to trace — so the fetch has to land before this can be wired
+    // (`specs/active/frontline.md` -> Neighbour data). Drawing it from this
+    // region's data alone would put a confidently wrong line on the map.
     let png = tokio::task::spawn_blocking(move || {
-        let img = place_image_info(&dynamic_data, &static_data, draw_text, &background, &config)?;
+        let img = place_image_info(
+            &dynamic_data,
+            &static_data,
+            draw_text,
+            &background,
+            &[],
+            &config,
+        )?;
 
         encode_png(&img)
     })
@@ -346,19 +359,40 @@ fn composite_full_map(
     // the one a user most needs identified.
     let labels = region_labels(&tiles, scale, config);
 
+    // One field over the whole world, traced once. Per-region would break the
+    // line at every seam, because a region's front depends on the bases in the
+    // regions beside it.
+    let frontline = world_frontline(&tiles, canvas_w, canvas_h, config);
+
     for (region, data) in tiles {
         let background = background_path(region.api_name);
+        let (x, y) = config.grid_offset(region.col, region.row);
+
+        // Every tile is handed the whole contour, shifted into its own pixels.
+        // `stroke` clips per segment, so the 52 regions' worth that miss this
+        // hex cost nothing — and the ones that overhang it are exactly what
+        // carries the line to the silhouette instead of stopping short.
+        let local = translate(&frontline, x, y);
 
         let hex = match data {
-            Some((dynamic, statics)) => {
-                place_image_info(&dynamic, &statics, draw_text, &background, &tile_config)
-            }
-            None => load_background(&background),
+            Some((dynamic, statics)) => place_image_info(
+                &dynamic,
+                &statics,
+                draw_text,
+                &background,
+                &local,
+                &tile_config,
+            ),
+            // No icons to sit under here, so the order the overlay cares about
+            // is moot; the alpha mask still keeps it inside the hexagon.
+            None => load_background(&background).map(|mut bare| {
+                draw_frontline(&mut bare, &local, &tile_config);
+                bare
+            }),
         };
 
         match hex {
             Ok(hex) => {
-                let (x, y) = config.grid_offset(region.col, region.row);
                 overlay(&mut canvas, &hex, x as i64, y as i64);
             }
             // Missing art for one region shouldn't cost the other 52 either.
@@ -383,6 +417,62 @@ fn composite_full_map(
     }
 
     encode_png(&scaled)
+}
+
+/// The frontline across the whole world, in world pixels.
+///
+/// Empty whenever there is nothing to draw: the feature is off, or the field
+/// has no zero crossing because one side holds everything the API told us
+/// about. Both are ordinary states, not failures.
+fn world_frontline(
+    tiles: &[Tile],
+    canvas_w: u32,
+    canvas_h: u32,
+    config: &RenderConfig,
+) -> Vec<Polyline> {
+    if !config.frontline {
+        return Vec::new();
+    }
+
+    let sources: Vec<_> = tiles
+        .iter()
+        .filter_map(|(region, data)| data.as_ref().map(|(dynamic, _)| (region, dynamic)))
+        .flat_map(|(region, dynamic)| frontline::sources_in(region, dynamic, config))
+        .collect();
+
+    // Past the canvas on every side, for the same reason a single hex is
+    // oversampled: a contour that stops at the edge stops a stroke short of it.
+    let margin = config.frontline_margin();
+    let bounds = frontline::Bounds {
+        min_x: -margin,
+        min_y: -margin,
+        max_x: canvas_w as f32 + margin,
+        max_y: canvas_h as f32 + margin,
+    };
+
+    let Some(field) = frontline::Field::sample(
+        &sources,
+        bounds,
+        config.field_spacing(),
+        config.influence_epsilon(),
+    ) else {
+        log::debug!("no frontline to draw: only one faction holds anything on this map");
+        return Vec::new();
+    };
+
+    frontline::smooth(frontline::contour(&field), frontline::SMOOTHING_ROUNDS)
+}
+
+/// The same polylines, moved from world space into a tile's own pixels.
+fn translate(lines: &[Polyline], origin_x: u32, origin_y: u32) -> Vec<Polyline> {
+    lines
+        .iter()
+        .map(|line| {
+            line.iter()
+                .map(|(x, y)| (x - origin_x as f32, y - origin_y as f32))
+                .collect()
+        })
+        .collect()
 }
 
 /// Where each region's name goes on the finished image, and how much room it

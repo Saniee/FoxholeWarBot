@@ -33,22 +33,31 @@ Ordered so each step is verifiable before the next depends on it. §1 is done; �
       just falls between samples. Recorded in `contour`'s doc comment, because it is the reason
       not to "improve" this by sampling finely
 
-## 3. Drawing
-- [ ] `RenderConfig` gains `frontline`, `field_resolution_ratio`, `frontline_width_ratio`,
-      `full_map_frontline_px`, `frontline_color`, `frontline_halo`, `influence_epsilon` — ratios,
-      no literals
-- [ ] Halo stroke first, then the line; after the tint, before the icons
-- [ ] **Sample past the hex bounds, then mask by the background's alpha** — reaches the silhouette
-      with no gap, and nothing lands in the transparent corners
-- [ ] Tune width and colour by eye on a live render; the spec's values are starting points
-- [ ] `/full-map`: **decide draw-before or draw-after the downscale first** — the region-name work
-      changed what the cheaper option is, see context.md. Before ⇒ width sized backwards via
-      `full_map_frontline_px`; after ⇒ the contour is scaled and stroked at final width, and
-      `for_full_map` needs nothing
-- [ ] Verify by rendering locally, the way the labels were: a `#[cfg(test)]` render to
-      `scratchpad/`, no API and no Discord. `composite_full_map` takes `Vec<Tile>` with `None`
-      data, and `place_image_info` takes hand-built `DynamicMapData` — synthetic structures on
-      two sides are exactly what a contour test wants
+## 3. Drawing — **done for `/full-map`**; `/get-map` is wired in §4
+- [x] `RenderConfig` gains `frontline`, `field_resolution_ratio`, `frontline_width_ratio`,
+      `full_map_frontline_px`, `frontline_margin_ratio`, `influence_radius_ratio`,
+      `frontline_color`, `frontline_halo`, `frontline_halo_ratio` — ratios, no literals.
+      `influence_radius_ratio` replaces the spec's `influence_epsilon`: ε is px², a radius is a
+      thing you can have an opinion about
+- [x] Halo stroke first, then the line; after the tint, before the icons. **Halo is opaque** —
+      segments overlap at every vertex, and a translucent one beads there
+- [x] Sample past the hex bounds, mask by the background's alpha. Both covered by tests:
+      nothing lands on a fully transparent canvas, and row 0 and row 63 are both painted by a
+      line traced past them
+- [x] `/full-map`: **decided — draw before the downscale**, as originally specced. The
+      region-name precedent does not transfer: what the downscale destroys is *internal* detail
+      (glyph counters, stroke gaps), and a stroke has none. Also settled by two constraints the
+      alternative breaks — icons are drawn per tile, and the alpha mask stops existing once the
+      tiles are composited. Reasoning is in the spec so it is not reopened a third time
+- [x] Verified by a local `#[cfg(test)]` render of a synthetic contested world: line continuous
+      across seams, reaching the map edge, legible on both pale and dark terrain, correctly
+      separating the two sides' icons. **Scratch module deleted after looking at it**
+- [x] **Acceptance criterion "off ⇒ byte-identical" verified** by rendering the same tiles twice
+      and comparing the PNGs. Cost of the overlay is below the run-to-run variance of the 63.6 MP
+      composite at 318 structures; the honest figure is §2's 255 ms at 2000
+- [ ] Tune width and colour by eye against a **live** war — the synthetic render says the
+      mechanism works, not that the values are right. `influence_radius_ratio` (50 px) is the one
+      genuinely unvalidated number: it sets how close to a lone structure the field flips
 
 ## 4. Fetching
 - [ ] `/get-map` fetches neighbours' dynamic data; a failed neighbour warns and does not fail

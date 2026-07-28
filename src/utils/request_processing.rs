@@ -16,6 +16,7 @@ use thiserror::Error;
 use crate::utils::api_definitions::foxhole::{
     DynamicMapData, MapMarkerType, StaticMapData, TeamId,
 };
+use crate::utils::frontline::{Point, Polyline};
 
 /// Every `assets/Maps/Map*Hex.TGA` is 1024 x 888 (a regular flat-top hexagon:
 /// 1024/888 = 1.153 ~= 2/sqrt(3)).
@@ -166,6 +167,62 @@ pub struct RenderConfig {
     pub faction_tint: bool,
     pub colonial_tint: Rgba<u8>,
     pub warden_tint: Rgba<u8>,
+
+    // --- frontline overlay ------------------------------------------------
+    // `specs/active/frontline.md`. The model itself lives in `utils::frontline`
+    // and knows nothing about canvases; everything here is about drawing what
+    // it produces.
+    /// Trace the contested boundary between the two factions. Off unless a
+    /// guild opts in (`guilds.frontline`).
+    pub frontline: bool,
+    /// Field sample spacing, as a fraction of [`REGION_WIDTH`]. 1/32 is 32 px
+    /// of world space.
+    ///
+    /// **Coarse is load-bearing, not just cheap.** Within about the saturation
+    /// radius below, an isolated enemy structure really does flip the field, and
+    /// what stops that becoming a closed loop around every lone outpost is that
+    /// the flip is narrower than the gap between samples. Sampling finely would
+    /// create the islands the model was chosen to avoid — see
+    /// [`crate::utils::frontline::contour`].
+    ///
+    /// Measured at this value on the real 10240 x 6216 composite with 2000
+    /// structures: 255 ms for the field, a quarter millisecond for the contour.
+    /// The same spacing serves a single hex, so the line looks identical in
+    /// both commands rather than being smoother in one of them.
+    pub field_resolution_ratio: f32,
+    /// Stroke width as a fraction of [`REGION_WIDTH`].
+    pub frontline_width_ratio: f32,
+    /// Stroke width wanted in the *finished* full map, in pixels.
+    ///
+    /// Sized backwards by [`RenderConfig::for_full_map`], exactly as
+    /// [`RenderConfig::full_map_icon_px`] is, because a hairline applied to the
+    /// 63.6 MP composite disappears in the downscale.
+    pub full_map_frontline_px: f32,
+    /// How far past a hex's own footprint the field is sampled, as a fraction
+    /// of [`REGION_WIDTH`].
+    ///
+    /// The contour is traced across all of it and only then masked back to the
+    /// silhouette. Terminating the polyline at the hex bounds instead leaves a
+    /// stroke-width gap at both ends — the defect the reference render has.
+    pub frontline_margin_ratio: f32,
+    /// Distance at which a single structure's influence saturates, as a
+    /// fraction of [`REGION_WIDTH`]; the `ε` of `w / (d² + ε)` is its square.
+    ///
+    /// Expressed as a length rather than as `ε` directly because a length is a
+    /// thing you can look at a map and have an opinion about, where 2500 px² is
+    /// not. It is also the knob that decides how close to a lone structure the
+    /// field flips, so it and [`RenderConfig::field_resolution_ratio`] have to
+    /// be moved together.
+    pub influence_radius_ratio: f32,
+    pub frontline_color: Rgba<u8>,
+    /// Wider under-stroke, laid down first.
+    ///
+    /// **Opaque on purpose.** Segments are stroked one at a time and overlap at
+    /// every vertex, so a semi-transparent halo would blend twice there and
+    /// bead visibly along the line. Opaque blending is idempotent.
+    pub frontline_halo: Option<Rgba<u8>>,
+    /// Halo width as a multiple of the line width.
+    pub frontline_halo_ratio: f32,
     /// How far a tinted pixel moves toward the faction colour, 0.0 to 1.0.
     /// Low on purpose: the point is to read ownership at a glance without
     /// losing the terrain underneath it.
@@ -202,6 +259,23 @@ impl Default for RenderConfig {
             colonial_tint: Rgba([74, 106, 62, 255]),
             warden_tint: Rgba([58, 92, 142, 255]),
             faction_tint_strength: 0.5,
+            frontline: false,
+            field_resolution_ratio: 1.0 / 32.0,
+            frontline_width_ratio: 5.0 / REGION_WIDTH as f32,
+            full_map_frontline_px: 3.0,
+            // Comfortably wider than the halo, so the contour is always traced
+            // past wherever the stroke can reach.
+            frontline_margin_ratio: 48.0 / REGION_WIDTH as f32,
+            influence_radius_ratio: 50.0 / REGION_WIDTH as f32,
+            // The label style, deliberately: light stroke over a dark halo. It
+            // is the one combination already shown to survive both Acrithia's
+            // pale desert and Deadlands' near-black, which is the same problem
+            // a line crossing 53 regions has. Separate fields from
+            // `text_color` all the same — the spec calls colour a knob, and a
+            // line is not a label.
+            frontline_color: Rgba([255, 255, 255, 255]),
+            frontline_halo: Some(Rgba([0, 0, 0, 255])),
+            frontline_halo_ratio: 2.0,
         }
     }
 }
@@ -249,10 +323,40 @@ impl RenderConfig {
     pub fn for_full_map(&self, scale: f32) -> RenderConfig {
         let source_px = (self.full_map_icon_px as f32 / scale.max(f32::EPSILON)).round();
 
+        let stroke_px = (self.full_map_frontline_px / scale.max(f32::EPSILON)).max(1.0);
+
         RenderConfig {
             icon_size_ratio: source_px.max(1.0) / REGION_WIDTH as f32,
+            // Same trick, same reason. Unlike the region names, the line is
+            // genuinely better off drawn here and scaled down with everything
+            // else: what the downscale destroys is *internal* detail — the
+            // counters and stroke gaps in a glyph — and a stroke has none, so
+            // it survives the resample and picks up free antialiasing.
+            frontline_width_ratio: stroke_px / REGION_WIDTH as f32,
             ..self.clone()
         }
+    }
+
+    /// Stroke width in pixels for a canvas of the given width.
+    pub fn frontline_width(&self, canvas_width: u32) -> f32 {
+        (canvas_width as f32 * self.frontline_width_ratio).max(1.0)
+    }
+
+    /// Field sample spacing, in world pixels.
+    pub fn field_spacing(&self) -> f32 {
+        (REGION_WIDTH as f32 * self.field_resolution_ratio).max(1.0)
+    }
+
+    /// The `ε` of `w / (d² + ε)`, in world pixels squared.
+    pub fn influence_epsilon(&self) -> f32 {
+        let radius = REGION_WIDTH as f32 * self.influence_radius_ratio;
+
+        (radius * radius).max(1.0)
+    }
+
+    /// How far past a hex the field is sampled, in world pixels.
+    pub fn frontline_margin(&self) -> f32 {
+        REGION_WIDTH as f32 * self.frontline_margin_ratio
     }
 
     /// The wash colour for a faction, or `None` for the neutral team — which
@@ -317,6 +421,7 @@ pub fn place_image_info<P>(
     static_data: &StaticMapData,
     draw_text: bool,
     background_img_path: &P,
+    frontline: &[Polyline],
     config: &RenderConfig,
 ) -> Result<ImageBuffer<Rgba<u8>, Vec<u8>>, RenderError>
 where
@@ -335,6 +440,11 @@ where
             tint_region(&mut bg_img, color, config.faction_tint_strength);
         }
     }
+
+    // After the tint, before the icons. The tint is a wash and would swallow
+    // the line; the icons are the map's actual content, and covering them with
+    // a line costs legibility for decoration.
+    draw_frontline(&mut bg_img, frontline, config);
 
     draw_icons(&mut bg_img, dynamic_data, config)?;
 
@@ -425,6 +535,110 @@ fn tint_region(canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, color: Rgba<u8>, str
             pixel.0[channel] = (base + (target - base) * weight).round() as u8;
         }
     }
+}
+
+/// Strokes the frontline onto one region's canvas, halo first.
+///
+/// `lines` are in **this canvas's** pixels — the caller translates them out of
+/// world space, because it is the only place that knows the grid. They are
+/// expected to run past the canvas on both sides; that is the point, and the
+/// clipping below is what turns it into a line that meets the silhouette
+/// exactly instead of stopping a stroke-width short of it.
+pub fn draw_frontline(
+    canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    lines: &[Polyline],
+    config: &RenderConfig,
+) {
+    if !config.frontline || lines.is_empty() {
+        return;
+    }
+
+    let width = config.frontline_width(canvas.width());
+
+    if let Some(halo) = config.frontline_halo {
+        stroke(canvas, lines, width * config.frontline_halo_ratio, halo);
+    }
+
+    stroke(canvas, lines, width, config.frontline_color);
+}
+
+/// Paints polylines at a given width, masked by the canvas's own alpha.
+///
+/// Masking by alpha is the same rule [`tint_region`] follows and for the same
+/// reason: region art is transparent in the corners so the tiles interlock, and
+/// anything painted there shows up on the seams between hexes on the full map.
+/// Alpha itself is never written.
+///
+/// Coverage comes from the distance to the segment rather than from a scanline,
+/// which antialiases the edges for free and costs work proportional to the
+/// line's length rather than to the canvas.
+fn stroke(
+    canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    lines: &[Polyline],
+    width: f32,
+    color: Rgba<u8>,
+) {
+    let radius = (width / 2.0).max(0.5);
+    let canvas_w = canvas.width() as i64;
+    let canvas_h = canvas.height() as i64;
+
+    for line in lines {
+        for pair in line.windows(2) {
+            let (from, to) = (pair[0], pair[1]);
+
+            // Clamped to the canvas rather than tested inside the loop, so a
+            // segment belonging to a different hex costs nothing at all. On the
+            // full map every tile is handed the whole world's contour, so most
+            // segments are exactly that.
+            let min_x = ((from.0.min(to.0) - radius - 1.0).floor() as i64).max(0);
+            let max_x = ((from.0.max(to.0) + radius + 1.0).ceil() as i64).min(canvas_w - 1);
+            let min_y = ((from.1.min(to.1) - radius - 1.0).floor() as i64).max(0);
+            let max_y = ((from.1.max(to.1) + radius + 1.0).ceil() as i64).min(canvas_h - 1);
+
+            if min_x > max_x || min_y > max_y {
+                continue;
+            }
+
+            for y in min_y..=max_y {
+                for x in min_x..=max_x {
+                    let distance =
+                        distance_to_segment((x as f32 + 0.5, y as f32 + 0.5), from, to);
+                    let coverage = (radius + 0.5 - distance).clamp(0.0, 1.0);
+
+                    if coverage <= 0.0 {
+                        continue;
+                    }
+
+                    let pixel = canvas.get_pixel_mut(x as u32, y as u32);
+                    let weight = coverage * (pixel.0[3] as f32 / 255.0)
+                        * (color.0[3] as f32 / 255.0);
+
+                    for channel in 0..3 {
+                        let base = pixel.0[channel] as f32;
+                        let target = color.0[channel] as f32;
+                        pixel.0[channel] = (base + (target - base) * weight).round() as u8;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn distance_to_segment(point: Point, from: Point, to: Point) -> f32 {
+    let (dx, dy) = (to.0 - from.0, to.1 - from.1);
+    let length_squared = dx * dx + dy * dy;
+
+    // A zero-length segment is a point. Marching squares can emit one where a
+    // crossing lands exactly on a grid corner.
+    let t = if length_squared <= f32::EPSILON {
+        0.0
+    } else {
+        (((point.0 - from.0) * dx + (point.1 - from.1) * dy) / length_squared).clamp(0.0, 1.0)
+    };
+
+    let nearest = (from.0 + t * dx, from.1 + t * dy);
+
+    ((point.0 - nearest.0).powi(2) + (point.1 - nearest.1).powi(2)).sqrt()
 }
 
 /// Warns about a missing icon **once per icon type per process**.
@@ -711,4 +925,95 @@ where
             path: path.as_ref().display().to_string(),
             source,
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn canvas(alpha: u8) -> ImageBuffer<Rgba<u8>, Vec<u8>> {
+        ImageBuffer::from_pixel(64, 64, Rgba([128, 128, 128, alpha]))
+    }
+
+    /// Straight down the middle, running past the canvas at both ends the way
+    /// a real contour is meant to.
+    fn line() -> Vec<Polyline> {
+        vec![vec![(32.0, -20.0), (32.0, 84.0)]]
+    }
+
+    /// Width is pinned rather than taken from the default, so these tests keep
+    /// testing the drawing rules when the default is tuned by eye. It also
+    /// keeps the centre of the stroke fully covered: at a 1 px width the halo
+    /// blackens a pixel and the half-covered white line returns it to exactly
+    /// its original grey, which is a real result and a useless probe.
+    fn config() -> RenderConfig {
+        RenderConfig {
+            frontline: true,
+            frontline_width_ratio: 6.0 / 64.0,
+            ..RenderConfig::default()
+        }
+    }
+
+    #[test]
+    fn the_stroke_stays_out_of_the_transparent_corners() {
+        let mut transparent = canvas(0);
+        let before = transparent.clone();
+
+        draw_frontline(&mut transparent, &line(), &config());
+
+        // Region art is see-through in the corners so the tiles interlock;
+        // anything painted there shows up on the seams of the full map.
+        assert_eq!(transparent, before);
+    }
+
+    #[test]
+    fn the_stroke_reaches_both_edges() {
+        let mut opaque = canvas(255);
+
+        draw_frontline(&mut opaque, &line(), &config());
+
+        // A contour terminated at the canvas bounds stops a stroke-width short
+        // of them. This one is traced past both, so the very first and last
+        // rows are painted.
+        for y in [0, 63] {
+            assert_ne!(
+                opaque.get_pixel(32, y).0[0],
+                128,
+                "nothing drawn on row {y} — the line stops short of the edge"
+            );
+        }
+    }
+
+    #[test]
+    fn alpha_is_never_written() {
+        let mut half = canvas(120);
+
+        draw_frontline(&mut half, &line(), &config());
+
+        assert!(half.pixels().all(|pixel| pixel.0[3] == 120));
+    }
+
+    #[test]
+    fn off_draws_nothing() {
+        let mut opaque = canvas(255);
+        let before = opaque.clone();
+
+        draw_frontline(&mut opaque, &line(), &RenderConfig::default());
+
+        assert_eq!(opaque, before);
+    }
+
+    #[test]
+    fn the_full_map_sizes_its_stroke_backwards() {
+        let config = RenderConfig::default();
+        let scale = 0.2;
+
+        // What a tile is stroked at, once the composite has been scaled down,
+        // is what was asked for in the finished image — the same rule the icons
+        // follow, and the bug that once made the whole map look like bare
+        // terrain when it was not applied.
+        let finished = config.for_full_map(scale).frontline_width(REGION_WIDTH) * scale;
+
+        assert!((finished - config.full_map_frontline_px).abs() < 0.5);
+    }
 }

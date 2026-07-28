@@ -168,28 +168,6 @@ impl Field {
         self.values[row * self.cols + col]
     }
 
-    /// The field at an arbitrary world point, bilinearly interpolated.
-    ///
-    /// Interpolating up beats sampling finely: the cost of `sample` is
-    /// O(cells x sources), and this is O(1).
-    pub fn value_at(&self, x: f32, y: f32) -> f32 {
-        let grid_x = ((x - self.origin.0) / self.spacing).clamp(0.0, (self.cols - 1) as f32);
-        let grid_y = ((y - self.origin.1) / self.spacing).clamp(0.0, (self.rows - 1) as f32);
-
-        let col = grid_x.floor() as usize;
-        let row = grid_y.floor() as usize;
-        let next_col = (col + 1).min(self.cols - 1);
-        let next_row = (row + 1).min(self.rows - 1);
-
-        let tx = grid_x - col as f32;
-        let ty = grid_y - row as f32;
-
-        let top = self.value(col, row) * (1.0 - tx) + self.value(next_col, row) * tx;
-        let bottom = self.value(col, next_row) * (1.0 - tx) + self.value(next_col, next_row) * tx;
-
-        top * (1.0 - ty) + bottom * ty
-    }
-
     /// Grid coordinate to world pixel.
     fn world(&self, col: f32, row: f32) -> Point {
         (
@@ -217,11 +195,21 @@ fn influence(sources: &[Source], x: f32, y: f32, epsilon: f32) -> f32 {
     total as f32
 }
 
+/// Rounds of Chaikin the renderer uses. Two is enough to take the staircase out
+/// without pulling the line noticeably away from where the field put it.
+pub const SMOOTHING_ROUNDS: usize = 2;
+
 /// Polylines below this many points are dropped as noise: a contour enclosing
 /// less than a cell says more about the sampling grid than about the war.
 const MIN_POLYLINE_POINTS: usize = 3;
 
 /// Marching squares on `F = 0`, joined into polylines in world space.
+///
+/// Run directly on the sampled grid, and the *polyline* is smoothed afterwards
+/// rather than the field being interpolated up first. Both reach the same
+/// place — bilinear interpolation cannot invent a crossing inside a cell whose
+/// four corners agree in sign, so it changes nothing about the island
+/// behaviour below — and this way there is one grid rather than two.
 ///
 /// This is also where the "lone outpost makes no island" criterion is actually
 /// met, and it is worth being straight about the mechanism. The *field* does not
@@ -545,10 +533,23 @@ mod tests {
 
     #[test]
     fn the_field_is_signed_toward_whoever_is_nearer() {
-        let field = Field::sample(&contested(), window(), SPACING, EPSILON).expect("contested");
+        // Straight at `influence`, which is `F` itself — no grid needed to ask
+        // which way it leans.
+        let sources = contested();
 
-        assert!(field.value_at(200.0, 450.0) > 0.0, "colonial side");
-        assert!(field.value_at(824.0, 450.0) < 0.0, "warden side");
+        assert!(
+            influence(&sources, 200.0, 450.0, EPSILON) > 0.0,
+            "colonial side"
+        );
+        assert!(
+            influence(&sources, 824.0, 450.0, EPSILON) < 0.0,
+            "warden side"
+        );
+        assert!(
+            influence(&sources, 512.0, 450.0, EPSILON).abs()
+                < influence(&sources, 200.0, 450.0, EPSILON),
+            "and is weakest between them"
+        );
     }
 
     #[test]
@@ -668,18 +669,5 @@ mod tests {
 
     fn total_turn(line: &[Point]) -> f32 {
         turns(line).sum()
-    }
-
-    #[test]
-    fn interpolation_agrees_with_the_samples_it_sits_between() {
-        let field = Field::sample(&contested(), window(), SPACING, EPSILON).expect("contested");
-
-        // On a sample, exactly; between two, between their values.
-        assert_eq!(field.value_at(0.0, 0.0), field.value(0, 0));
-
-        let midpoint = field.value_at(SPACING / 2.0, 0.0);
-        let (low, high) = (field.value(0, 0), field.value(1, 0));
-
-        assert!(midpoint >= low.min(high) && midpoint <= low.max(high));
     }
 }

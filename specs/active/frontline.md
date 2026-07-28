@@ -134,11 +134,18 @@ that edge exactly as it would have without the feature, which is strictly better
      every resolution; the field is the whole cost, and it is linear in both cells and structures.
      If a war ever has enough structures to matter, drop to 1/16 before reaching for truncation
      and spatial binning.
-   - Interpolate the sampled field up rather than sampling finely. Bilinear is enough; the
-     contour in step 2 runs on the interpolated field.
-2. **Contour.** Marching squares on `F = 0`, producing polylines in grid space, then one or two
-   rounds of Chaikin smoothing. The reference changes slope by at most 1.0 px per px and 0.39 on
-   average, so the target is a gentle curve with no staircase.
+   - The same spacing serves both commands, so the line looks identical whichever one drew it
+     rather than being smoother in one of them.
+2. **Contour.** Marching squares on `F = 0` **directly on the sampled grid**, producing polylines
+   in world space, then two rounds of Chaikin smoothing on the *polyline*.
+
+   An earlier draft of this spec interpolated the field up bilinearly and contoured the finer
+   grid. That was dropped: bilinear interpolation cannot invent a crossing inside a cell whose
+   four corners agree in sign, so it changes nothing about the field or the island behaviour, and
+   smoothing the traced line reaches the same curve with one grid instead of two. Measured over
+   two rounds on a bending front: worst slope change 0.183 → 0.105 rad while the *total* turning
+   is unchanged, which is corner cutting rather than straightening — the line stays where the
+   field put it.
 3. **Draw.** Scale the polylines to canvas space and stroke at `frontline_width_ratio`, in
    `frontline_color`, with the wider `frontline_halo` laid down first so the line survives on the
    dark hexes (Deadlands, Umbral Wildwood) where a dark line on dark terrain would vanish.
@@ -162,8 +169,21 @@ that edge exactly as it would have without the feature, which is strictly better
 swallow the line; the icons are the map's actual content and a line drawn over them costs
 legibility for decoration. This mirrors the existing rule that the tint goes on before the icons.
 
-On `/full-map` the line is drawn on the full-resolution composite and then scaled down with
-everything else, so it antialiases for free.
+On `/full-map` the line is drawn **per tile, on the full-resolution composite**, and scaled down
+with everything else, so it antialiases for free.
+
+This was reconsidered once the region-name work established a precedent for drawing at final size
+*after* the downscale, and it survived. Three reasons, worth recording so it is not reopened a
+third time:
+
+- **What the downscale destroys is internal detail, not thinness.** Text broke at 1024 → 205
+  because its counters, stroke gaps and inter-letter spacing are resampled into a smudge. A
+  stroke has no internal structure; scaled up 5x, drawn, and scaled back, it survives intact and
+  gains free antialiasing.
+- **Icons are drawn per tile.** Drawing the line after the downscale would put it over every icon
+  on the map, which is precisely the ordering this spec rejects.
+- **The alpha mask only exists per tile.** Once the tiles are composited, the transparent corners
+  have been filled in by their neighbours and there is nothing left to mask against.
 
 **Width must be sized backwards from the finished image**, exactly as `full_map_icon_px` already
 does for icons. Applied as a ratio on the 63.6 MP composite and then scaled down, a hairline
@@ -176,20 +196,36 @@ Every constant is a ratio of the region footprint in `RenderConfig`, never a lit
 compositing code. **The starting values are starting points, not findings** — width and colour in
 particular are meant to be tuned by eye against a live render:
 
-| Field | Meaning | Starting value |
+| Field | Meaning | Value |
 |---|---|---|
 | `frontline: bool` | draw it at all | `false` |
-| `field_resolution_ratio: f32` | field sample spacing | ¼ of a region |
+| `field_resolution_ratio: f32` | field sample spacing | `1/32` of a region (32 px) |
 | `frontline_width_ratio: f32` | stroke width | `5.0 / REGION_WIDTH` |
-| `full_map_frontline_px: f32` | stroke width wanted in the *finished* full map | ~3 |
-| `frontline_color` | stroke | dark, high-contrast |
-| `frontline_halo` | wider under-stroke, for dark terrain | light, semi-transparent |
-| `influence_epsilon: f32` | the `ε` in `w / (d² + ε)`, keeping `F` finite on top of a structure | — |
+| `full_map_frontline_px: f32` | stroke width wanted in the *finished* full map | `3.0` |
+| `frontline_margin_ratio: f32` | how far past a hex the field is sampled | `48.0 / REGION_WIDTH` |
+| `influence_radius_ratio: f32` | saturation distance; `ε` is its square | `50.0 / REGION_WIDTH` |
+| `frontline_color` | stroke | white |
+| `frontline_halo` | wider under-stroke | opaque black |
+| `frontline_halo_ratio: f32` | halo width as a multiple of the line | `2.0` |
+
+Four of these carry a reason beyond taste:
+
+- **`field_resolution_ratio` is not a free knob.** An earlier draft suggested ¼ of a region; 1/32
+  is both affordable (255 ms on the real composite) and the value the island behaviour above
+  depends on. It and `influence_radius_ratio` have to move together.
+- **`influence_radius_ratio` replaces the `influence_epsilon` this table used to name.** `ε` is in
+  px², and 2500 px² is not a number anyone can look at a map and have an opinion about; 50 px is.
+- **`frontline_halo` is opaque, not semi-transparent as first drafted.** Segments are stroked one
+  at a time and overlap at every vertex, so a translucent halo blends twice there and beads
+  visibly along the line. Opaque blending is idempotent.
+- **The colours are the label style**, light stroke over a dark halo. That combination is already
+  shown to survive both Acrithia's pale desert and Deadlands' near-black, which is the same
+  problem a line crossing 53 regions has. They stay separate fields from `text_color` all the
+  same: a line is not a label, and colour is explicitly a knob here.
 
 The reference measures 2 px on a 1024-wide hex, but it is a rough vision rather than a
 specification and the user has asked for **somewhat wider**; 5 px is that, and it is a knob, not a
-conclusion. Colour is likewise open — black is what the mock happened to use, not a requirement,
-and the halo exists so that whatever colour is chosen still reads on both light and dark terrain.
+conclusion.
 
 ## Command surface
 
