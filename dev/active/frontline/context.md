@@ -7,14 +7,16 @@ same branch).
 
 ## Current state
 
-**Spec written, no code yet.** Awaiting review of the spec before implementation starts.
+**Spec reviewed and approved by the user. No code yet — start at `tasks.md` §1.**
 
 ## Decisions already made (user's calls, don't re-ask)
 
-- **Both `/get-map` and `/full-map`**, not just single hexes — the full map costs ~5 ms with a
-  distance transform, so cheapness removed the reason to skip it.
-- **`/get-map` fetches its up-to-6 neighbours' dynamic data**, so the line is correct at the hex
-  edge rather than drifting where it matters most.
+- **Both `/get-map` and `/full-map`**, not just single hexes. Decided when the full map looked
+  ~5 ms; the cost has since been revised up (see below) but the decision stands — a few hundred
+  ms is still nothing beside the seconds Lanczos3 already spends there.
+- **`/get-map` fetches its up-to-6 neighbours' dynamic data.** Approved to stop the line drifting
+  at the hex edge; it turned out to be load-bearing, since without it there is no field outside
+  the hex and the line cannot reach the silhouette at all.
 - **Guild setting**, like `full_map_faction_tint` — which means a migration, and therefore
   `docs/tos.md` + `docs/privacy.md` in the same commit.
 
@@ -38,9 +40,10 @@ same branch).
 
 ## Key files (expected)
 
-- `src/utils/request_processing.rs` — `CONTROL_ICON_TYPES` and `controlling_team` already exist
-  and are the model to reuse; `RenderConfig` gains the frontline ratios; `grid_offset` is the
-  world-space anchor.
+- `src/utils/request_processing.rs` — `RenderConfig` gains the frontline ratios; `grid_offset` is
+  the world-space anchor; `tint_region` is the precedent for alpha-aware compositing.
+  `controlling_team` / `CONTROL_ICON_TYPES` are **neighbours of this work, not its basis** — see
+  the model section for why their rule doesn't carry over.
 - `src/utils/regions.rs` — neighbour arithmetic from `(col, row)`.
 - `src/utils/map_render.rs` — `composite_full_map` draws at full res *before* the downscale, which
   is where the line goes; `render_region` gains the neighbour fetches.
@@ -82,5 +85,10 @@ judgement call most likely to be wrong — check it against a live war first.
 
 ## Next steps
 
-Get the spec reviewed. Then implement in the order in `tasks.md`, starting with the neighbour
-arithmetic and its test, which is the one piece that can be verified with no rendering at all.
+**Start `tasks.md` §1: `regions::neighbours` and its unit test.** It is the one piece verifiable
+with no rendering, no API and no database — the arithmetic and the four hand-checked adjacencies
+are already in the spec, so it can be written and proven in one sitting.
+
+Then §2 (the field) before §3 (drawing): a contour can be checked as numbers long before it is
+checked as pixels, and the visual tuning in §3 is worthless if the field underneath it is wrong.
+Leave §5 (migration + `docs/`) whole — it is one commit by repo rule.
