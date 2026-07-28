@@ -116,13 +116,13 @@ ICON_SOURCES: dict[int, tuple[str, ...]] = {
     90: ("AircraftRadar",),
     91: ("AircraftRunwayT1",),
     92: ("AircraftRunwayT2",),
-    # 97 is live and undocumented: warapi's MapIconType list stops at 92
+    # 97 is live but still undocumented: warapi's MapIconType list stops at 92
     # (Update 63) and its Images/ has no file for it, so there is no name to
     # guess here and nothing to copy. Reported upstream as clapfoot/warapi#137
-    # (July 2026, "new Map Icon / iconType?", spotted on RedRiverHex, reporter
-    # guesses anti-air). Until Siege Camp ships art, 97 renders as DebugIcon
-    # with one warning per team -- which is the fallback working. Drop a
-    # 97None.png in by hand and --derive-icons writes the faction pair.
+    # (July 2026, "new Map Icon / iconType?", spotted on RedRiverHex). Its
+    # neutral art is hand-sourced -- see HAND_SOURCED -- and the faction pair
+    # is derived from it, so the only thing still missing is upstream's name
+    # for it. Add one here if warapi ever ships the file.
 }
 
 # The faction colours the neutral art is tinted with, as the colour pure white
@@ -153,6 +153,7 @@ HAND_SOURCED = {
     46,  # Relic Base 2 -- retired in Update 52
     47,  # Relic Base 3 -- retired in Update 52
     62,  # Oil Field
+    97,  # Undocumented upstream; art supplied by hand, see ICON_SOURCES
 }
 
 # Our filename suffix -> upstream's. Upstream is singular and drops the suffix
