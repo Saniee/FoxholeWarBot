@@ -214,6 +214,19 @@ pub struct RenderConfig {
     /// field flips, so it and [`RenderConfig::field_resolution_ratio`] have to
     /// be moved together.
     pub influence_radius_ratio: f32,
+    /// The `k` of `w / (d² + ε)^k` — how sharply a structure's pull falls off.
+    ///
+    /// This is the knob that decides whether the line bisects the ground between
+    /// the two sides or merely separates them, and the first live war showed the
+    /// original value of 1 doing the latter. See
+    /// [`crate::utils::frontline::influence`] for the arithmetic; the short
+    /// version is that at `k = 1` a cluster of `n` holds ground `sqrt(n)` times
+    /// as far out as a lone base, so the denser side quietly took the middle.
+    ///
+    /// Raising it pushes toward the Voronoi model the spec rejects, so it moves
+    /// together with [`RenderConfig::influence_radius_ratio`], which is what
+    /// keeps a lone base from opening an island.
+    pub influence_falloff: u32,
     pub frontline_color: Rgba<u8>,
     /// Wider under-stroke, laid down first.
     ///
@@ -266,7 +279,16 @@ impl Default for RenderConfig {
             // Comfortably wider than the halo, so the contour is always traced
             // past wherever the stroke can reach.
             frontline_margin_ratio: 48.0 / REGION_WIDTH as f32,
-            influence_radius_ratio: 50.0 / REGION_WIDTH as f32,
+            // 100 px, doubled from the 50 the synthetic renders were tuned at.
+            // The two have to move together: the radius at which a lone
+            // structure flips the field against `m` friendly neighbours `s`
+            // away is `r² = (s² + ε)/m^(1/k) - ε`, so raising `k` widens the
+            // island and raising `ε` closes it again. At k=2, m=10, s=200 the
+            // old 50 gives r = 105 px — wide enough for the 32 px grid to
+            // resolve, which is precisely the loop the model exists to avoid.
+            // 100 px drives it back under the sampling.
+            influence_radius_ratio: 100.0 / REGION_WIDTH as f32,
+            influence_falloff: 2,
             // The label style, deliberately: light stroke over a dark halo. It
             // is the one combination already shown to survive both Acrithia's
             // pale desert and Deadlands' near-black, which is the same problem
@@ -347,11 +369,14 @@ impl RenderConfig {
         (REGION_WIDTH as f32 * self.field_resolution_ratio).max(1.0)
     }
 
-    /// The `ε` of `w / (d² + ε)`, in world pixels squared.
-    pub fn influence_epsilon(&self) -> f32 {
+    /// The shape of the influence field: `ε` in world pixels squared, and `k`.
+    pub fn influence_model(&self) -> crate::utils::frontline::Model {
         let radius = REGION_WIDTH as f32 * self.influence_radius_ratio;
 
-        (radius * radius).max(1.0)
+        crate::utils::frontline::Model {
+            epsilon: (radius * radius).max(1.0),
+            falloff: self.influence_falloff,
+        }
     }
 
     /// How far past a hex the field is sampled, in world pixels.

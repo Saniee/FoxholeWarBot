@@ -26,11 +26,40 @@ other. That target shapes every choice below — it is why a smooth, slightly va
 So: an **influence field**, and its zero crossing.
 
 ```
-F(p) = Σ  w / (d² + ε)   over Colonial structures
-     − Σ  w / (d² + ε)   over Warden structures
+F(p) = Σ  w / (d² + ε)^k   over Colonial structures
+     − Σ  w / (d² + ε)^k   over Warden structures
 ```
 
 The frontline is the contour `F(p) = 0`; `F` positive is Colonial ground, negative is Warden.
+
+### `k`, and why it is not 1
+
+`k = 1` — plain inverse-square — is what shipped to the first live war, and it put the line
+visibly onto the Colonial side of the ground it was meant to bisect. The cause is arithmetic.
+Set one structure at distance `a` against `n` clustered ones at distance `b` and solve
+`1/a^(2k) = n/b^(2k)`: the balance sits at `b/a = n^(1/(2k))`.
+
+| structures in the cluster | ground it wins at `k = 1` | at `k = 2` |
+|---|---|---|
+| 9 | 3.0 x a lone base's reach | 1.7 x |
+| 40 (a densely built hex) | 6.3 x | 2.5 x |
+
+So at `k = 1` the contour is not a boundary between two territories, it is a **density** line, and
+whichever side had built more per acre took the difference. A bunker line of thirty icons outvoted
+a town across the river. Measured on the fixture in `a_crowd_does_not_buy_ground` — one base
+against a cluster of nine, 600 px apart — the crossing sat 150 px off centre at `k = 1` and sits
+82 px off at `k = 2`.
+
+The exponent is a dial between the two rejected models below, not a free improvement. As `k` grows
+the field approaches "whoever is nearest", which *is* the Voronoi partition, islands and all; and
+the far field vanishes faster, which is what keeps the line steady across the long quiet stretches
+where a hex holds almost nothing. `k = 2` is one notch, taken deliberately rather than two.
+
+One property worth stating because it is not obvious: the *sign* of `Σ w/(d²+ε)^k` is the sign of
+the difference between the two sides' `p`-norm soft-minimum distances at `p = 2k`. Raising `k`
+therefore moves the zero contour toward the true medial axis between the two point sets — the
+"centre between the footholds" — rather than just sharpening a line that was already in the wrong
+place.
 
 Two alternatives were considered and rejected:
 
@@ -57,12 +86,24 @@ comes from the model rather than from post-hoc smoothing of a jagged boundary.
 
 **Every faction-held structure**, not just `CONTROL_ICON_TYPES`.
 
-This deliberately departs from `controlling_team`, and the reason its rationale doesn't transfer is
-worth stating: the tint **counts** structures and takes a majority, so a faction that built more
-sheds inflates its total and miscolours a whole hex. A field **sums by distance**, so a structure
-deep in friendly territory contributes nothing to where the boundary sits — only the ones near it
-move the line. The failure mode the tint is guarding against does not exist here, and excluding
-non-control structures would throw away most of the evidence of a footing.
+This deliberately departs from `controlling_team`: the tint **counts** structures and takes a
+majority, where a field weighs them by distance, so the ones deep in friendly ground matter far
+less than the ones on the boundary. Excluding non-control structures would throw away most of the
+evidence of a footing.
+
+**The original wording of this section claimed the failure mode the tint guards against "does not
+exist here" — that a structure deep in friendly territory contributes nothing. That was wrong, and
+the first live war is what showed it.** Weighting by distance reduces a crowd's influence; it does
+not remove it. Under `k = 1` a sufficiently large crowd two hundred metres back still outweighed a
+lone base fifty metres forward, which is the same "whoever built more wins" defect the tint has,
+arriving by a slower route. Raising `k` is what actually bounds it, and the bound is `n^(1/(2k))`
+rather than nothing — so this is a matter of degree, and a live war remains the only place the
+degree can be judged.
+
+If `k = 2` still leaves the line leaning, the next lever is this section rather than the exponent:
+thin the point set so a bunker line counts as one footing instead of thirty, either by restricting
+to `CONTROL_ICON_TYPES` or by collapsing clusters. That attacks `n` at the source, and unlike
+raising `k` it does not cost far-field stability.
 
 Neutral-owned structures contribute to neither side.
 
@@ -203,18 +244,29 @@ particular are meant to be tuned by eye against a live render:
 | `frontline_width_ratio: f32` | stroke width | `5.0 / REGION_WIDTH` |
 | `full_map_frontline_px: f32` | stroke width wanted in the *finished* full map | `3.0` |
 | `frontline_margin_ratio: f32` | how far past a hex the field is sampled | `48.0 / REGION_WIDTH` |
-| `influence_radius_ratio: f32` | saturation distance; `ε` is its square | `50.0 / REGION_WIDTH` |
+| `influence_radius_ratio: f32` | saturation distance; `ε` is its square | `100.0 / REGION_WIDTH` |
+| `influence_falloff: u32` | the `k` of `w / (d² + ε)^k` | `2` |
 | `frontline_color` | stroke | white |
 | `frontline_halo` | wider under-stroke | opaque black |
 | `frontline_halo_ratio: f32` | halo width as a multiple of the line | `2.0` |
 
-Four of these carry a reason beyond taste:
+Five of these carry a reason beyond taste:
 
 - **`field_resolution_ratio` is not a free knob.** An earlier draft suggested ¼ of a region; 1/32
   is both affordable (255 ms on the real composite) and the value the island behaviour above
-  depends on. It and `influence_radius_ratio` have to move together.
+  depends on. It, `influence_radius_ratio` and `influence_falloff` all have to move together.
 - **`influence_radius_ratio` replaces the `influence_epsilon` this table used to name.** `ε` is in
   px², and 2500 px² is not a number anyone can look at a map and have an opinion about; 50 px is.
+- **It doubled to 100 px when `influence_falloff` went to 2, and the two are coupled.** The radius
+  at which a lone structure flips the field against `m` friendly ones `s` away is
+  `r² = (s² + ε)/m^(1/k) − ε`: raising `k` widens that hole, raising `ε` closes it. Left at 50,
+  `k = 2` opens a 105 px island on plausible numbers — comfortably resolved by the 32 px grid,
+  which is the loop the whole model exists to avoid.
+
+  Treat that formula as an upper bound rather than a prediction. It says `k = 1` at `ε = 2500`
+  should already have produced islands up to 113 px wide, and the live war produced none — real
+  outposts sit closer to friendly support than the worst case assumes. It is a guide to which
+  direction to move a knob, not a number to tune against.
 - **`frontline_halo` is opaque, not semi-transparent as first drafted.** Segments are stroked one
   at a time and overlap at every vertex, so a translucent halo blends twice there and beads
   visibly along the line. Opaque blending is idempotent.

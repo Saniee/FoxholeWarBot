@@ -86,13 +86,23 @@ next, and most of it needs a live war rather than more code.
       `RenderConfig` twice, once per branch
 - [x] `specs/set-guild-settings.md` and `specs/postgres.md` updated
 
-## 6. Finishing — **the user is bringing live-war results and fixes**
-- [ ] Triage the feedback with context.md → "What a live war has to answer". Three symptoms have
-      a counter-intuitive fix; in particular **loops around isolated bases are fixed by *lowering*
-      resolution or raising `influence_radius_ratio`, never by sampling finer**
-- [ ] Validate against a live war — the line's quality is entirely the point set. If it sits
-      wrong, try `CONTROL_ICON_TYPES` only, or per-type weights, **before** touching resolution or
-      smoothing; those cannot fix a bad input
+## 6. Finishing — **live-war feedback, round 1 handled; round 2 incoming**
+- [x] Round 1: the line leaned onto the Colonial side on both `/full-map` and a Callahans Passage
+      hex — about a quarter of the way across instead of half. **Cause was the exponent, not the
+      point set**, which is what the triage list had sent me to first. `Σ w/(d²+ε)` lets `n`
+      clustered structures hold ground `√n` times as far out as a lone base, so the contour tracked
+      *density* rather than territory. Now `w/(d²+ε)²` via `influence_falloff`, making it `n^(1/4)`;
+      `influence_radius_ratio` doubled to 100 px alongside it because `k` and `ε` are coupled.
+      Measured 150 px → 82 px off centre on the new `a_crowd_does_not_buy_ground` fixture
+- [x] Correct the spec claim this falsified — it asserted a structure deep in friendly territory
+      "contributes nothing to where the boundary sits", which is not true of any inverse-power
+      field. Same commit, per the 1:1 rule
+- [x] Reorder context.md's triage list: "the line isn't centred" now points at `influence_falloff`
+      first and the point set second
+- [ ] **Round 2: the user is sending an example of how the line should sit.** If `k = 2` is still
+      not centred enough, thin the point set (`CONTROL_ICON_TYPES` only, or collapse clusters)
+      *before* going to `k = 3` — thinning attacks `n` at source and costs no far-field stability,
+      where raising `k` again trades against island and wobble behaviour
 - [x] Acceptance criteria measured so far: off ⇒ byte-identical; the line reaches the silhouette
       with no gap (13 edge pixels painted at each end it exits by); nothing lands in the
       transparent corners. The rest need real data

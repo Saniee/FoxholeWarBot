@@ -266,7 +266,7 @@ async fn region_frontline(
         &sources,
         bounds,
         config.field_spacing(),
-        config.influence_epsilon(),
+        config.influence_model(),
     ) else {
         log::debug!("no frontline in {map_name}: only one faction holds anything nearby");
         return Vec::new();
@@ -578,7 +578,7 @@ fn world_frontline(
         &sources,
         bounds,
         config.field_spacing(),
-        config.influence_epsilon(),
+        config.influence_model(),
     ) else {
         log::debug!("no frontline to draw: only one faction holds anything on this map");
         return Vec::new();

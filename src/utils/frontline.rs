@@ -69,6 +69,20 @@ pub fn sources_in(region: &Region, dynamic: &DynamicMapData, config: &RenderConf
         .collect()
 }
 
+/// The two numbers that decide the *shape* of the field, as opposed to where it
+/// is sampled.
+///
+/// Together they answer "how much does a crowd count for?", which turned out to
+/// be the whole question. See [`influence`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Model {
+    /// The `ε` of `w / (d² + ε)^k`, in px². Saturates a single structure's pull
+    /// at close range, so standing on top of one is not a singularity.
+    pub epsilon: f32,
+    /// The `k`. The field falls off as `1 / d^(2k)`.
+    pub falloff: u32,
+}
+
 /// A rectangle of world space to evaluate the field over.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Bounds {
@@ -120,7 +134,7 @@ pub struct Field {
 }
 
 impl Field {
-    /// Evaluates `F(p) = Σ w / (d² + ε)` over `bounds`.
+    /// Evaluates `F(p) = Σ w / (d² + ε)^k` over `bounds`.
     ///
     /// `None` when one side has nothing here — which covers both degenerate
     /// cases the spec names, a hex held entirely by one faction and a hex
@@ -128,7 +142,7 @@ impl Field {
     /// explicitly is better than letting marching squares decide: with all
     /// weights the same sign `F` never truly crosses zero, but far-out cells
     /// underflow to exactly `0.0`, and a zero corner is ambiguous.
-    pub fn sample(sources: &[Source], bounds: Bounds, spacing: f32, epsilon: f32) -> Option<Field> {
+    pub fn sample(sources: &[Source], bounds: Bounds, spacing: f32, model: Model) -> Option<Field> {
         let has_colonial = sources.iter().any(|source| source.weight > 0.0);
         let has_warden = sources.iter().any(|source| source.weight < 0.0);
 
@@ -151,7 +165,7 @@ impl Field {
 
             for col in 0..cols {
                 let x = bounds.min_x + col as f32 * spacing;
-                values.push(influence(sources, x, y, epsilon));
+                values.push(influence(sources, x, y, model));
             }
         }
 
@@ -177,18 +191,53 @@ impl Field {
     }
 }
 
-/// `F` at one point. Accumulated in `f64` because a full-map field sums a couple
-/// of thousand terms that are each around 1e-6, and `f32` loses the tail of that
-/// sum — which is exactly the far-field contribution that decides where a
-/// boundary sits in the quiet stretches between clusters.
-fn influence(sources: &[Source], x: f32, y: f32, epsilon: f32) -> f32 {
+/// `F` at one point.
+///
+/// # Why the exponent is 4 and not 2
+///
+/// The first live war put the line visibly on the Colonial side of the ground
+/// it was supposed to bisect, and the cause is arithmetic rather than a bug.
+/// Put one structure at distance `a` against `n` clustered ones at distance `b`
+/// and solve `1/a^(2k) = n/b^(2k)`: the balance sits at `b/a = n^(1/(2k))`. At
+/// the original `k = 1` a cluster of nine holds ground three times as far out as
+/// a lone base does, and a densely built hex of forty holds it six times as far.
+/// So the boundary was never a bisector — it was a *density* line, and whichever
+/// side had built more per acre took the difference. A bunker line of thirty
+/// icons outvoted a town on the other side of the river.
+///
+/// Raising `k` compresses that. At `k = 2` the same nine win only `9^(1/4)` —
+/// 1.7 times — and the forty win 2.5 rather than 6.3. In the limit the field
+/// becomes "whoever is nearest", which is the Voronoi model the spec rejects for
+/// punching an island around every forward base, so this is a dial between two
+/// known-bad ends rather than a fix with no cost. Two sits where a crowd still
+/// counts for something without counting for everything.
+///
+/// Worth being precise about what the exponent does and does not change: the
+/// *sign* of `Σ w/(d²+ε)^k` is the sign of the difference of the two sides'
+/// `p`-norm soft-minimum distances at `p = 2k`. Raising `k` therefore moves the
+/// contour toward the true medial axis between the two point sets — the
+/// "centre between the footholds" — and does not merely sharpen it.
+///
+/// Accumulated in `f64` because a full-map field sums a couple of thousand terms
+/// spanning a dozen orders of magnitude, and `f32` loses the tail of that sum —
+/// which is exactly the far-field contribution that decides where a boundary
+/// sits in the quiet stretches between clusters. Squaring the denominator
+/// doubles that spread, so the wide accumulator matters more here than it did.
+fn influence(sources: &[Source], x: f32, y: f32, model: Model) -> f32 {
+    let epsilon = f64::from(model.epsilon);
+    // Floored at 1: a zero exponent collapses `F` to the difference of the two
+    // sides' structure counts, which is constant across the map and has no zero
+    // contour at all. Capped at 8 because past there the far field underflows
+    // and the model is Voronoi in all but name.
+    let falloff = model.falloff.clamp(1, 8) as i32;
+
     let total: f64 = sources
         .iter()
         .map(|source| {
             let dx = f64::from(x - source.x);
             let dy = f64::from(y - source.y);
 
-            f64::from(source.weight) / (dx * dx + dy * dy + f64::from(epsilon))
+            f64::from(source.weight) / (dx * dx + dy * dy + epsilon).powi(falloff)
         })
         .sum();
 
@@ -459,19 +508,24 @@ mod tests {
     /// A front that actually bends, which the symmetric fixture above does not:
     /// two ranks converging across the hex, so marching squares has corners to
     /// cut.
-    const EPSILON: f32 = 2500.0;
     const SPACING: f32 = 16.0;
+
+    /// What the renderer actually uses, so these exercise the shipped field
+    /// rather than a shape nothing renders with.
+    fn model() -> Model {
+        RenderConfig::default().influence_model()
+    }
 
     #[test]
     fn one_faction_alone_has_no_field() {
         let held = vec![colonial(200.0, 400.0), colonial(300.0, 500.0)];
 
-        assert!(Field::sample(&held, window(), SPACING, EPSILON).is_none());
+        assert!(Field::sample(&held, window(), SPACING, model()).is_none());
     }
 
     #[test]
     fn an_empty_hex_has_no_field() {
-        assert!(Field::sample(&[], window(), SPACING, EPSILON).is_none());
+        assert!(Field::sample(&[], window(), SPACING, model()).is_none());
     }
 
     #[test]
@@ -538,23 +592,23 @@ mod tests {
         let sources = contested();
 
         assert!(
-            influence(&sources, 200.0, 450.0, EPSILON) > 0.0,
+            influence(&sources, 200.0, 450.0, model()) > 0.0,
             "colonial side"
         );
         assert!(
-            influence(&sources, 824.0, 450.0, EPSILON) < 0.0,
+            influence(&sources, 824.0, 450.0, model()) < 0.0,
             "warden side"
         );
         assert!(
-            influence(&sources, 512.0, 450.0, EPSILON).abs()
-                < influence(&sources, 200.0, 450.0, EPSILON),
+            influence(&sources, 512.0, 450.0, model()).abs()
+                < influence(&sources, 200.0, 450.0, model()),
             "and is weakest between them"
         );
     }
 
     #[test]
     fn two_clusters_produce_one_line_between_them() {
-        let field = Field::sample(&contested(), window(), SPACING, EPSILON).expect("contested");
+        let field = Field::sample(&contested(), window(), SPACING, model()).expect("contested");
         let lines = contour(&field);
 
         assert_eq!(lines.len(), 1, "one front, not several: {lines:?}");
@@ -569,7 +623,7 @@ mod tests {
 
     #[test]
     fn the_line_runs_from_one_edge_to_the_other() {
-        let field = Field::sample(&contested(), window(), SPACING, EPSILON).expect("contested");
+        let field = Field::sample(&contested(), window(), SPACING, model()).expect("contested");
         let lines = contour(&field);
         let line = &lines[0];
 
@@ -590,7 +644,7 @@ mod tests {
         let mut sources = contested();
         sources.push(warden(200.0, 450.0));
 
-        let field = Field::sample(&sources, window(), 64.0, EPSILON).expect("contested");
+        let field = Field::sample(&sources, window(), 64.0, model()).expect("contested");
         let lines = contour(&field);
 
         for line in &lines {
@@ -599,6 +653,52 @@ mod tests {
                 "a closed loop appeared around the lone outpost: {line:?}"
             );
         }
+    }
+
+    /// The live-war complaint, reduced to the smallest case that shows it: one
+    /// Colonial base on the left against a built-up Warden cluster on the right,
+    /// both the same distance from the middle.
+    ///
+    /// The line belongs at x = 512. Under the original `k = 1` it sat at 350 —
+    /// a sixth of the hex onto the Colonial side, bought purely with icon count,
+    /// which is exactly what the map showed.
+    #[test]
+    fn a_crowd_does_not_buy_ground() {
+        let mut sources = vec![colonial(212.0, 444.0)];
+
+        for step in 0..9 {
+            sources.push(warden(
+                812.0 + (step % 3) as f32 * 20.0,
+                404.0 + (step / 3) as f32 * 40.0,
+            ));
+        }
+
+        let crossing = |falloff: u32| {
+            let model = Model {
+                falloff,
+                ..model()
+            };
+
+            // Walk the midline and find where F changes sign, which is the
+            // question without any of the grid or chaining in the way.
+            (212..=812)
+                .find(|x| influence(&sources, *x as f32, 444.0, model) < 0.0)
+                .expect("the field has to flip somewhere between them") as f32
+        };
+
+        let midpoint = 512.0;
+        let shipped = (crossing(2) - midpoint).abs();
+        let original = (crossing(1) - midpoint).abs();
+
+        assert!(
+            shipped < original * 0.6,
+            "raising the falloff has to pull the line back toward the middle: \
+             k=1 was {original} px off centre, k=2 is {shipped}"
+        );
+        assert!(
+            shipped < 90.0,
+            "and land within a sane distance of it, got {shipped} px off centre"
+        );
     }
 
     fn contested_wavy() -> Vec<Source> {
@@ -615,7 +715,7 @@ mod tests {
 
     #[test]
     fn smoothing_takes_the_staircase_out() {
-        let field = Field::sample(&contested_wavy(), window(), 64.0, EPSILON).expect("contested");
+        let field = Field::sample(&contested_wavy(), window(), 64.0, model()).expect("contested");
         let raw = contour(&field);
         let smoothed = smooth(raw.clone(), 2);
 
@@ -632,7 +732,7 @@ mod tests {
 
     #[test]
     fn smoothing_keeps_the_ends_where_they_were() {
-        let field = Field::sample(&contested_wavy(), window(), 64.0, EPSILON).expect("contested");
+        let field = Field::sample(&contested_wavy(), window(), 64.0, model()).expect("contested");
         let raw = contour(&field);
         let smoothed = smooth(raw.clone(), 2);
 

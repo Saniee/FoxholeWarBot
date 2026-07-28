@@ -7,17 +7,37 @@ same branch).
 
 ## Current state
 
-**§1–§5 done and pushed. The feature is complete and reachable**: `/set-guild-settings` has a
+**§1–§5 done and pushed; §6 is under way against real feedback.** `/set-guild-settings` has a
 `frontline` option, off by default, honoured by `/get-map`, `/full-map` and both branches of the
-scheduled tick. Migration `0006` runs at startup. 19 tests; clippy clean but for the two
+scheduled tick. Migration `0006` runs at startup. 20 tests; clippy clean but for the two
 pre-existing warnings (`schedule_report.rs:24` too many arguments, `db.rs:202` large enum variant).
 
 Commits: `25c2b19` neighbours · `1e6909b` field · `90e0ddc` drawing · `fa44c0a` neighbour fetch ·
-`8c17de0` toggle.
+`8c17de0` toggle · `fafaba7` state · **falloff (this one)**.
 
-**Next: §6, and the user is bringing live-war results and fixes.** Nothing left is guesswork that
-more code can settle — see "What a live war has to answer" below, which is the list to read the
-feedback against.
+**Round 1 of live-war feedback is in, and the first triage entry below was wrong.** The user sent a
+full map and a Callahans Passage hex: the line leaned onto the Colonial side, badly — measuring the
+hex, the middle and right of the line sat 30–55 px from Colonial structures and 130–200 px from
+Warden ones, so roughly a quarter of the way across instead of half.
+
+The cause was not the point set, which is what the list below sent me to look at first. It was the
+**exponent**. `F = Σ w/(d²+ε)` lets `n` clustered structures hold ground `√n` times as far out as a
+lone base, so the contour was a *density* line, not a boundary — the denser side simply took the
+middle. Raised to `w/(d²+ε)²` (`influence_falloff: 2`), which makes it `n^(1/4)`; measured on the
+`a_crowd_does_not_buy_ground` fixture the crossing moved from 150 px off centre to 82 px.
+`influence_radius_ratio` doubled to 100 px in the same change because `k` and `ε` are coupled —
+see the spec's Configuration notes for the formula and for why it overstates the risk.
+
+**This corrected a claim the spec had asserted outright** ("a structure deep in friendly territory
+contributes nothing to where the boundary sits"). It is false; distance weighting reduces a crowd's
+pull, it does not remove it. That section of the spec now says so.
+
+**Next: the user is sending an example of how the line should sit.** Read it against "What a live
+war has to answer", which is now ordered correctly. If `k = 2` is still not centred enough, the two
+remaining levers, in order: thin the point set (attacks `n` at source, costs no far-field
+stability), then `k = 3` (measured at 52 px off centre on the same fixture, but the far field
+vanishes faster and long quiet stretches may start to wobble — that is why this round took one
+notch and not two).
 
 **The full-map draw-order question is settled: draw before the downscale**, as the spec always
 said. The region-name precedent does not transfer — what the downscale destroys is *internal*
@@ -188,19 +208,26 @@ list below, and the first thing to change if the line sits wrong.
 Read incoming feedback against this list before changing anything — **the order matters**, because
 three of these cannot be fixed by the knob a symptom first suggests.
 
-1. **"The line sits in the wrong place."** → the point set, not the resolution. Try
-   `CONTROL_ICON_TYPES` only, then per-type weights `w` (the `Source.weight` field already carries
-   a magnitude; only its sign is used today). **Do not touch `field_resolution_ratio` or the
-   smoothing rounds for this** — they cannot fix a bad input, and raising resolution actively
-   makes case 3 worse.
+1. **"The line isn't centred — it leans toward one side."** → **`influence_falloff` first.** This
+   is the entry round 1 got wrong: it sent me to the point set, and the answer was the exponent.
+   A crowd of `n` holds ground `n^(1/(2k))` times as far out as a lone base, so at `k = 1` the
+   contour tracked *density* rather than territory and the better-built side took the middle.
+   Now 2. If it still leans, thin the point set (`CONTROL_ICON_TYPES` only, or collapse clusters —
+   `Source.weight` already carries a magnitude and only its sign is used today) **before** going to
+   `k = 3`: thinning attacks `n` at source and costs no far-field stability, where raising `k`
+   again trades against cases 3 and 5.
+
+   **Do not touch `field_resolution_ratio` or the smoothing rounds for this** — they cannot fix a
+   field that is leaning, and raising resolution actively makes case 3 worse.
 2. **"Too thick / too thin / wrong colour."** → `frontline_width_ratio` (hex),
    `full_map_frontline_px` (finished full map), `frontline_color` / `frontline_halo`. Pure taste,
    change freely. Note the two widths are independent: the full map's is sized backwards in
    `for_full_map`, so changing the hex one does nothing to the world map.
 3. **"There are little loops / blobs around isolated bases."** → **raise
-   `influence_radius_ratio`** (currently 50 px), or lower resolution. Never raise resolution: the
-   islands are real zero crossings that the coarse grid is filtering out. This is the one
-   counter-intuitive knob in the feature.
+   `influence_radius_ratio`** (now 100 px), or lower resolution, or lower `influence_falloff`.
+   Never raise resolution: the islands are real zero crossings that the coarse grid is filtering
+   out. This is the one counter-intuitive knob in the feature. It is also the price of case 1 —
+   `k` and `ε` move together, which is why the radius doubled when the falloff did.
 4. **"The line is jagged / staircased."** → `frontline::SMOOTHING_ROUNDS` (2). Cheap.
 5. **"It breaks at hex seams."** → a real bug, not tuning. The field is computed once in world
    space, so a seam break means either the per-tile `translate` or the alpha mask, not the model.
@@ -219,14 +246,19 @@ three of these cannot be fixed by the knob a symptom first suggests.
   is empty as of 2.0 — that changes), and move `dev/active/frontline/` → `dev/done/`.
 
 Whatever the feedback changes, **update the spec in the same commit** — it is meant to be 1:1 with
-the code, and three of its original claims have already needed correcting.
+the code, and **four** of its original claims have now needed correcting (cost estimate, the island
+mechanism, the bilinear upsample, and "a structure deep in friendly territory contributes nothing").
 
 **Still unvalidated, and it needs a live war, not another synthetic render:**
 
-- `influence_radius_ratio` = 50 px. It decides how close to a lone structure the field flips, so it
-  and `field_resolution_ratio` are the pair that governs the island behaviour. 50 is a guess that
-  made the fixtures behave.
+- **Whether `influence_falloff: 2` is enough.** Round 1's fixture says it halves the error, not that
+  it eliminates it — 82 px off centre on a 600 px gap. The user's incoming example is what settles
+  this. `k = 3` measures 52 px on the same fixture and is a one-line change.
+- `influence_radius_ratio` = 100 px, doubled with the falloff and still a calculated guess rather
+  than a finding. It and `field_resolution_ratio` govern the island behaviour.
 - Width (5 px on a hex, 3 px on the finished full map) and colour. The synthetic render shows the
-  mechanism works, not that the numbers are right.
-- **"Every structure" versus `CONTROL_ICON_TYPES`** — still the single most likely thing to be
-  wrong, and §6 says to try that before touching resolution or smoothing.
+  mechanism works, not that the numbers are right. **The user has not complained about these**, on
+  either image, which is weak evidence they are close enough.
+- **"Every structure" versus `CONTROL_ICON_TYPES`.** Demoted from "most likely thing to be wrong"
+  to the second lever for case 1 — the exponent turned out to matter more — but a bunker line still
+  counts thirty times, and that is a real distortion whatever `k` is.
