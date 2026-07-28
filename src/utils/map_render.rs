@@ -26,8 +26,8 @@ use super::http;
 use super::regions::{self, Region, REGIONS};
 use super::frontline::{self, Edge};
 use super::request_processing::{
-    draw_frontline, draw_region_labels, load_background, place_image_info, Ground, RegionLabel,
-    RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
+    draw_frontline, draw_hex_borders, draw_region_labels, load_background, place_image_info, Ground,
+    RegionLabel, RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
 };
 
 /// Region fetches in flight at once during a full-map render.
@@ -525,6 +525,17 @@ fn composite_full_map(
     // the one a user most needs identified.
     let labels = region_labels(&tiles, scale, config);
 
+    // Taken here for the same reason the labels are — the loop consumes the
+    // tiles — and in finished-image pixels, because that is where the borders
+    // are drawn.
+    let origins: Vec<(f32, f32)> = tiles
+        .iter()
+        .map(|(region, _)| {
+            let (x, y) = config.grid_offset(region.col, region.row);
+            (x as f32 * scale, y as f32 * scale)
+        })
+        .collect();
+
     // One field over the whole world, traced once. Per-region would break the
     // line at every seam, because a region's front depends on the bases in the
     // regions beside it.
@@ -583,6 +594,14 @@ fn composite_full_map(
     } else {
         canvas
     };
+
+    // Under the names and over everything else. A hex boundary is the frame the
+    // map is divided by, so it goes on top of the terrain and the icons — but a
+    // region's name is what the frame is *for*, and a black line through a
+    // label would cost more legibility than the border buys.
+    if config.full_map_hex_borders {
+        draw_hex_borders(&mut scaled, &origins, scale, config);
+    }
 
     // The last thing to touch the image, deliberately. Names are the layer the
     // user reads the map *by*, so nothing is drawn over them and nothing
@@ -737,4 +756,5 @@ fn encode_png(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>, RenderErr
 
     Ok(buf)
 }
+
 

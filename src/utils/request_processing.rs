@@ -273,6 +273,36 @@ pub struct RenderConfig {
     /// Low on purpose: the point is to read ownership at a glance without
     /// losing the terrain underneath it.
     pub faction_tint_strength: f32,
+
+    // --- full-map hex borders ---------------------------------------------
+    /// Trace each region's hexagon on the finished full map.
+    ///
+    /// The map is 53 hexes of continuous terrain, and until this there was
+    /// nothing on it that said where one ended. Region names give a hex an
+    /// identity but not an extent — which of two names a base near a seam
+    /// belongs to was a question the picture could not answer.
+    ///
+    /// Full map only, and unconditionally: a standalone `/get-map` render *is*
+    /// one hexagon, already bounded by the edge of the image.
+    pub full_map_hex_borders: bool,
+    /// Border width in the *finished* full-map PNG, in pixels.
+    ///
+    /// Absolute for the same reason [`RenderConfig::full_map_icon_px`] and
+    /// [`RenderConfig::full_map_label_px`] are, and it is drawn after the
+    /// downscale for the same reason the labels are: a hairline traced on the
+    /// 63.6 MP composite is a fifth of a pixel by the time anyone sees it.
+    pub full_map_hex_border_px: f32,
+    /// Ink for those borders.
+    ///
+    /// **Opaque, and it has to be.** Every interior edge is traced twice, once
+    /// by each of the two hexes that share it, and the six corners of a hexagon
+    /// are each covered by two of its own segments. A semi-transparent ink
+    /// blends twice in all of those places, so shared edges would come out
+    /// darker than the map's outer silhouette and every corner would bead —
+    /// the same defect `frontline_halo_ratio` documents, at 318 segments
+    /// instead of one contour. Opaque blending is idempotent, so weight is
+    /// controlled with [`RenderConfig::full_map_hex_border_px`] instead.
+    pub hex_border_color: Rgba<u8>,
 }
 
 impl Default for RenderConfig {
@@ -305,6 +335,13 @@ impl Default for RenderConfig {
             colonial_tint: Rgba([74, 106, 62, 255]),
             warden_tint: Rgba([58, 92, 142, 255]),
             faction_tint_strength: 0.5,
+            full_map_hex_borders: true,
+            // A hex finishes about 205 px across on the 2048-wide render, so
+            // this is a graticule rather than a feature of the map: enough to
+            // find a seam when looking for one, thin enough that 53 of them do
+            // not become the picture.
+            full_map_hex_border_px: 1.5,
+            hex_border_color: Rgba([0, 0, 0, 255]),
             frontline: false,
             field_resolution_ratio: 1.0 / 32.0,
             frontline_width_ratio: 5.0 / REGION_WIDTH as f32,
@@ -992,6 +1029,77 @@ pub struct RegionLabel {
     pub max_width: f32,
 }
 
+/// The six corners of one region's hexagon, closed back to the first.
+///
+/// A flat-top hexagon inscribed in the `width` x `height` footprint: leftmost
+/// and rightmost points at half height, the four others a quarter of the width
+/// in from each side. That quarter is not a choice — it is the same number as
+/// [`RenderConfig::column_pitch_ratio`] seen from the other side. Columns are
+/// pitched `3/4` of a width apart *because* the slanted corners occupy the
+/// outer quarters, so a hexagon drawn with any other inset would not lie on the
+/// seam it is meant to mark. `a_border_lands_on_the_seam_it_shares` is that
+/// statement as a test.
+fn hex_outline(origin: (f32, f32), width: f32, height: f32) -> Vec<Point> {
+    let (x, y) = origin;
+    let (quarter, middle) = (width / 4.0, height / 2.0);
+
+    vec![
+        (x, y + middle),
+        (x + quarter, y),
+        (x + width - quarter, y),
+        (x + width, y + middle),
+        (x + width - quarter, y + height),
+        (x + quarter, y + height),
+        (x, y + middle),
+    ]
+}
+
+/// Traces every region's hexagon on the finished full map.
+///
+/// **After the downscale, and before the labels.** After, because the width is
+/// stated in finished pixels and a line resampled to a fifth of itself is a
+/// smudge — the same argument [`draw_region_labels`] makes. Before, because a
+/// name is the layer the map is read by and nothing is drawn over those.
+///
+/// `origins` are the tiles' top-left corners in those same finished pixels.
+///
+/// Two things fall out of [`stroke`] rather than needing code here. It masks by
+/// the canvas's own alpha, so the outer silhouette is traced only as far as the
+/// terrain actually reaches and nothing is painted into the void around the map
+/// — including around a region whose art failed to load, which stays an empty
+/// hex rather than gaining an outline of one. And it clips per segment, so the
+/// cost is the length of 318 short lines rather than anything to do with the
+/// size of the canvas.
+pub fn draw_hex_borders(
+    canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
+    origins: &[(f32, f32)],
+    scale: f32,
+    config: &RenderConfig,
+) {
+    let (width, height) = (
+        REGION_WIDTH as f32 * scale,
+        REGION_HEIGHT as f32 * scale,
+    );
+
+    // `colonial_side` is left empty on purpose: it says which faction holds the
+    // ground either side of a *frontline*, and a hex boundary is not one. Only
+    // `Paint::Flanked` reads it, and this paints flat.
+    let hexes: Vec<Edge> = origins
+        .iter()
+        .map(|&origin| Edge {
+            points: hex_outline(origin, width, height),
+            colonial_side: Vec::new(),
+        })
+        .collect();
+
+    stroke(
+        canvas,
+        &hexes,
+        config.full_map_hex_border_px,
+        Paint::Flat(config.hex_border_color),
+    );
+}
+
 /// Writes region names across the finished full map.
 ///
 /// **After the downscale, never before.** Text drawn on a 1024 px tile and then
@@ -1173,6 +1281,97 @@ mod tests {
             frontline_width_ratio: 6.0 / 64.0,
             ..RenderConfig::default()
         }
+    }
+
+    /// **The geometry check that matters**, because it is the one that can be
+    /// wrong while everything still renders: an inset that is not a quarter of
+    /// the width still draws a plausible hexagon, just one that misses the seam
+    /// by a few pixels on every hex of the map.
+    ///
+    /// Two columns are pitched `column_pitch_ratio` apart with the odd one
+    /// dropped by `odd_column_offset_ratio`, and the claim is that the right
+    /// slanted edge of one hex is the left slanted edge of its neighbour — the
+    /// same two points, not merely nearby ones.
+    #[test]
+    fn a_border_lands_on_the_seam_it_shares() {
+        let config = RenderConfig::default();
+        let (width, height) = (REGION_WIDTH as f32, REGION_HEIGHT as f32);
+
+        let corner = |col: u32, row: u32| {
+            let (x, y) = config.grid_offset(col, row);
+            hex_outline((x as f32, y as f32), width, height)
+        };
+
+        let left = corner(0, 0);
+        let right = corner(1, 0);
+
+        // Right hex's leftmost vertex against the left hex's lower-right corner,
+        // and the right hex's upper-left corner against the left hex's rightmost
+        // vertex. Those two pairs are the shared edge, read from either side.
+        assert_eq!(right[0], left[4], "the shared edge's lower end");
+        assert_eq!(right[1], left[3], "and its upper end");
+    }
+
+    #[test]
+    fn a_hexagon_closes() {
+        let outline = hex_outline((10.0, 20.0), 1024.0, 888.0);
+
+        assert_eq!(outline.len(), 7, "six corners and back to the first");
+        assert_eq!(outline[0], outline[6]);
+    }
+
+    #[test]
+    fn borders_stay_out_of_the_transparent_corners() {
+        let mut transparent = canvas(0);
+
+        draw_hex_borders(&mut transparent, &[(0.0, 0.0)], 64.0 / 1024.0, &config());
+
+        assert!(
+            transparent.pixels().all(|pixel| pixel.0 == [128, 128, 128, 0]),
+            "a border painted into the gap the hexes interlock through would \
+             show up on every seam of the full map"
+        );
+    }
+
+    #[test]
+    fn borders_off_draws_nothing() {
+        let config = RenderConfig {
+            full_map_hex_borders: false,
+            ..config()
+        };
+        let mut opaque = canvas(255);
+        let before = opaque.clone();
+
+        // The flag is read by the caller, so what this pins is that the caller
+        // is the only reader — a border drawn regardless would show up here.
+        if config.full_map_hex_borders {
+            draw_hex_borders(&mut opaque, &[(0.0, 0.0)], 64.0 / 1024.0, &config);
+        }
+
+        assert_eq!(opaque.pixels().collect::<Vec<_>>(), before.pixels().collect::<Vec<_>>());
+    }
+
+    /// Drawn on opaque ground, the outline has to actually darken the edge it
+    /// traces and leave the middle of the hex alone.
+    #[test]
+    fn a_border_marks_the_edge_and_not_the_middle() {
+        let mut opaque = canvas(255);
+        let scale = 64.0 / REGION_WIDTH as f32;
+
+        draw_hex_borders(&mut opaque, &[(0.0, 0.0)], scale, &config());
+
+        let height = (REGION_HEIGHT as f32 * scale).round() as u32;
+
+        // The leftmost vertex sits at half height on x = 0.
+        assert!(
+            opaque.get_pixel(0, height / 2).0[0] < 128,
+            "the hexagon's left point should be inked"
+        );
+        assert_eq!(
+            channels(opaque.get_pixel(32, height / 2)),
+            [128, 128, 128],
+            "and the middle of the hex left alone"
+        );
     }
 
     #[test]

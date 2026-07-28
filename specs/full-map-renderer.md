@@ -192,7 +192,45 @@ rendered, which handles stubs generically without a special case.
    `overlay` the result at its `(x, y)` grid offset. Region-relative sizing means a hex looks
    identical standalone or tiled; only the offset differs.
 4. Downscale the finished composite (see below).
-5. **Write the region names on the downscaled image**, then encode PNG.
+5. **Trace the hex borders on the downscaled image** (see below).
+6. **Write the region names on it**, then encode PNG.
+
+### Hex borders (drawn after the downscale)
+The map is 53 hexes of continuous terrain, and nothing on it said where one ended. A name gives a
+hex an identity but not an extent, so which of two regions a base near a seam belonged to was a
+question the picture could not answer. Each region's hexagon is traced in black:
+`full_map_hex_borders` (default **on**, full map only — a `/get-map` render *is* one hexagon,
+already bounded by the edge of the image).
+
+**After the downscale**, for the same reason the names are: the width is stated in finished pixels
+and a hairline traced on the 63.6 MP composite is a fifth of a pixel by the time anyone sees it.
+**Before the names**, because a border is the frame the map is divided by — it belongs over the
+terrain and the icons — but a black line through a label costs more legibility than it buys.
+
+`full_map_hex_border_px` (default **1.5**) is a graticule rather than a feature of the map: enough
+to find a seam when looking for one, thin enough that 53 of them do not become the picture. 1.0 was
+compared against it on a live shard and rejected — legible over the pale northern terrain, too
+faint over the dark Colonial ground in the south, and a border that fades out over half the map is
+worse than none.
+
+`hex_border_color` is **opaque** and has to be. Every interior edge is traced twice, once by each
+of the two hexes sharing it, and each of a hexagon's six corners is covered by two of its own
+segments — so a semi-transparent ink blends twice in all of those places, making shared edges
+darker than the outer silhouette and beading every corner. This is the same defect
+`specs/frontline.md` documents for the halo, at 318 segments instead of one contour. Weight is
+controlled with the width instead.
+
+The stroke is masked by the canvas's own alpha, which settles two cases without special handling:
+the outer silhouette is traced only as far as the terrain reaches, so nothing is painted into the
+void around the map, and a region whose art failed to load stays an empty gap rather than gaining
+an outline of a hex that is not there.
+
+**The quarter-width inset is not a free parameter.** The hexagon is flat-top with its slanted
+corners a quarter of the width in from each side, which is the same number as `column_pitch_ratio`
+(3/4) seen from the other direction — columns are pitched three quarters of a width apart
+*because* the corners occupy the outer quarters. Any other inset draws a plausible hexagon that
+misses the seam on every hex of the map, which is why the test asserts the shared edge's two
+endpoints are *the same points* read from either neighbour rather than merely close.
 
 ### Region names (drawn after the downscale)
 Each hex carries its `display_name`, centred, so a reader can orient themselves — the whole point
@@ -323,6 +361,12 @@ watching a spinner.
 - Region fetches are concurrent and ETag-revalidated; compositing does not block the runtime.
 - Every hex carries its region name, centred, legible at the finished resolution and over both
   the palest and the darkest terrain; a name never strays onto a neighbouring hex.
+- Every region's boundary is visible, and each border lies *on* the seam it marks rather than
+  beside it — two neighbours' shared edge is one line, not two.
+- Borders are legible over the darkest terrain on the map as well as the palest, and no border is
+  painted outside the terrain — neither into the void around the silhouette nor around a hex whose
+  art is missing.
+- No border crosses a region name.
 - A region whose data failed to fetch is still named.
 - No stats/banner/log furniture is drawn — hexes and their names only.
 - `/full-map` says what it is doing before the render starts, and the finished map replaces that
