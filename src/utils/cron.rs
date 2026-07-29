@@ -17,6 +17,7 @@ use super::map_render::{render_full_map, render_region};
 use super::request_processing::RenderConfig;
 use super::regions::display_name;
 use super::schedule;
+use super::usage;
 
 #[derive(Debug, Error)]
 pub enum CronError {
@@ -103,6 +104,31 @@ impl CronHandler {
 
         self.scheduler.add(job).await?;
         log::info!("started the full-map request retention job");
+
+        Ok(())
+    }
+
+    /// Enforces the retention window `docs/privacy.md` promises for usage
+    /// counts — the same 90 days, on the same daily rhythm.
+    ///
+    /// Its own job rather than a second statement inside the request purge: they
+    /// enforce two separate promises, and a failure in one must not skip the
+    /// other. Ten minutes apart so a slow purge isn't running into the next.
+    pub async fn start_usage_purge_job(&self, db: Database) -> Result<(), JobSchedulerError> {
+        let job = Job::new_async("0 40 3 * * *", move |_uuid, _lock| {
+            let db = db.clone();
+
+            Box::pin(async move {
+                match db.purge_stale_usage().await {
+                    Ok(0) => {}
+                    Ok(n) => log::info!("purged {n} usage rows past the retention window"),
+                    Err(err) => log::warn!("could not purge old usage counts: {err}"),
+                }
+            })
+        })?;
+
+        self.scheduler.add(job).await?;
+        log::info!("started the usage-stats retention job");
 
         Ok(())
     }
@@ -458,6 +484,17 @@ async fn run_report(
                 .await?;
         }
     }
+
+    // Counted here rather than at the top of the tick, so the number means
+    // "reports that reached a channel". A failed render returned above, and a
+    // dormant full-map schedule never got this far — counting either would make
+    // a stalled schedule look like a busy one, which is the opposite of what
+    // this is for.
+    let kind = match job.map_name {
+        Some(_) => usage::SCHEDULED_REPORT,
+        None => usage::SCHEDULED_FULL_MAP,
+    };
+    usage::record(&db, kind, guild.guild_id).await;
 
     Ok(())
 }

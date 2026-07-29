@@ -20,6 +20,11 @@ through webhooks.
 - `/remove-report` — delete a schedule and its webhook (Manage Webhooks).
 - `/schedule-help` — how schedules are timed.
 
+Two more exist for whoever runs the bot, gated on `REVIEWER_IDS` rather than on a Discord
+permission: `/full-map-requests` reviews full-map scheduling applications, and `/usage-stats`
+shows how much each command is being used, by day and by week. Both reply privately. The counts
+behind the second are per server per day and hold no user id — `specs/usage-stats.md`.
+
 ## Self-hosting
 
 The bot is Rust (poise + serenity) and stores its settings in **Postgres**; `compose.yaml` brings

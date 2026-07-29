@@ -10,7 +10,9 @@ Shared machinery every command depends on.
    (`sqlx::migrate!`, so building needs no live database).
 4. `CronHandler::new()` — creates and starts a `tokio_cron_scheduler::JobScheduler`.
 5. Build the poise `Framework`:
-   - `FrameworkOptions { commands: vec![...7 commands...], on_error, .. }`.
+   - `FrameworkOptions { commands: commands::all(), on_error, pre_command, .. }`. `pre_command`
+     is the usage counter (`specs/usage-stats.md`): it runs before the body, so a command that
+     goes on to fail still counts as someone having wanted it.
    - `setup` closure (runs **once**, after the gateway is ready):
      - Set presence to "Watching Foxhole Wars", status idle.
      - `save_maps_cache()` — refresh the per-shard map list cache.
@@ -282,6 +284,14 @@ CREATE TABLE cronjobs (
     job_id      TEXT,               -- scheduler UUID, reissued each process
     UNIQUE (guild, job_name)
 );
+
+CREATE TABLE usage_daily (
+    day      DATE    NOT NULL,   -- UTC
+    command  TEXT    NOT NULL,   -- qualified slash name, or a synthetic delivery name
+    guild_id BIGINT  NOT NULL,   -- Discord snowflake; deliberately not an FK
+    uses     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, command, guild_id)
+);
 ```
 
 Constraints doing real work:
@@ -295,6 +305,13 @@ Constraints doing real work:
 
 `cronjobs.schedule` stores the **original phrase**, not the derived cron expression, so it stays
 readable; `Job::schedule_to_cron` converts it at schedule time.
+
+`usage_daily` is a **tally, not an event log** — a row is a counter for one command in one server
+on one UTC day, incremented in place, and it holds no user id and no time of day. `guild_id` is
+the snowflake rather than a reference to `guilds.id` because a command can be invoked by a server
+that has never run `/set-guild-settings`, so there would be nothing for an FK to point at; the
+cleanup that FK would have given is done explicitly in `Database::delete_guild`. Full detail:
+`specs/usage-stats.md`.
 
 ## On-disk cache (`src/utils/cache.rs`)
 
@@ -365,6 +382,9 @@ See `specs/scheduling.md` for the full subsystem.
   than daily because this is also the recovery path: a shard that was down when its list was
   last fetched has nothing cached, so every autocomplete for it is empty until the next run.
   Daily made that window most of a day.
+- `start_usage_purge_job` — cron `0 40 3 * * *` deletes `usage_daily` rows past 90 days
+  (`specs/usage-stats.md`). Its own job rather than a second statement in the request purge:
+  two separate promises, and a failure in one must not skip the other.
 - `start_log_prune_job` — cron `0 50 3 * * *` deletes log files past `LOG_RETENTION_DAYS`
   (see Logging). Twenty minutes after the request purge, so the two aren't doing filesystem work
   in the same minute.

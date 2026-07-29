@@ -52,6 +52,16 @@ Exactly this, and nothing else:
 - The ID of the review post the bot made for it in the support server, so that post can be
   corrected when the request is decided somewhere else.
 
+**Usage counts**
+
+- A running tally of how many times each command was used, per server, per day. One number per
+  command per day — for example "this server used `/get-map` four times on the 3rd". Scheduled
+  reports that were actually posted are counted the same way.
+- That is the whole record. **No user ID, and no time of day**: the count cannot say who ran
+  anything, when within the day, or in what order, because none of that is written down.
+- It exists so whoever runs the bot can see which features are worth the machine they run on.
+  Kept for 90 days, then deleted.
+
 **Not stored:** message content, member lists, usernames, roles, personal profile data, or
 payment data. The one personal identifier stored anywhere is the Discord user ID of someone who
 submits a full-map request, and only because the answer has to reach them.
@@ -87,6 +97,9 @@ Settings and schedules are keyed to the server, not to any person. When the bot 
 a server its settings are deleted, and every schedule and full-map request belonging to that
 server is deleted with them. Removing a schedule with `/remove-report` deletes both its stored
 row and its webhook straight away.
+
+Usage counts are deleted after 90 days, and a server's counts are deleted along with everything
+else when the bot is removed from it.
 
 Full-map requests that were denied or withdrawn are deleted after 90 days. Approved requests are
 kept for as long as the approval stands, since they are the record of what was approved; once an
