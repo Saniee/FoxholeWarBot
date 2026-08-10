@@ -36,6 +36,10 @@ pub async fn remove_report(
         return Ok(());
     };
 
+    // Remove the database row first. If this fails, the scheduler entry and
+    // webhook remain usable and startup restoration still has a consistent row.
+    data.db.remove_job_entry(guild.id, &schedule_name).await?;
+
     data.cron.unschedule(job.job_id.as_deref()).await;
 
     // Only tear the webhook down once nothing else is using it.
@@ -44,14 +48,12 @@ pub async fn remove_report(
         .get_jobs_for_guild(guild.id)
         .await?
         .into_iter()
-        .filter(|other| other.id != job.id && other.webhook_url == job.webhook_url)
+        .filter(|other| other.webhook_url == job.webhook_url)
         .count();
 
     if remaining == 0 {
         delete_webhook(ctx, &job.webhook_url).await;
     }
-
-    data.db.remove_job_entry(guild.id, &schedule_name).await?;
 
     ctx.say(format!("Scheduled report `{schedule_name}` was removed."))
         .await?;

@@ -64,14 +64,13 @@ interaction, so a command has to trigger it regardless):
 
 - **Applicant:** `/request-full-map-schedule` — opens the application modal and records a pending
   request. `/schedule-report`, when a guild targets the full map without approval, does **not**
-  hard-refuse: it points the user at this command (and can open the modal itself). Available to
-  members who
-  can create schedules (same permission gate as `/schedule-report`, per the scheduling overhaul).
-- **Reviewer (bot owner / designated admin):** `/full-map-requests` with subcommands:
+  hard-refuse: it points the user at this command. Available to members who can create schedules
+  (same permission gate as `/schedule-report`, per the scheduling overhaul).
+- **Reviewer (designated reviewer):** `/full-map-requests` with subcommands:
   - `list` — show pending requests (id, guild, size, cadence, use case).
   - `approve <id>` — set the guild's `full_map_approved`, mark the request approved, notify the
-    requester; the guild can then create the schedule.
-  - `deny <id> [reason]` — mark denied, notify the requester with the reason.
+    requester in the nominated report channel; the guild can then create the schedule.
+  - `deny <id>` — mark denied, notify the requester in the nominated report channel.
 
 ### Dedicated requests channel (support Discord)
 Every submitted request is also **posted to a dedicated channel on the bot's support Discord** —
@@ -95,30 +94,28 @@ fallback/scriptable path over the same actions (both write the same `full_map_re
    row in `full_map_requests`.
 2. The request is posted to `REQUESTS_CHANNEL_ID` (embed + Approve/Deny buttons) and is visible
    via `/full-map-requests list`.
-3. **Approve** (button or command) → `full_map_approved = true`, requester notified, guild creates
-   the schedule. **Deny** → requester notified with reason; no schedule.
+3. **Approve** (button or command) → `full_map_approved = true`, requester notified in the
+   nominated report channel, and the guild can create the schedule. **Deny** → requester notified
+   in that channel; no schedule.
 4. The gate is re-checked at tick time (below), so approval can be revoked later.
 
-Form delivery (pick at build time):
-- **In-Discord modal** (poise/serenity modal, opened by the applicant command) — lowest friction,
-  data flows straight into the requests table. Recommended.
-- **External form** (e.g. a linked web form) — simpler to host, but needs a manual/webhook step to
-  get the answers back to the bot. Fallback.
+Form delivery is an **in-Discord modal** (poise/serenity modal, opened by the applicant command).
+It is the lowest-friction path and sends answers straight into the requests table.
 
 ### Form fields
 Auto-filled by the bot (not asked):
-- Guild name + guild ID
+- Guild ID
 - Guild member count — **review context only**, snapshotted at request time; it grants nothing
-- Requesting user (ID + guild roles, to confirm they can speak for the guild)
+- Requesting user ID
 
 Asked of the requester:
-1. **Map target & cadence** — confirm "full map" and the requested schedule (e.g. "every 2h",
-   "daily 18:00 UTC").
+1. **Cadence** — the requested schedule (e.g. "every 2h", "daily 18:00 UTC"). The target is
+   always the whole map for this command.
 2. **Report channel** — where it will post.
 3. **Use case** — one line on why a recurring full-map is needed (e.g. regiment ops planning).
 4. **Expected audience** — rough size/who sees it.
 5. **Contact** — optional Discord handle for follow-up.
-6. **Acknowledgement** (required checkbox/confirm):
+6. **Acknowledgement** (required typed confirmation):
    - Understands this is a free community tool with no uptime guarantee.
    - Understands renders may be rate-limited or paused to protect infra.
    - Understands approval can be revoked.
@@ -172,22 +169,22 @@ on a settled decision is how one gets overturned by a misclick.
 ALTER TABLE guilds ADD COLUMN full_map_approved    BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE guilds ADD COLUMN full_map_approved_at TIMESTAMPTZ;
 
--- pending/approved/denied application queue
+-- pending/approved/denied/withdrawn application queue
 CREATE TABLE full_map_requests (
     id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     guild         BIGINT NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
     requested_by  BIGINT NOT NULL,              -- Discord user id
     member_count  INTEGER,                      -- snapshot, review context only
-    map_target    TEXT   NOT NULL,              -- "full-map"
     cadence       TEXT   NOT NULL,              -- requested schedule phrase
     channel_id    BIGINT NOT NULL,
     use_case      TEXT,
     audience      TEXT,
     contact       TEXT,
-    status        TEXT   NOT NULL DEFAULT 'pending',  -- pending | approved | denied
+    status        TEXT   NOT NULL DEFAULT 'pending',  -- pending | approved | denied | withdrawn
     reviewed_by   BIGINT,
     reviewed_at   TIMESTAMPTZ,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    message_id    BIGINT
 );
 ```
 (Donation/expiry columns like `premium_until` are intentionally omitted until a paid tier is

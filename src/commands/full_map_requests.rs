@@ -42,9 +42,9 @@ async fn list(ctx: Context<'_>) -> Result<(), Error> {
     // One embed each rather than a summary table: the free-text answers are the
     // whole reason to look, and a table would truncate exactly them. Discord
     // caps a message at 10 embeds; more than that pending is its own problem.
-    let mut reply = poise::CreateReply::default().ephemeral(true).content(
-        format!("{} request(s) waiting.", pending.len()),
-    );
+    let mut reply = poise::CreateReply::default()
+        .ephemeral(true)
+        .content(format!("{} request(s) waiting.", pending.len()));
 
     for request in pending.iter().take(10) {
         reply = reply.embed(review::request_embed(request, None));
@@ -105,7 +105,7 @@ async fn revoke(
         .revoke_full_map_approval(guild.id, ctx.author().id.get() as i64)
         .await?
     {
-        Revoked::Withdrawn(request) => request,
+        Revoked::Withdrawn(request) => *request,
         Revoked::NotApproved => {
             ctx.say("That server isn't approved, so there's nothing to withdraw.")
                 .await?;

@@ -1,7 +1,7 @@
 //! Scheduled map reports. See `specs/scheduling.md`.
 
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use poise::serenity_prelude as serenity;
 use thiserror::Error;
@@ -14,9 +14,10 @@ use super::entitlement::{self, FullMapScheduling};
 use super::format_timestamp;
 use super::logging::{self, LogFiles};
 use super::map_render::{render_full_map, render_region};
-use super::request_processing::RenderConfig;
 use super::regions::display_name;
+use super::request_processing::RenderConfig;
 use super::schedule;
+use super::usage;
 
 #[derive(Debug, Error)]
 pub enum CronError {
@@ -103,6 +104,31 @@ impl CronHandler {
 
         self.scheduler.add(job).await?;
         log::info!("started the full-map request retention job");
+
+        Ok(())
+    }
+
+    /// Enforces the retention window `docs/privacy.md` promises for usage
+    /// counts — the same 90 days, on the same daily rhythm.
+    ///
+    /// Its own job rather than a second statement inside the request purge: they
+    /// enforce two separate promises, and a failure in one must not skip the
+    /// other. Ten minutes apart so a slow purge isn't running into the next.
+    pub async fn start_usage_purge_job(&self, db: Database) -> Result<(), JobSchedulerError> {
+        let job = Job::new_async("0 40 3 * * *", move |_uuid, _lock| {
+            let db = db.clone();
+
+            Box::pin(async move {
+                match db.purge_stale_usage().await {
+                    Ok(0) => {}
+                    Ok(n) => log::info!("purged {n} usage rows past the retention window"),
+                    Err(err) => log::warn!("could not purge old usage counts: {err}"),
+                }
+            })
+        })?;
+
+        self.scheduler.add(job).await?;
+        log::info!("started the usage-stats retention job");
 
         Ok(())
     }
@@ -459,6 +485,17 @@ async fn run_report(
         }
     }
 
+    // Counted here rather than at the top of the tick, so the number means
+    // "reports that reached a channel". A failed render returned above, and a
+    // dormant full-map schedule never got this far — counting either would make
+    // a stalled schedule look like a busy one, which is the opposite of what
+    // this is for.
+    let kind = match job.map_name {
+        Some(_) => usage::SCHEDULED_REPORT,
+        None => usage::SCHEDULED_FULL_MAP,
+    };
+    usage::record(&db, kind, guild.guild_id).await;
+
     Ok(())
 }
 
@@ -480,8 +517,10 @@ async fn post_placeholder(
     // map doesn't read ten seconds as a broken bot.
     let detail = match &job.map_name {
         Some(_) => "Fetching the latest war data and rendering the map…",
-        None => "Fetching the latest war data for all 53 regions and building the world map. \
-                 This takes a few seconds…",
+        None => {
+            "Fetching the latest war data for all 53 regions and building the world map. \
+                 This takes a few seconds…"
+        }
     };
 
     let embed = serenity::CreateEmbed::new()
@@ -586,7 +625,10 @@ async fn go_dormant(
     // between that and never having been approved at all, which is the one thing
     // this notice exists to settle.
     let embed = serenity::CreateEmbed::new()
-        .title(format!("Full-Map Approval Withdrawn: {}", job.schedule_name))
+        .title(format!(
+            "Full-Map Approval Withdrawn: {}",
+            job.schedule_name
+        ))
         .color((255, 170, 0))
         .description(
             "This server's approval to run **scheduled** full-map reports has been withdrawn, \

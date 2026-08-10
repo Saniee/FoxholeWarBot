@@ -130,11 +130,7 @@ pub fn request_embed(request: &FullMapRequest, guild_name: Option<&str>) -> sere
         .title(title)
         .color(color)
         .field("Server", format!("`{}`", request.guild_id), true)
-        .field(
-            "Requested by",
-            format!("<@{}>", request.requested_by),
-            true,
-        )
+        .field("Requested by", format!("<@{}>", request.requested_by), true)
         // Context, not an input. Stated as such so a reviewer doesn't start
         // treating it as a threshold the bot is quietly applying.
         .field(
@@ -301,7 +297,10 @@ pub async fn refresh_post(http: &serenity::Http, request: &FullMapRequest) {
         .edit_message(http, serenity::MessageId::new(message_id as u64), edit)
         .await
     {
-        log::warn!("could not update the post for request #{}: {err}", request.id);
+        log::warn!(
+            "could not update the post for request #{}: {err}",
+            request.id
+        );
     }
 }
 
@@ -345,7 +344,12 @@ pub async fn handle_button(
     // the person who could have filed it — but the check below is what makes
     // that true rather than merely likely.
     if !matches!(action, Action::Withdraw) && !is_reviewer(interaction.user.id) {
-        reply(ctx, interaction, "Only a reviewer can decide these requests.").await?;
+        reply(
+            ctx,
+            interaction,
+            "Only a reviewer can decide these requests.",
+        )
+        .await?;
         return Ok(true);
     }
 
@@ -402,7 +406,10 @@ pub async fn handle_button(
     };
 
     interaction
-        .create_response(ctx, serenity::CreateInteractionResponse::UpdateMessage(updated))
+        .create_response(
+            ctx,
+            serenity::CreateInteractionResponse::UpdateMessage(updated),
+        )
         .await?;
 
     // A withdrawal happens on the applicant's own ephemeral reply, so the

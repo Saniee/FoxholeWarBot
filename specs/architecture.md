@@ -10,7 +10,9 @@ Shared machinery every command depends on.
    (`sqlx::migrate!`, so building needs no live database).
 4. `CronHandler::new()` — creates and starts a `tokio_cron_scheduler::JobScheduler`.
 5. Build the poise `Framework`:
-   - `FrameworkOptions { commands: vec![...7 commands...], on_error, .. }`.
+   - `FrameworkOptions { commands: commands::all(), on_error, pre_command, .. }`. `pre_command`
+     is the usage counter (`specs/usage-stats.md`): it runs before the body, so a command that
+     goes on to fail still counts as someone having wanted it.
    - `setup` closure (runs **once**, after the gateway is ready):
      - Set presence to "Watching Foxhole Wars", status idle.
      - `save_maps_cache()` — refresh the per-shard map list cache.
@@ -268,19 +270,52 @@ CREATE TABLE guilds (
     guild_id            BIGINT  NOT NULL UNIQUE,
     shard               TEXT    NOT NULL,   -- resolved API base URL
     shard_name          TEXT    NOT NULL,   -- "Able" | "Baker" | "Charlie"
-    show_command_output BOOLEAN NOT NULL DEFAULT FALSE
+    show_command_output BOOLEAN NOT NULL DEFAULT FALSE,
+    full_map_faction_tint BOOLEAN NOT NULL DEFAULT FALSE,
+    full_map_approved BOOLEAN NOT NULL DEFAULT FALSE,
+    full_map_approved_at TIMESTAMPTZ,
+    timezone            TEXT NOT NULL DEFAULT 'UTC',
+    frontline           BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE cronjobs (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     guild       BIGINT  NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
     job_name    TEXT    NOT NULL,
-    schedule    TEXT    NOT NULL,   -- the user's english phrase, converted on use
+    schedule    TEXT    NOT NULL,   -- generated cron, or a legacy phrase
     webhook_url TEXT    NOT NULL,
-    map_name    TEXT    NOT NULL,
+    map_name    TEXT,               -- NULL means whole-world map
     draw_text   BOOLEAN NOT NULL DEFAULT FALSE,
     job_id      TEXT,               -- scheduler UUID, reissued each process
+    schedule_label TEXT,
+    timezone    TEXT NOT NULL DEFAULT 'UTC',
+    dormant_notified BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (guild, job_name)
+);
+
+CREATE TABLE usage_daily (
+    day      DATE    NOT NULL,   -- UTC
+    command  TEXT    NOT NULL,   -- qualified slash name, or a synthetic delivery name
+    guild_id BIGINT  NOT NULL,   -- Discord snowflake; deliberately not an FK
+    uses     INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, command, guild_id)
+);
+
+CREATE TABLE full_map_requests (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    guild         BIGINT NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+    requested_by  BIGINT NOT NULL,
+    member_count  INTEGER,
+    cadence       TEXT NOT NULL,
+    channel_id    BIGINT NOT NULL,
+    use_case      TEXT,
+    audience      TEXT,
+    contact       TEXT,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    reviewed_by   BIGINT,
+    reviewed_at   TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    message_id    BIGINT
 );
 ```
 
@@ -293,8 +328,15 @@ Constraints doing real work:
 - `BIGINT` throughout for snowflakes: Postgres `INTEGER` is 32-bit and would truncate a Discord
   id. SQLite's is 64-bit, which is why this was invisible before.
 
-`cronjobs.schedule` stores the **original phrase**, not the derived cron expression, so it stays
-readable; `Job::schedule_to_cron` converts it at schedule time.
+`cronjobs.schedule` stores the generated cron expression for new schedules; legacy rows may retain
+the original phrase and are still converted by `Job::schedule_to_cron` at restore time.
+
+`usage_daily` is a **tally, not an event log** — a row is a counter for one command in one server
+on one UTC day, incremented in place, and it holds no user id and no time of day. `guild_id` is
+the snowflake rather than a reference to `guilds.id` because a command can be invoked by a server
+that has never run `/set-guild-settings`, so there would be nothing for an FK to point at; the
+cleanup that FK would have given is done explicitly in `Database::delete_guild`. Full detail:
+`specs/usage-stats.md`.
 
 ## On-disk cache (`src/utils/cache.rs`)
 
@@ -365,6 +407,9 @@ See `specs/scheduling.md` for the full subsystem.
   than daily because this is also the recovery path: a shard that was down when its list was
   last fetched has nothing cached, so every autocomplete for it is empty until the next run.
   Daily made that window most of a day.
+- `start_usage_purge_job` — cron `0 40 3 * * *` deletes `usage_daily` rows past 90 days
+  (`specs/usage-stats.md`). Its own job rather than a second statement in the request purge:
+  two separate promises, and a failure in one must not skip the other.
 - `start_log_prune_job` — cron `0 50 3 * * *` deletes log files past `LOG_RETENTION_DAYS`
   (see Logging). Twenty minutes after the request purge, so the two aren't doing filesystem work
   in the same minute.

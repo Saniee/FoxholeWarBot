@@ -784,7 +784,10 @@ enum Paint {
     /// Each faction's colour on its own side of the line, split down the
     /// segment. See [`Edge::colonial_side`] — the side comes from the field, and
     /// the sign test below is the geometric half of that same convention.
-    Flanked { colonial: Rgba<u8>, warden: Rgba<u8> },
+    Flanked {
+        colonial: Rgba<u8>,
+        warden: Rgba<u8>,
+    },
 }
 
 /// Paints polylines at a given width, masked by the canvas's own alpha.
@@ -797,12 +800,7 @@ enum Paint {
 /// Coverage comes from the distance to the segment rather than from a scanline,
 /// which antialiases the edges for free and costs work proportional to the
 /// line's length rather than to the canvas.
-fn stroke(
-    canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>,
-    lines: &[Edge],
-    width: f32,
-    paint: Paint,
-) {
+fn stroke(canvas: &mut ImageBuffer<Rgba<u8>, Vec<u8>>, lines: &[Edge], width: f32, paint: Paint) {
     let radius = (width / 2.0).max(0.5);
     let canvas_w = canvas.width() as i64;
     let canvas_h = canvas.height() as i64;
@@ -836,8 +834,7 @@ fn stroke(
 
             for y in min_y..=max_y {
                 for x in min_x..=max_x {
-                    let distance =
-                        distance_to_segment((x as f32 + 0.5, y as f32 + 0.5), from, to);
+                    let distance = distance_to_segment((x as f32 + 0.5, y as f32 + 0.5), from, to);
                     let coverage = (radius + 0.5 - distance).clamp(0.0, 1.0);
 
                     if coverage <= 0.0 {
@@ -849,8 +846,8 @@ fn stroke(
                         Paint::Flanked { colonial, warden } => {
                             // Positive is the `(-dy, dx)` side, which is the
                             // side `Edge::colonial_side` is stated about.
-                            let side = dx * (y as f32 + 0.5 - from.1)
-                                - dy * (x as f32 + 0.5 - from.0);
+                            let side =
+                                dx * (y as f32 + 0.5 - from.1) - dy * (x as f32 + 0.5 - from.0);
 
                             if (side > 0.0) == colonial_side {
                                 colonial
@@ -861,8 +858,8 @@ fn stroke(
                     };
 
                     let pixel = canvas.get_pixel_mut(x as u32, y as u32);
-                    let weight = coverage * (pixel.0[3] as f32 / 255.0)
-                        * (color.0[3] as f32 / 255.0);
+                    let weight =
+                        coverage * (pixel.0[3] as f32 / 255.0) * (color.0[3] as f32 / 255.0);
 
                     for channel in 0..3 {
                         let base = pixel.0[channel] as f32;
@@ -932,10 +929,7 @@ fn draw_icons(
     let icon_size = config.icon_size(canvas_w);
 
     for item in &dynamic_data.map_items {
-        let path = format!(
-            "./assets/MapIcons/{}{:?}.png",
-            item.icon_type, item.team_id
-        );
+        let path = format!("./assets/MapIcons/{}{:?}.png", item.icon_type, item.team_id);
 
         // A missing icon is expected whenever Foxhole ships a new structure type
         // before we ship its art; fall back rather than failing the whole render.
@@ -1076,10 +1070,7 @@ pub fn draw_hex_borders(
     scale: f32,
     config: &RenderConfig,
 ) {
-    let (width, height) = (
-        REGION_WIDTH as f32 * scale,
-        REGION_HEIGHT as f32 * scale,
-    );
+    let (width, height) = (REGION_WIDTH as f32 * scale, REGION_HEIGHT as f32 * scale);
 
     // `colonial_side` is left empty on purpose: it says which faction holds the
     // ground either side of a *frontline*, and a hex boundary is not one. Only
@@ -1327,7 +1318,9 @@ mod tests {
         draw_hex_borders(&mut transparent, &[(0.0, 0.0)], 64.0 / 1024.0, &config());
 
         assert!(
-            transparent.pixels().all(|pixel| pixel.0 == [128, 128, 128, 0]),
+            transparent
+                .pixels()
+                .all(|pixel| pixel.0 == [128, 128, 128, 0]),
             "a border painted into the gap the hexes interlock through would \
              show up on every seam of the full map"
         );
@@ -1348,7 +1341,10 @@ mod tests {
             draw_hex_borders(&mut opaque, &[(0.0, 0.0)], 64.0 / 1024.0, &config);
         }
 
-        assert_eq!(opaque.pixels().collect::<Vec<_>>(), before.pixels().collect::<Vec<_>>());
+        assert_eq!(
+            opaque.pixels().collect::<Vec<_>>(),
+            before.pixels().collect::<Vec<_>>()
+        );
     }
 
     /// Drawn on opaque ground, the outline has to actually darken the edge it
@@ -1682,4 +1678,3 @@ mod tests {
         assert!((finished - config.full_map_frontline_px).abs() < 0.5);
     }
 }
-

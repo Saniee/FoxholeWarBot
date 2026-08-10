@@ -16,6 +16,7 @@ const WEBHOOK_NAME: &str = "Scheduled Map Report Webhook";
 ///
 /// Gated on Manage Webhooks: the command creates and deletes webhooks, so that's
 /// the permission that actually matches what it does (QA S-4).
+#[allow(clippy::too_many_arguments)]
 #[poise::command(
     slash_command,
     guild_only,
@@ -39,8 +40,9 @@ pub async fn schedule_report(
     #[autocomplete = "autocomplete_timezone"]
     timezone: Option<String>,
     #[description = "Which day, for a weekly report. Default Monday."] day: Option<Day>,
-    #[description = "Only for Custom: a cron expression or a plain-English phrase."]
-    custom: Option<String>,
+    #[description = "Only for Custom: a cron expression or a plain-English phrase."] custom: Option<
+        String,
+    >,
 ) -> Result<(), Error> {
     let Some(guild) = guild_settings(ctx).await? else {
         return Ok(());
@@ -145,7 +147,7 @@ pub async fn schedule_report(
         return Ok(());
     }
 
-    let webhook = match resolve_webhook(ctx, &report_channel).await {
+    let (webhook, webhook_created) = match resolve_webhook(ctx, &report_channel).await {
         Ok(webhook) => webhook,
         // Missing Manage Webhooks used to panic here (QA C-11).
         Err(err) => {
@@ -159,7 +161,15 @@ pub async fn schedule_report(
         }
     };
 
-    let webhook_url = webhook.url()?;
+    let webhook_url = match webhook.url() {
+        Ok(url) => url,
+        Err(err) => {
+            if webhook_created {
+                delete_webhook(ctx, &webhook).await;
+            }
+            return Err(err.into());
+        }
+    };
 
     let job = ReportJob {
         guild_row_id: guild.id,
@@ -182,6 +192,9 @@ pub async fn schedule_report(
         Ok(uuid) => uuid,
         Err(err) => {
             log::warn!("could not schedule '{schedule_name}': {err}");
+            if webhook_created {
+                delete_webhook(ctx, &webhook).await;
+            }
             ctx.say("The scheduler rejected that schedule. Check `/schedule-help` and try again.")
                 .await?;
             return Ok(());
@@ -206,6 +219,9 @@ pub async fn schedule_report(
     if let Err(err) = persisted {
         // Roll the scheduler back so we don't post reports nothing knows about.
         data.cron.unschedule(Some(&uuid.to_string())).await;
+        if webhook_created {
+            delete_webhook(ctx, &webhook).await;
+        }
         log::warn!("could not persist '{schedule_name}': {err}");
         ctx.say("Couldn't save that schedule. Nothing was changed — please try again.")
             .await?;
@@ -236,7 +252,7 @@ pub async fn schedule_report(
 async fn resolve_webhook(
     ctx: Context<'_>,
     channel: &serenity::GuildChannel,
-) -> Result<serenity::Webhook, serenity::Error> {
+) -> Result<(serenity::Webhook, bool), serenity::Error> {
     let http = ctx.serenity_context().http.clone();
 
     let existing = channel
@@ -246,12 +262,19 @@ async fn resolve_webhook(
         .find(|webhook| webhook.name.as_deref() == Some(WEBHOOK_NAME));
 
     match existing {
-        Some(webhook) => Ok(webhook),
+        Some(webhook) => Ok((webhook, false)),
         None => {
-            channel
+            let webhook = channel
                 .create_webhook(http, serenity::CreateWebhook::new(WEBHOOK_NAME))
-                .await
+                .await?;
+            Ok((webhook, true))
         }
+    }
+}
+
+async fn delete_webhook(ctx: Context<'_>, webhook: &serenity::Webhook) {
+    if let Err(err) = webhook.delete(ctx.serenity_context().http.clone()).await {
+        log::warn!("could not roll back the newly created report webhook: {err}");
     }
 }
 

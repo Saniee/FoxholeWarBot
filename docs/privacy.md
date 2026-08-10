@@ -21,6 +21,11 @@ Short version: the bot stores per-server settings and nothing about you personal
   free-text answers given in the form (requested schedule, use case, expected audience, and an
   optional contact handle), plus where the request stands and the ID of the bot's own review post
   for it. See below.
+- **Usage counts.** How many times each command was used, per server, per day — a running total
+  and nothing more. No user ID and no time of day are recorded, so it can say "this server used
+  `/full-map` four times on the 3rd" and can never say who, when in the day, or in what order.
+  Scheduled reports that were posted are counted the same way. It exists to show whoever runs the
+  bot which features are worth keeping, and it's deleted after 90 days.
 
 That's the complete list. The full breakdown, field by field, is in the
 [Terms of Service](tos).
@@ -60,6 +65,10 @@ The options passed to a command (a region name, a frequency) are used to build t
 and then discarded. The exceptions are `/schedule-report` and `/request-full-map-schedule`, which
 by definition have to store what you asked for — those fields are listed above.
 
+The **name** of the command is counted, as described above, and its options are not. "Someone in
+this server ran `/get-map`" is added to a daily total; which region they asked for is not part of
+it.
+
 # [](#header-6)Cached game data
 
 Responses from the Foxhole War API are cached on disk and re-validated against the API rather
@@ -81,8 +90,10 @@ messages at all.
 
 # [](#header-8)Retention and removal
 
-Removing the bot from a server deletes that server's settings, all of its schedules, and any
-full-map requests it filed. Deleting a single schedule with `/remove-report` removes its stored
+Usage counts are deleted after 90 days.
+
+Removing the bot from a server deletes that server's settings, all of its schedules, its usage
+counts, and any full-map requests it filed. Deleting a single schedule with `/remove-report` removes its stored
 row and its webhook immediately.
 
 Full-map requests that were **denied or withdrawn** are deleted after 90 days. Approved requests

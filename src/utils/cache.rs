@@ -126,7 +126,10 @@ pub async fn refresh_maps(shard: Shard) -> ShardHealth {
     };
 
     if resp.status() != StatusCode::OK {
-        log::warn!("shard {shard_name} returned {} for the map list", resp.status());
+        log::warn!(
+            "shard {shard_name} returned {} for the map list",
+            resp.status()
+        );
         return ShardHealth::Unavailable(resp.status());
     }
 
@@ -184,7 +187,10 @@ pub async fn save_maps_cache() {
             ShardHealth::Ready(regions) => {
                 log::debug!("shard {} lists {regions} regions", shard.as_str())
             }
-            health => log::warn!("shard {} is not usable right now: {health:?}", shard.as_str()),
+            health => log::warn!(
+                "shard {} is not usable right now: {health:?}",
+                shard.as_str()
+            ),
         }
     }
 }
@@ -261,5 +267,8 @@ pub async fn load_static_cache(map_name: &str, shard: &str) -> Option<StaticMapD
 }
 
 pub async fn load_war_report(map_name: &str, shard: &str) -> Option<WarReport> {
-    read_json(format!("./cache/war_reports/Report_{map_name}-{shard}.json")).await
+    read_json(format!(
+        "./cache/war_reports/Report_{map_name}-{shard}.json"
+    ))
+    .await
 }

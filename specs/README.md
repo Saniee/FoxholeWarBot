@@ -14,10 +14,15 @@ shipped bot rather than the thing being replaced.
   `frontline-activity.md`; the full-map renderer, the scheduling gate and structured schedule
   input emptied it at 2.0, and the frontline overlay and the territory tint have since shipped and
   joined them.
+- `specs/future-plans.md` — ideas intentionally deferred until usage or other evidence justifies
+  implementation. These are not active feature specifications.
 - `specs/architecture.md` — cross-cutting concerns shared by every command (shards, caching,
   database schema, rendering pipeline, scheduler, command framework).
 - `specs/postgres.md`, `specs/rendering-placement.md`, `specs/scheduling.md` — cross-cutting
   subsystem specs, each shipped.
+- `specs/usage-stats.md` — the usage counters and `/usage-stats`. Both a feature spec and the
+  record of why the counts are a tally rather than an activity log, which is the part that
+  constrains anything built on them later.
 - `specs/docs-site.md` — the GitHub Pages site (ToS, Privacy, FAQ). Its stored-data list is the
   database schema in prose, so a `migrations/` change is also a `docs/` change.
 - `specs/qa-report.md` — the QA sweep of the pre-rewrite code. All findings are resolved; it's

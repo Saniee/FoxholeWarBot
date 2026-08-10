@@ -31,6 +31,8 @@ recurring scheduled map reports via webhooks.
 - `src/utils/schedule.rs` — frequency choices → cron, IANA timezones, fire-time previews
 - `src/utils/request_processing.rs` — `RenderConfig` + per-region compositing
 - `src/utils/regions.rs` — API region id → display name table
+- `src/utils/usage.rs` — the usage counters: what gets counted, under what name, and the one
+  place a failed count is swallowed
 - `src/utils/api_definitions/foxhole.rs` — Foxhole War API response types
 - `migrations/` — schema, embedded and applied at startup via `sqlx::migrate!`
 - `assets/Maps/` — per-hex background TGA images; `assets/MapIcons/` — icon PNGs
@@ -94,6 +96,10 @@ recurring scheduled map reports via webhooks.
 - Faction icons are **generated** from the neutral one by linear burn (`--derive-icons`), because
   upstream ships neutral art and tints it in game. Add a new structure type's `{iconType}None.png`
   and let the script write the two faction files; never hand-tint one.
+- Usage counts are a **tally, never an event log** — one counter per command per server per UTC
+  day, no user id and no time of day (`specs/usage-stats.md`). That shape is what keeps
+  `docs/privacy.md`'s claim about personal identifiers true; anything that would record *when*
+  or *who* is a different feature and a different privacy policy.
 - The stored-data list in `docs/tos.md` and `docs/privacy.md` is the database schema in prose:
   a change under `migrations/` is also a `docs/` change, in the same commit
   (see `specs/docs-site.md`).

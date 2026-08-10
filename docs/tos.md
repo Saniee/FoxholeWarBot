@@ -31,8 +31,9 @@ Exactly this, and nothing else:
 
 **Per scheduled report**
 
-- The schedule's name, the timing expression the bot runs it on, and the same cadence in words
-  (e.g. "every 6 hours — 03:30, 09:30, 15:30, 21:30").
+- The schedule's name, the timing expression the bot runs it on, and, for schedules created after
+  structured scheduling shipped, the same cadence in words (e.g. "every 6 hours — 03:30, 09:30,
+  15:30, 21:30"). Older schedules may have no separate cadence label.
 - The timezone the schedule is read in, recorded when it was created so that changing the
   server's default never moves an existing report.
 - The webhook URL the report posts to.
@@ -51,6 +52,16 @@ Exactly this, and nothing else:
 - Whether the request is pending, approved, denied or withdrawn, who decided it, and when.
 - The ID of the review post the bot made for it in the support server, so that post can be
   corrected when the request is decided somewhere else.
+
+**Usage counts**
+
+- A running tally of how many times each command was used, per server, per day. One number per
+  command per day — for example "this server used `/get-map` four times on the 3rd". Scheduled
+  reports that were actually posted are counted the same way.
+- That is the whole record. **No user ID, and no time of day**: the count cannot say who ran
+  anything, when within the day, or in what order, because none of that is written down.
+- It exists so whoever runs the bot can see which features are worth the machine they run on.
+  Kept for 90 days, then deleted.
 
 **Not stored:** message content, member lists, usernames, roles, personal profile data, or
 payment data. The one personal identifier stored anywhere is the Discord user ID of someone who
@@ -87,6 +98,9 @@ Settings and schedules are keyed to the server, not to any person. When the bot 
 a server its settings are deleted, and every schedule and full-map request belonging to that
 server is deleted with them. Removing a schedule with `/remove-report` deletes both its stored
 row and its webhook straight away.
+
+Usage counts are deleted after 90 days, and a server's counts are deleted along with everything
+else when the bot is removed from it.
 
 Full-map requests that were denied or withdrawn are deleted after 90 days. Approved requests are
 kept for as long as the approval stands, since they are the record of what was approved; once an

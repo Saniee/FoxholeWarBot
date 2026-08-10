@@ -1,5 +1,5 @@
 -- Fresh Postgres schema for FoxholeWarBot.
--- See specs/active/postgres-migration.md. No data is carried over from the old
+-- See specs/postgres.md. No data is carried over from the old
 -- SQLite `database.db`; guilds re-run /set-guild-settings and re-create schedules.
 
 CREATE TABLE guilds (

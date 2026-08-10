@@ -208,7 +208,7 @@ pub enum Revoked {
     NotApproved,
     /// Approval withdrawn. Carries the closed request when there is one, so its
     /// review post can be brought back into line.
-    Withdrawn(Option<FullMapRequest>),
+    Withdrawn(Box<Option<FullMapRequest>>),
 }
 
 /// The answers from the application modal, plus what the bot fills in itself.
@@ -234,6 +234,52 @@ const REQUEST_SELECT: &str = "SELECT r.id, r.guild, g.guild_id, r.requested_by, 
                                      EXTRACT(EPOCH FROM r.created_at)::BIGINT AS created_at \
                               FROM full_map_requests r \
                               JOIN guilds g ON g.id = r.guild";
+
+/// One row of a usage summary: a bucket, and either one command's tally in it or
+/// — when `command` is `None` — the bucket's own total.
+///
+/// The `None` row is not a convenience. `uses` can be summed across commands but
+/// `servers` cannot: a server that ran three different commands on Tuesday is one
+/// server, and adding the per-command distinct counts would report three. The
+/// grouping set that produces this row is the only place that count is right.
+///
+/// `bucket` is text rather than a date for the same reason [`FullMapRequest`]'s
+/// timestamps are epoch seconds: it keeps `sqlx` off a datetime feature. Here it
+/// is also what gets printed, so formatting it in SQL means it is formatted once.
+#[derive(Debug, Clone, FromRow)]
+pub struct UsageBucket {
+    /// `YYYY-MM-DD` — the day, or the Monday the week starts on.
+    pub bucket: String,
+    /// The command counted, or `None` for the bucket's total across all of them.
+    pub command: Option<String>,
+    pub uses: i64,
+    /// Distinct servers, over exactly the rows this row summarises.
+    pub servers: i64,
+}
+
+/// Whether a usage summary is bucketed by day or by week.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UsagePeriod {
+    Daily,
+    Weekly,
+}
+
+/// The standing picture: what exists right now, as opposed to what happened.
+///
+/// Read live from `guilds` and `cronjobs` rather than counted into
+/// `usage_daily`, because these are not events. "Nine schedules exist" is a fact
+/// about the present that a tally of the past can only approximate.
+#[derive(Debug, Clone, FromRow)]
+pub struct UsageOverview {
+    /// Servers that have run `/set-guild-settings`. Not the same as the servers
+    /// the bot is in — a server that never set a shard has no row here.
+    pub guilds: i64,
+    pub approved_guilds: i64,
+    pub schedules: i64,
+    /// Of those, the ones rendering the whole world map (`map_name IS NULL`).
+    pub full_map_schedules: i64,
+    pub scheduling_guilds: i64,
+}
 
 #[derive(Clone)]
 pub struct Database {
@@ -323,12 +369,27 @@ impl Database {
     }
 
     /// Cascades to the guild's `cronjobs` rows via the FK.
+    ///
+    /// `usage_daily` is deleted by hand in the same transaction because it holds
+    /// the Discord snowflake rather than a reference to `guilds.id`, so there is
+    /// no FK to cascade down (see `migrations/0007_usage_stats.sql`). Together,
+    /// or the promise in `docs/tos.md` — removing the bot deletes what that
+    /// server left behind — would be true of the settings and false of the
+    /// counts.
     pub async fn delete_guild(&self, guild_id: i64) -> Result<(), sqlx::Error> {
+        let mut tx = self.conn.begin().await?;
+
         sqlx::query("DELETE FROM guilds WHERE guild_id = $1")
             .bind(guild_id)
-            .execute(&self.conn)
+            .execute(&mut *tx)
             .await?;
-        Ok(())
+
+        sqlx::query("DELETE FROM usage_daily WHERE guild_id = $1")
+            .bind(guild_id)
+            .execute(&mut *tx)
+            .await?;
+
+        tx.commit().await
     }
 
     // -- cronjobs -------------------------------------------------------------
@@ -548,11 +609,7 @@ impl Database {
 
     /// Remembers which message is this request's review post, so a decision made
     /// anywhere else can go back and correct it.
-    pub async fn set_request_message(
-        &self,
-        id: i64,
-        message_id: i64,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn set_request_message(&self, id: i64, message_id: i64) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE full_map_requests SET message_id = $2 WHERE id = $1")
             .bind(id)
             .bind(message_id)
@@ -680,6 +737,102 @@ impl Database {
             None => None,
         };
 
-        Ok(Revoked::Withdrawn(request))
+        Ok(Revoked::Withdrawn(Box::new(request)))
+    }
+
+    // -- usage counters -------------------------------------------------------
+
+    /// Adds one to today's tally for this command in this server.
+    ///
+    /// The date comes from `now() AT TIME ZONE 'utc'` rather than `CURRENT_DATE`
+    /// on purpose: `CURRENT_DATE` is read in the database session's timezone, so
+    /// the day a use lands in would depend on how the Postgres container happens
+    /// to be configured — and would silently change if that ever moved.
+    ///
+    /// The upsert is the whole concurrency story. Two commands finishing in the
+    /// same millisecond in the same server contend on one row and both
+    /// increments land; there is no read-then-write for them to race in.
+    pub async fn record_usage(&self, command: &str, guild_id: i64) -> Result<(), sqlx::Error> {
+        sqlx::query(
+            "INSERT INTO usage_daily (day, command, guild_id, uses) \
+             VALUES ((now() AT TIME ZONE 'utc')::date, $1, $2, 1) \
+             ON CONFLICT (day, command, guild_id) \
+             DO UPDATE SET uses = usage_daily.uses + 1",
+        )
+        .bind(command)
+        .bind(guild_id)
+        .execute(&self.conn)
+        .await?;
+
+        Ok(())
+    }
+
+    /// The last `buckets` days or weeks, one row per command per bucket plus a
+    /// total row per bucket (`command IS NULL`).
+    ///
+    /// Buckets with no usage at all are simply absent — nothing was written for
+    /// them. The caller generates the labels it expects and fills the gaps with
+    /// zeroes, because "no row" and "nobody used it" are the same fact here and
+    /// a table that skips a quiet Sunday reads as if the data were lost.
+    ///
+    /// `GROUPING SETS` rather than two queries: the per-command tallies and the
+    /// bucket's distinct-server count have to come from the same scan, or a use
+    /// recorded between them would appear in one and not the other.
+    pub async fn usage_buckets(
+        &self,
+        period: UsagePeriod,
+        buckets: i64,
+    ) -> Result<Vec<UsageBucket>, sqlx::Error> {
+        // Both halves are literals chosen by the enum — nothing user-supplied is
+        // ever formatted into this.
+        let (bucket_expr, window) = match period {
+            UsagePeriod::Daily => ("day", "day > (now() AT TIME ZONE 'utc')::date - $1::int"),
+            UsagePeriod::Weekly => (
+                "date_trunc('week', day)::date",
+                "day >= date_trunc('week', (now() AT TIME ZONE 'utc')::date)::date \
+                        - (($1::int - 1) * 7)",
+            ),
+        };
+
+        sqlx::query_as(&format!(
+            "SELECT to_char(b.bucket, 'YYYY-MM-DD') AS bucket, \
+                    b.command AS command, \
+                    SUM(b.uses)::BIGINT AS uses, \
+                    COUNT(DISTINCT b.guild_id)::BIGINT AS servers \
+             FROM (SELECT {bucket_expr} AS bucket, command, guild_id, uses \
+                   FROM usage_daily WHERE {window}) b \
+             GROUP BY GROUPING SETS ((b.bucket, b.command), (b.bucket)) \
+             ORDER BY b.bucket DESC, b.command"
+        ))
+        .bind(buckets)
+        .fetch_all(&self.conn)
+        .await
+    }
+
+    /// What exists right now — servers, schedules, approvals.
+    pub async fn usage_overview(&self) -> Result<UsageOverview, sqlx::Error> {
+        sqlx::query_as(
+            "SELECT (SELECT COUNT(*) FROM guilds)::BIGINT AS guilds, \
+                    (SELECT COUNT(*) FROM guilds WHERE full_map_approved)::BIGINT \
+                        AS approved_guilds, \
+                    (SELECT COUNT(*) FROM cronjobs)::BIGINT AS schedules, \
+                    (SELECT COUNT(*) FROM cronjobs WHERE map_name IS NULL)::BIGINT \
+                        AS full_map_schedules, \
+                    (SELECT COUNT(DISTINCT guild) FROM cronjobs)::BIGINT AS scheduling_guilds",
+        )
+        .fetch_one(&self.conn)
+        .await
+    }
+
+    /// Enforces the retention window `docs/privacy.md` promises for usage
+    /// counts, the same 90 days closed full-map requests get.
+    pub async fn purge_stale_usage(&self) -> Result<u64, sqlx::Error> {
+        let result = sqlx::query(
+            "DELETE FROM usage_daily WHERE day < (now() AT TIME ZONE 'utc')::date - 90",
+        )
+        .execute(&self.conn)
+        .await?;
+
+        Ok(result.rows_affected())
     }
 }

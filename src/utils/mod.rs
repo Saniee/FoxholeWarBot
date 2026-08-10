@@ -11,6 +11,8 @@ pub mod regions;
 pub mod request_processing;
 pub mod review;
 pub mod schedule;
+pub mod usage;
+pub mod usage_stats_render;
 
 /// Formats a Foxhole API millisecond timestamp.
 ///

@@ -51,6 +51,9 @@ async fn main() -> Result<(), Error> {
         .options(poise::FrameworkOptions {
             commands: commands::all(),
             on_error: |error| Box::pin(on_error(error)),
+            // Counted before the body runs, so a command that fails still counts
+            // as someone having wanted it (`utils::usage`).
+            pre_command: |ctx| Box::pin(utils::usage::record_command(ctx)),
             event_handler: |ctx, event, framework, data| {
                 Box::pin(event_handler(ctx, event, framework, data))
             },
@@ -80,6 +83,7 @@ async fn main() -> Result<(), Error> {
 
                 cron.start_map_update_job().await?;
                 cron.start_request_purge_job(db.clone()).await?;
+                cron.start_usage_purge_job(db.clone()).await?;
 
                 if let Some(logs) = logs {
                     cron.start_log_prune_job(logs).await?;

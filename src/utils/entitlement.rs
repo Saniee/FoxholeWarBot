@@ -29,10 +29,7 @@ pub trait FullMapScheduling {
     /// same to every tick. Written the short way, this compiles here and fails
     /// at both call sites with an error that points at them and not at this
     /// line.
-    fn is_allowed(
-        &self,
-        guild: &GuildData,
-    ) -> impl std::future::Future<Output = bool> + Send;
+    fn is_allowed(&self, guild: &GuildData) -> impl std::future::Future<Output = bool> + Send;
 }
 
 /// The shipped rule: the owner approved this guild's request, and hasn't taken

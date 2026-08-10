@@ -9,6 +9,6 @@
 -- resolution and is only worth the colour wash across 53 of them; a frontline
 -- answers a sub-region question, and the hex a player cares about most is the
 -- contested one — precisely where a single flat colour is least true. See
--- specs/active/frontline.md.
+-- specs/frontline.md.
 ALTER TABLE guilds
     ADD COLUMN frontline BOOLEAN NOT NULL DEFAULT FALSE;

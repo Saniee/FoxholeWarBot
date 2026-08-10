@@ -18,12 +18,14 @@ Removes a previously created scheduled report by name.
 1. Look up guild; if not set up → ephemeral prompt.
 2. Defer per `show_command_output`.
 3. Look the job up by `(guild, name)`. No match → reply saying so; not an error.
-4. Remove the scheduler entry by its stored UUID. An id the scheduler no longer recognizes is
+4. Delete the `cronjobs` row first. If that fails, the scheduler entry and webhook remain usable
+   and startup restoration still has a consistent row.
+5. Remove the scheduler entry by its stored UUID. An id the scheduler no longer recognizes is
    fine — the job is gone either way.
-5. Delete the webhook **only if no other schedule in this guild uses that URL**. Two schedules
+6. Delete the webhook **only if no other schedule in this guild uses that URL**. Two schedules
    posting to the same channel share one webhook, so deleting on "is this the guild's only
    job?" — the old test — would break the survivor.
-6. Delete the `cronjobs` row, then confirm.
+7. Confirm the removal.
 
 A webhook someone already deleted by hand is logged and treated as success: that's the state
 we wanted.
