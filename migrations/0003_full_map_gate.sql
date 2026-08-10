@@ -1,5 +1,5 @@
 -- The approval gate for *scheduled* full-map reports.
--- See specs/premium-full-map.md.
+-- See specs/active/premium-full-map.md.
 --
 -- Rendering the full map on demand stays free and ungated for everyone. What is
 -- gated is putting one on a timer, because that cost recurs forever, and it
