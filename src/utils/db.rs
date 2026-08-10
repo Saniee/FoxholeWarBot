@@ -208,7 +208,7 @@ pub enum Revoked {
     NotApproved,
     /// Approval withdrawn. Carries the closed request when there is one, so its
     /// review post can be brought back into line.
-    Withdrawn(Option<FullMapRequest>),
+    Withdrawn(Box<Option<FullMapRequest>>),
 }
 
 /// The answers from the application modal, plus what the bot fills in itself.
@@ -609,11 +609,7 @@ impl Database {
 
     /// Remembers which message is this request's review post, so a decision made
     /// anywhere else can go back and correct it.
-    pub async fn set_request_message(
-        &self,
-        id: i64,
-        message_id: i64,
-    ) -> Result<(), sqlx::Error> {
+    pub async fn set_request_message(&self, id: i64, message_id: i64) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE full_map_requests SET message_id = $2 WHERE id = $1")
             .bind(id)
             .bind(message_id)
@@ -741,7 +737,7 @@ impl Database {
             None => None,
         };
 
-        Ok(Revoked::Withdrawn(request))
+        Ok(Revoked::Withdrawn(Box::new(request)))
     }
 
     // -- usage counters -------------------------------------------------------

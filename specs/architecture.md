@@ -270,18 +270,26 @@ CREATE TABLE guilds (
     guild_id            BIGINT  NOT NULL UNIQUE,
     shard               TEXT    NOT NULL,   -- resolved API base URL
     shard_name          TEXT    NOT NULL,   -- "Able" | "Baker" | "Charlie"
-    show_command_output BOOLEAN NOT NULL DEFAULT FALSE
+    show_command_output BOOLEAN NOT NULL DEFAULT FALSE,
+    full_map_faction_tint BOOLEAN NOT NULL DEFAULT FALSE,
+    full_map_approved BOOLEAN NOT NULL DEFAULT FALSE,
+    full_map_approved_at TIMESTAMPTZ,
+    timezone            TEXT NOT NULL DEFAULT 'UTC',
+    frontline           BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE cronjobs (
     id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     guild       BIGINT  NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
     job_name    TEXT    NOT NULL,
-    schedule    TEXT    NOT NULL,   -- the user's english phrase, converted on use
+    schedule    TEXT    NOT NULL,   -- generated cron, or a legacy phrase
     webhook_url TEXT    NOT NULL,
-    map_name    TEXT    NOT NULL,
+    map_name    TEXT,               -- NULL means whole-world map
     draw_text   BOOLEAN NOT NULL DEFAULT FALSE,
     job_id      TEXT,               -- scheduler UUID, reissued each process
+    schedule_label TEXT,
+    timezone    TEXT NOT NULL DEFAULT 'UTC',
+    dormant_notified BOOLEAN NOT NULL DEFAULT FALSE,
     UNIQUE (guild, job_name)
 );
 
@@ -291,6 +299,23 @@ CREATE TABLE usage_daily (
     guild_id BIGINT  NOT NULL,   -- Discord snowflake; deliberately not an FK
     uses     INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, command, guild_id)
+);
+
+CREATE TABLE full_map_requests (
+    id            BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    guild         BIGINT NOT NULL REFERENCES guilds(id) ON DELETE CASCADE,
+    requested_by  BIGINT NOT NULL,
+    member_count  INTEGER,
+    cadence       TEXT NOT NULL,
+    channel_id    BIGINT NOT NULL,
+    use_case      TEXT,
+    audience      TEXT,
+    contact       TEXT,
+    status        TEXT NOT NULL DEFAULT 'pending',
+    reviewed_by   BIGINT,
+    reviewed_at   TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    message_id    BIGINT
 );
 ```
 
@@ -303,8 +328,8 @@ Constraints doing real work:
 - `BIGINT` throughout for snowflakes: Postgres `INTEGER` is 32-bit and would truncate a Discord
   id. SQLite's is 64-bit, which is why this was invisible before.
 
-`cronjobs.schedule` stores the **original phrase**, not the derived cron expression, so it stays
-readable; `Job::schedule_to_cron` converts it at schedule time.
+`cronjobs.schedule` stores the generated cron expression for new schedules; legacy rows may retain
+the original phrase and are still converted by `Job::schedule_to_cron` at restore time.
 
 `usage_daily` is a **tally, not an event log** — a row is a counter for one command in one server
 on one UTC day, incremented in place, and it holds no user id and no time of day. `guild_id` is

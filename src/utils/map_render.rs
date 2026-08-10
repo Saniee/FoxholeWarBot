@@ -22,12 +22,12 @@ use super::cache::{
     load_dynamic_cache, load_maps, load_static_cache, save_dynamic_cache, save_map_cache,
 };
 use super::db::Shard;
+use super::frontline::{self, Edge};
 use super::http;
 use super::regions::{self, Region, REGIONS};
-use super::frontline::{self, Edge};
 use super::request_processing::{
-    draw_frontline, draw_hex_borders, draw_region_labels, load_background, place_image_info, Ground,
-    RegionLabel, RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
+    draw_frontline, draw_hex_borders, draw_region_labels, load_background, place_image_info,
+    Ground, RegionLabel, RenderConfig, RenderError, REGION_HEIGHT, REGION_WIDTH,
 };
 
 /// Region fetches in flight at once during a full-map render.
@@ -324,8 +324,7 @@ pub async fn render_region(
 ) -> Result<RenderedMap, MapError> {
     let client = http::client().clone();
 
-    let (dynamic_data, static_data) =
-        fetch_region(&client, api_url, shard_name, map_name).await?;
+    let (dynamic_data, static_data) = fetch_region(&client, api_url, shard_name, map_name).await?;
 
     let last_updated = dynamic_data.last_updated;
     let background = background_path(map_name);
@@ -418,10 +417,7 @@ pub async fn render_full_map(
                 // One region failing is not the map failing: it is drawn as bare
                 // terrain and the other 52 are unaffected.
                 Err(err) => {
-                    log::warn!(
-                        "{}: {err} — drawing it as background only",
-                        region.api_name
-                    );
+                    log::warn!("{}: {err} — drawing it as background only", region.api_name);
                     (region, None)
                 }
             }
@@ -618,12 +614,7 @@ fn composite_full_map(
 /// Empty whenever there is nothing to draw: the feature is off, or the field
 /// has no zero crossing because one side holds everything the API told us
 /// about. Both are ordinary states, not failures.
-fn world_frontline(
-    tiles: &[Tile],
-    canvas_w: u32,
-    canvas_h: u32,
-    config: &RenderConfig,
-) -> Front {
+fn world_frontline(tiles: &[Tile], canvas_w: u32, canvas_h: u32, config: &RenderConfig) -> Front {
     // The wash needs the field even when the line is not drawn. Computing it
     // only for `frontline` would mean a guild that turned the tint on kept
     // getting the old per-hex answer until it also turned the line on, which is
@@ -756,5 +747,3 @@ fn encode_png(img: &ImageBuffer<Rgba<u8>, Vec<u8>>) -> Result<Vec<u8>, RenderErr
 
     Ok(buf)
 }
-
-

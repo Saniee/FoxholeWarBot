@@ -1,7 +1,7 @@
 //! Scheduled map reports. See `specs/scheduling.md`.
 
-use std::sync::Arc;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use poise::serenity_prelude as serenity;
 use thiserror::Error;
@@ -14,8 +14,8 @@ use super::entitlement::{self, FullMapScheduling};
 use super::format_timestamp;
 use super::logging::{self, LogFiles};
 use super::map_render::{render_full_map, render_region};
-use super::request_processing::RenderConfig;
 use super::regions::display_name;
+use super::request_processing::RenderConfig;
 use super::schedule;
 use super::usage;
 
@@ -517,8 +517,10 @@ async fn post_placeholder(
     // map doesn't read ten seconds as a broken bot.
     let detail = match &job.map_name {
         Some(_) => "Fetching the latest war data and rendering the map…",
-        None => "Fetching the latest war data for all 53 regions and building the world map. \
-                 This takes a few seconds…",
+        None => {
+            "Fetching the latest war data for all 53 regions and building the world map. \
+                 This takes a few seconds…"
+        }
     };
 
     let embed = serenity::CreateEmbed::new()
@@ -623,7 +625,10 @@ async fn go_dormant(
     // between that and never having been approved at all, which is the one thing
     // this notice exists to settle.
     let embed = serenity::CreateEmbed::new()
-        .title(format!("Full-Map Approval Withdrawn: {}", job.schedule_name))
+        .title(format!(
+            "Full-Map Approval Withdrawn: {}",
+            job.schedule_name
+        ))
         .color((255, 170, 0))
         .description(
             "This server's approval to run **scheduled** full-map reports has been withdrawn, \

@@ -24,12 +24,7 @@ pub struct Region {
     pub row: u32,
 }
 
-const fn region(
-    api_name: &'static str,
-    display_name: &'static str,
-    col: u32,
-    row: u32,
-) -> Region {
+const fn region(api_name: &'static str, display_name: &'static str, col: u32, row: u32) -> Region {
     Region {
         api_name,
         display_name,
@@ -133,7 +128,9 @@ pub fn neighbours(region: &Region) -> Vec<&'static Region> {
 
 /// Looks a region up by its API identifier.
 pub fn find(api_name: &str) -> Option<&'static Region> {
-    REGIONS.iter().find(|region| same_region(region.api_name, api_name))
+    REGIONS
+        .iter()
+        .find(|region| same_region(region.api_name, api_name))
 }
 
 /// Do two identifiers name the same region?
@@ -155,7 +152,13 @@ fn strip_hex(name: &str) -> &str {
     let name = name.trim();
 
     match name.len().checked_sub(3) {
-        Some(cut) if name.get(cut..).is_some_and(|s| s.eq_ignore_ascii_case("hex")) => &name[..cut],
+        Some(cut)
+            if name
+                .get(cut..)
+                .is_some_and(|s| s.eq_ignore_ascii_case("hex")) =>
+        {
+            &name[..cut]
+        }
         _ => name,
     }
 }

@@ -133,15 +133,15 @@ regions. Checked against a live `/worldconquest/maps` response (Able, 2026-07):
 | API says | Assets and this table say | Consequence of an exact match |
 |---|---|---|
 | `MarbanHollow` | `MarbanHollowHex` | Region silently dropped — **a hole in the world map** |
-| `DeadLandsHex` | `MapDeadLandsHex.TGA` / `MapDeadlandsHex.TGA` | Case drift on disk; missing background on Linux |
+| `DeadLandsHex` | `MapDeadLandsHex.TGA` | Case drift between API and asset names; missing background on Linux |
 
 All 52 other names match exactly. Two rules follow, and the renderer holds both:
 
 - **Region identifiers are compared leniently** — case-insensitively, with the `Hex` suffix
   optional (`regions::same_region`). No two regions collide under that rule.
 - **The API's spelling addresses the API; the table's spelling addresses the assets.** They are
-  not interchangeable. `MapMarbanHollow.TGA` exists as a stale leftover of an older art drop, so
-  using the API's name for the asset path renders year-old terrain rather than failing loudly.
+  not interchangeable. Asset paths go through `regions::asset_name`, so using the API id directly
+  cannot select stale or mismatched art.
 
 Beyond that, a missing background is never fatal to the layout: a region the API doesn't list, or
 whose fetch fails, is drawn as bare terrain. Only the art going missing can leave a hole, and
@@ -168,11 +168,8 @@ rewrite should use an explicit display-name table (this one) rather than string 
   render target and not a grid tile (confirms the earlier correction).
 - `MapHomeRegionC.TGA` / `MapHomeRegionW.TGA` — Colonial/Warden home regions; not part of the
   world-conquest grid, excluded.
-- ~~`MapMarbanHollow.TGA`, `MapClahstraHexMap.TGA`~~ — **deleted.** They were *stale* near-
-  duplicates of their `*Hex` counterparts, not identical to them: the art drops updated
-  `MapMarbanHollowHex.TGA` and `MapClahstraHex.TGA` only, and `/get-map` was resolving the API's
-  `MarbanHollow` straight onto the year-old file. Both are gone, but asset paths still go through
-  `regions::asset_name` — deletion fixed this instance, the routing is what stops the next one.
+- `MapMarbanHollowHex.TGA` and `MapClahstraHex.TGA` are the canonical region assets. Asset paths
+  still go through `regions::asset_name`, rather than resolving the API id directly.
   `assets/Maps/` now holds exactly one file per table region plus the three non-conquest assets
   above.
 

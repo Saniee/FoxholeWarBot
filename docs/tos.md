@@ -31,8 +31,9 @@ Exactly this, and nothing else:
 
 **Per scheduled report**
 
-- The schedule's name, the timing expression the bot runs it on, and the same cadence in words
-  (e.g. "every 6 hours — 03:30, 09:30, 15:30, 21:30").
+- The schedule's name, the timing expression the bot runs it on, and, for schedules created after
+  structured scheduling shipped, the same cadence in words (e.g. "every 6 hours — 03:30, 09:30,
+  15:30, 21:30"). Older schedules may have no separate cadence label.
 - The timezone the schedule is read in, recorded when it was created so that changing the
   server's default never moves an existing report.
 - The webhook URL the report posts to.

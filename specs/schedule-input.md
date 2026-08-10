@@ -177,7 +177,8 @@ cadence label.
    full map re-renders all 53 regions each time.
 
 ## Acceptance criteria
-- No command takes a free-text schedule phrase or a cron expression.
+- No command takes a free-text schedule phrase or cron expression on the normal path. The explicit
+  `Custom…` option remains the documented escape hatch for users who choose it.
 - A schedule created with a timezone fires at the stated wall-clock time in that zone, **including
   after a DST transition, without a restart.**
 - Every existing schedule keeps firing exactly when it did before the change.

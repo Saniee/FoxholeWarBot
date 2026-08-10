@@ -11,6 +11,7 @@ use poise::serenity_prelude as serenity;
 use crate::utils::db::{UsageBucket, UsageOverview, UsagePeriod};
 use crate::utils::review;
 use crate::utils::usage::{SCHEDULED_FULL_MAP, SCHEDULED_REPORT, SCHEDULE_COMMANDS};
+use crate::utils::usage_stats_render;
 use crate::{Context, Error};
 
 /// Days shown when the option is left out. A week is the unit people compare
@@ -66,27 +67,28 @@ pub async fn usage_stats(
     let daily = db.usage_buckets(UsagePeriod::Daily, days as i64).await?;
     let weekly = db.usage_buckets(UsagePeriod::Weekly, weeks as i64).await?;
 
+    let daily_buckets = day_buckets(days);
+    let weekly_buckets = week_buckets(weeks);
+    let png =
+        usage_stats_render::render(&overview, &daily, &daily_buckets, &weekly, &weekly_buckets)?;
+    let file_name = "usage-stats.png";
     let embed = serenity::CreateEmbed::new()
-        .title("Usage — all servers")
+        .title("Usage report - all servers")
         .color((90, 160, 220))
         .description(describe(&overview))
-        .field(
-            format!("Last {days} day(s), UTC"),
-            table(&daily, &day_buckets(days)),
-            false,
-        )
-        .field(
-            format!("Last {weeks} week(s), from Monday, UTC"),
-            table(&weekly, &week_buckets(weeks)),
-            false,
-        )
+        .image(format!("attachment://{file_name}"))
         .footer(serenity::CreateEmbedFooter::new(
             "Counts are per server per day, kept for 90 days. Nothing here is per user.",
         ))
         .timestamp(serenity::Timestamp::now());
 
-    ctx.send(poise::CreateReply::default().ephemeral(true).embed(embed))
-        .await?;
+    ctx.send(
+        poise::CreateReply::default()
+            .ephemeral(true)
+            .embed(embed)
+            .attachment(serenity::CreateAttachment::bytes(png, file_name)),
+    )
+    .await?;
 
     Ok(())
 }
@@ -125,11 +127,14 @@ const COLUMNS: [(&str, usize); 5] = [
 
 /// Which column a recorded command name belongs in.
 fn column_of(command: &str) -> usize {
-    match command {
+    // Older rows were recorded from Poise's Rust-facing snake_case names.
+    // Normalize them on read so the dashboard can classify existing data too.
+    let normalized = command.replace('_', "-");
+    match normalized.as_str() {
         "get-map" => 0,
         "full-map" => 1,
         SCHEDULED_REPORT | SCHEDULED_FULL_MAP => 2,
-        _ if SCHEDULE_COMMANDS.contains(&command) => 3,
+        _ if SCHEDULE_COMMANDS.contains(&normalized.as_str()) => 3,
         _ => 4,
     }
 }
@@ -140,6 +145,7 @@ const FIELD_LIMIT: usize = 1024;
 /// A fixed-width table in a code block, which is the only alignment Discord
 /// gives you: an embed renders proportional text everywhere else, so a table
 /// built out of spaces outside a fence is not a table.
+#[allow(dead_code)]
 fn table(rows: &[UsageBucket], buckets: &[String]) -> String {
     // Pivot first: the query returns one row per (bucket, command), and every
     // bucket the caller asked for has to appear whether or not the query
@@ -283,6 +289,13 @@ mod tests {
     #[test]
     fn qualified_subcommand_names_fall_through_to_other() {
         assert_eq!(column_of("full-map-requests list"), 4);
+    }
+
+    #[test]
+    fn snake_case_command_names_use_their_dashboard_columns() {
+        assert_eq!(column_of("get_map"), 0);
+        assert_eq!(column_of("full_map"), 1);
+        assert_eq!(column_of("schedule_report"), 3);
     }
 
     /// The distinct-server count is the total row's, never the sum of the

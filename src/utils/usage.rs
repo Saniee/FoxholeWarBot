@@ -54,12 +54,15 @@ pub async fn record_command(ctx: Context<'_>) {
         return;
     };
 
-    record(
-        &ctx.data().db,
-        &ctx.command().qualified_name,
-        guild_id.get() as i64,
-    )
-    .await;
+    let command = canonical_name(&ctx.command().qualified_name);
+    record(&ctx.data().db, &command, guild_id.get() as i64).await;
+}
+
+/// Poise's qualified name follows the Rust command function names, while the
+/// registered slash commands use hyphens. Store the slash spelling so usage
+/// rows and the dashboard's documented names agree.
+pub(crate) fn canonical_name(name: &str) -> String {
+    name.replace('_', "-")
 }
 
 /// Counts one thing, and never lets the counting matter.
@@ -72,5 +75,19 @@ pub async fn record_command(ctx: Context<'_>) {
 pub async fn record(db: &Database, command: &str, guild_id: i64) {
     if let Err(err) = db.record_usage(command, guild_id).await {
         log::debug!("could not record usage of '{command}': {err}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::canonical_name;
+
+    #[test]
+    fn command_names_use_slash_command_spelling() {
+        assert_eq!(canonical_name("get_map"), "get-map");
+        assert_eq!(
+            canonical_name("full_map_requests list"),
+            "full-map-requests list"
+        );
     }
 }

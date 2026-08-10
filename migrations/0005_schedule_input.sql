@@ -1,11 +1,11 @@
 -- Structured schedule input and timezones.
--- See specs/active/schedule-input.md.
+-- See specs/schedule-input.md.
 --
 -- Two reported problems with one root cause: the bot asked users to express a
 -- time in a language it never taught them (a free-text box handed straight to a
 -- cron parser), and then interpreted it in a timezone they never chose. The
--- columns here are the storage half of the fix; the command surface stops
--- accepting free text at all.
+-- columns here are the storage half of the fix; the normal command path stops
+-- accepting free text, while the explicit Custom option remains available.
 
 -- The server's default timezone, as an IANA name (`Europe/Bratislava`), never a
 -- fixed offset — an offset stored in summer is wrong in winter.

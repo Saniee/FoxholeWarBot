@@ -32,8 +32,8 @@ Wrong claims that were removed in this pass, kept here so they don't come back:
 
 ## Permissions, as documented
 View Channel, Send Messages, Embed Links, Attach Files, Use Application Commands, and Manage
-Webhooks — the last needed only for `/schedule-report` and `/remove-report`, which are themselves
-gated behind `MANAGE_WEBHOOKS` on the member side.
+Webhooks — the last needed for `/schedule-report`, `/request-full-map-schedule` and
+`/remove-report`, which are themselves gated behind `MANAGE_WEBHOOKS` on the member side.
 
 ## Contact details
 The support invite appears in `docs/`, `README.md` and `commands::common::SUPPORT_INVITE`. All

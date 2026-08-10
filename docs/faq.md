@@ -11,7 +11,7 @@ layout: default
 - Embed Links
 - Attach Files
 - Use Application Commands
-- Manage Webhooks — **only** for `/schedule-report`; everything else works without it
+- Manage Webhooks — for `/schedule-report`, `/request-full-map-schedule` and `/remove-report`
 
 It does not need Add Reactions or Send Messages in Threads. It never reacts to messages, never
 reads them, and runs on the `GUILDS` gateway intent alone.
@@ -36,6 +36,11 @@ should be public or private. Until that's done, the other commands will just poi
 - `/request-full-map-schedule` — apply to schedule world-map reports (needs Manage Webhooks).
 - `/remove-report` — delete a schedule and its webhook (needs Manage Webhooks).
 - `/schedule-help` — how schedules are timed, in the client.
+
+Reviewer-only commands:
+
+- `/full-map-requests` — review pending full-map scheduling applications (`REVIEWER_IDS`).
+- `/usage-stats` — view global usage counts by day and week (`REVIEWER_IDS`).
 
 # [](#header-4)When reports post:
 

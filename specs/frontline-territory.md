@@ -87,7 +87,7 @@ sample the wash more finely than the line.
 ## The halo
 
 With the ground either side already carrying the faction colours, the flanks said a second time what
-the wash says better, and at the low contrast measured in `dev/done/frontline/`. **The halo is
+the wash says better. **The halo is
 opaque black wherever the territory wash is underneath it** (`frontline_halo`), and stays two-tone
 on `/get-map`, where there is no wash and the flanks are the only thing naming the sides.
 

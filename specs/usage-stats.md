@@ -67,7 +67,9 @@ indistinguishable from a busy one.
 2. Clamp `days` and `weeks` (Discord enforces `min`/`max`, but Discord is a client we don't
    control).
 3. Read three things: the standing overview, the daily buckets, the weekly buckets.
-4. Reply with one embed — the overview as prose, then two fixed-width tables in code fences.
+4. Reply with one ephemeral embed and an attached PNG dashboard. The image contains the overview,
+   complete daily and weekly tables, and the privacy footer; it is not subject to embed field
+   limits.
 
 ### The overview is read live, not tallied
 
@@ -96,11 +98,8 @@ not a fact worth having in the data.
 Sunday, so the labels are generated in Rust and the gaps filled — a table that silently skips a
 day reads as lost data rather than as a quiet day.
 
-Fixed-width text inside a code fence because an embed is proportional everywhere else, so a table
-built out of spaces outside a fence is not a table. `MAX_DAYS`/`MAX_WEEKS` are sized so the
-result always fits Discord's 1024-character field; the renderer drops whole rows if it ever
-doesn't, rather than truncating the finished string, since a cut that lands inside the closing
-fence turns the rest of the embed into code.
+The image renderer keeps every requested row, including quiet buckets, at both maximum ranges. The
+embed contains only a short description and the attached dashboard.
 
 ## Storage
 

@@ -164,8 +164,8 @@ pub fn cadence(
         // Accepts both a 6-field cron expression and the English phrases the old
         // free-text box took — existing users have phrases that work, and there
         // is no reason to take that away from the people it works for.
-        let cron = Job::schedule_to_cron(raw)
-            .map_err(|_| ScheduleError::BadCustom(raw.to_string()))?;
+        let cron =
+            Job::schedule_to_cron(raw).map_err(|_| ScheduleError::BadCustom(raw.to_string()))?;
 
         // Parsed here as well, with exactly the builder the scheduler uses, so a
         // string that survives `schedule_to_cron` but not the parser is caught
@@ -273,9 +273,7 @@ fn parse_at_time(raw: &str) -> Result<(u32, u32), ScheduleError> {
     let trimmed = raw.trim();
     let bad = || ScheduleError::BadTime(trimmed.to_string());
 
-    let (hour, minute) = trimmed
-        .split_once([':', '.'])
-        .ok_or_else(bad)?;
+    let (hour, minute) = trimmed.split_once([':', '.']).ok_or_else(bad)?;
 
     let hour: u32 = hour.trim().parse().map_err(|_| bad())?;
     let minute: u32 = minute.trim().parse().map_err(|_| bad())?;

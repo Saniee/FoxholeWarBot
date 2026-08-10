@@ -357,10 +357,10 @@ impl Row<'_> {
         let col1 = (col0 + 1).min(last_col);
         let across = col - left;
 
-        let above =
-            field.values[self.above + col0] * (1.0 - across) + field.values[self.above + col1] * across;
-        let below =
-            field.values[self.below + col0] * (1.0 - across) + field.values[self.below + col1] * across;
+        let above = field.values[self.above + col0] * (1.0 - across)
+            + field.values[self.above + col1] * across;
+        let below = field.values[self.below + col0] * (1.0 - across)
+            + field.values[self.below + col1] * across;
 
         above * (1.0 - self.down) + below * self.down
     }
@@ -1126,7 +1126,10 @@ mod tests {
             }
         }
 
-        assert!(checked > 20, "only {checked} segments — the fixture went thin");
+        assert!(
+            checked > 20,
+            "only {checked} segments — the fixture went thin"
+        );
     }
 
     fn contested_wavy() -> Vec<Source> {
@@ -1199,4 +1202,3 @@ mod tests {
         turns(line).sum()
     }
 }
-
