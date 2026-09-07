@@ -1,6 +1,8 @@
 # Context: player-reported faction intel
 
-Spec: none yet — pre-spec design brainstorm, not written up. Tasks: `tasks.md`.
+Spec: `specs/active/faction-intel.md` (reporting, schema, delivery, voting, moderation) and
+`specs/active/faction-intel-rendering.md` (grid parsing, pins — blocked on one open verification).
+Tasks: `tasks.md`.
 
 ## Why this exists
 
@@ -195,8 +197,10 @@ grounded in the real arty-grid system.
 
 ## Next steps
 
-Interaction design and schema are now fully settled, including the Reconfigure/Disable first
-screen (going in as designed, to be judged on how real users respond rather than argued further
-now). What's left: the filtering question (probably skip for v1), the user's own local
-verification of the grid system (dimensions + clipboard format), and then this is ready to write
-up as an actual spec (or several — still undecided which) instead of staying a brainstorm.
+**Specs written.** `specs/active/faction-intel.md` (the reporting system) and
+`specs/active/faction-intel-rendering.md` (grid parsing + pins, split out because it's the only
+part blocked on the user's own local verification of the grid dimensions + clipboard format).
+Filtering-on-delivery was left out of both, consistent with "probably skip for v1." Once the grid
+verification lands, fill in `faction-intel-rendering.md`'s conversion formula and this moves to
+implementation — at that point this `dev/active/` directory should track actual build progress
+(a real `tasks.md` checklist against the specs) rather than design decisions, which are now done.

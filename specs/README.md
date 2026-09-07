@@ -11,9 +11,11 @@ shipped bot rather than the thing being replaced.
 - `specs/*.md` — **current-behavior specs.** Each describes a feature exactly as it works now.
 - `specs/active/` — **specs for work in flight**: planned or in-progress features, describing
   *intended* behavior. A spec is promoted out of `active/` once it ships. Currently holds
-  `frontline-activity.md` and `war-summaries.md`; the full-map renderer, the scheduling gate and
-  structured schedule input emptied it at 2.0, and the frontline overlay and the territory tint
-  have since shipped and joined them.
+  `frontline-activity.md`, `war-summaries.md`, and `faction-intel.md` +
+  `faction-intel-rendering.md` (the latter pair split in two because the rendering half is blocked
+  on one open verification the reporting half doesn't need); the full-map renderer, the scheduling
+  gate and structured schedule input emptied it at 2.0, and the frontline overlay and the territory
+  tint have since shipped and joined them.
 - `specs/future-plans.md` — ideas intentionally deferred until usage or other evidence justifies
   implementation. These are not active feature specifications.
 - `specs/architecture.md` — cross-cutting concerns shared by every command (shards, caching,
