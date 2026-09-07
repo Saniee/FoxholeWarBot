@@ -92,8 +92,19 @@ Spec: none yet. Context: `context.md`.
       "Disable" flips `intel_enabled` off immediately with no further clicks. Skipped entirely for
       a guild that's never been enabled. Going in as designed; revisit based on user response.
 
-## 8. Not started at all
+## 8. Spec-writing
 
-- [ ] Per-category/per-region filtering on the delivery channel — floated, probably skip for v1.
-- [ ] Decide one spec vs. several (command surface / data model / moderation / rendering).
-- [ ] Write the actual spec(s) once the above lands.
+- [x] Decided: two specs, not one — `specs/active/faction-intel.md` (reporting, schema, delivery,
+      voting, moderation) and `specs/active/faction-intel-rendering.md` (grid parsing, pins),
+      split because only the rendering half is blocked on the user's own local verification.
+- [x] Both written.
+- [ ] Per-category/per-region filtering on the delivery channel — left out of both specs,
+      consistent with "probably skip for v1." Revisit only if asked for later.
+
+## 9. Next: implementation (not started)
+
+- [ ] Grid dimensions + clipboard format (the user's local testing) — unblocks
+      `faction-intel-rendering.md`'s conversion formula.
+- [ ] Migration for the schema in `faction-intel.md`'s Data model section.
+- [ ] `docs/tos.md` + `docs/privacy.md` update, same commit as the migration.
+- [ ] Everything else in both specs' Acceptance Criteria sections.
