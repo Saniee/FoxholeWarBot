@@ -34,6 +34,7 @@ pub trait FullMapScheduling {
 
 /// The shipped rule: the owner approved this guild's request, and hasn't taken
 /// it back.
+#[allow(dead_code)] // kept so the gate can be restored in one line
 pub struct ApprovalFlag;
 
 impl FullMapScheduling for ApprovalFlag {
@@ -42,8 +43,20 @@ impl FullMapScheduling for ApprovalFlag {
     }
 }
 
+/// Temporary: everyone may schedule a full map, because the approval step kept
+/// people from using it at all. The flag, the request flow and the dormancy
+/// handling all stay in place, so restoring the gate is returning `ApprovalFlag`
+/// from `scheduling()`.
+pub struct Everyone;
+
+impl FullMapScheduling for Everyone {
+    async fn is_allowed(&self, _guild: &GuildData) -> bool {
+        true
+    }
+}
+
 /// The rule in force. Every caller goes through this rather than naming an
 /// implementation, so swapping the source is a one-line change.
 pub fn scheduling() -> impl FullMapScheduling {
-    ApprovalFlag
+    Everyone
 }
