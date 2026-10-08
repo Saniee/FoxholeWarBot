@@ -77,17 +77,10 @@ such limit.
 
 `/full-map` is free for everyone, needs no approval, and you can run it as often as you like.
 
-Putting the world map on a **recurring schedule** is the one thing that needs asking first. Run
-`/request-full-map-schedule`, fill in the short form, and you'll get an answer in the channel you
-nominated.
-
-**No payment is involved and there is no paid tier.** The reason for the form is arithmetic: an
-on-demand render costs one request that somebody deliberately made, while a scheduled one stitches
-all 53 regions on a timer, forever, whether or not anyone looks at it. The form keeps that
-recurring load to a number somebody has actually seen. It's a queue, not a price.
-
-If approval is later withdrawn, the schedule is **paused, not deleted** — the channel is told once,
-and it resumes on its own if approval comes back. Single-region schedules are never affected.
+Putting the world map on a **recurring schedule** is open to every server for now — just pick
+the world map in `/schedule-report`. It re-renders all 53 regions on every post, which is why
+world-map reports go out at most hourly. If that ever changes and needs approval again, existing
+schedules are **paused, not deleted**, and the channel is told once.
 
 # [](#header-6)Downtime or bot is down?:
 

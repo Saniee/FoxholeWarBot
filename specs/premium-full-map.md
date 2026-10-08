@@ -1,5 +1,11 @@
 # Gating: scheduled full-map renders
 
+> **Temporarily open (2026-10-08).** `entitlement::scheduling()` returns `Everyone`, so any guild
+> may schedule the world map without approval — the form kept people from using it at all. The
+> approval flag, request flow, review buttons and tick-time dormancy below are all still in the
+> code; restoring the gate is returning `ApprovalFlag` from `scheduling()`. The rest of this
+> spec describes that gate.
+
 Status: **shipped.** The approval form, the reviewer allow-list, the review post with its
 Approve/Deny/Withdraw/Revoke buttons, and tick-time dormancy are all live. Any **paid/donation**
 tier remains deferred pending Siege Camp confirmation (see ToS findings) — nothing here involves
