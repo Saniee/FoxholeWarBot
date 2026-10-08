@@ -32,8 +32,9 @@ should be public or private. Until that's done, the other commands will just poi
 - `/set-guild-settings` — set the shard, reply visibility and the server's timezone (needs
   Administrator).
 - `/schedule-report` — post a region's map, or the whole world map, to a channel on a recurring
-  schedule (needs Manage Webhooks). Scheduling the *world map* needs approval first — see below.
-- `/request-full-map-schedule` — apply to schedule world-map reports (needs Manage Webhooks).
+  schedule (needs Manage Webhooks). Scheduling the *world map* currently needs no approval — see below.
+- `/request-full-map-schedule` — apply to schedule world-map reports (needs Manage Webhooks). Not
+  needed at the moment, since world-map schedules are open to everyone.
 - `/remove-report` — delete a schedule and its webhook (needs Manage Webhooks).
 - `/schedule-help` — how schedules are timed, in the client.
 
@@ -77,7 +78,7 @@ such limit.
 
 `/full-map` is free for everyone, needs no approval, and you can run it as often as you like.
 
-Putting the world map on a **recurring schedule** is open to every server for now — just pick
+Putting the world map on a **recurring schedule** is open to every server for now, until enough usage has been seen to judge the load — just pick
 the world map in `/schedule-report`. It re-renders all 53 regions on every post, which is why
 world-map reports go out at most hourly. If that ever changes and needs approval again, existing
 schedules are **paused, not deleted**, and the channel is told once.
