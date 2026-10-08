@@ -32,6 +32,10 @@ That's the complete list. The full breakdown, field by field, is in the
 
 # [](#header-3)About the full-map request form
 
+> **Temporary change (October 2026).** Scheduling a world map currently needs no request, so
+> servers aren't being asked to fill in this form. The form and its handling are unchanged and
+> are described here because they still exist and may return once enough usage has been seen.
+
 This is the one place where the bot stores something tied to a **person** rather than to a
 server, and the one place it stores free text somebody typed. It is worth being blunt about:
 

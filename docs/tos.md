@@ -79,7 +79,12 @@ machine it runs on and deleted on a rolling window (14 days by default). See the
 Rendering the whole world map on demand with `/full-map` is **free for every server**, needs no
 request, and no approval.
 
-Putting one on a **recurring schedule** needs a short request first — `/request-full-map-schedule`
+> **Temporary change (October 2026).** Until the bot has seen enough real usage to judge the
+> load, **no request or approval is needed** to schedule a world map: every server can pick it in
+> `/schedule-report`. The request form and the rules described below still exist and will apply
+> again if approval is brought back; this notice will be updated or removed when that is decided.
+
+Putting one on a **recurring schedule** normally needs a short request first — `/request-full-map-schedule`
 opens a form, and the bot's owner reviews it. This applies to every server regardless of size.
 
 **No payment is involved at any point, and there is no paid tier.** The reason for the form is
